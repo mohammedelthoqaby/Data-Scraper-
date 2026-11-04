@@ -41,6 +41,96 @@ export interface paths {
             };
         };
         put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateManualAdRequest"];
+                    "text/json": components["schemas"]["CreateManualAdRequest"];
+                    "application/*+json": components["schemas"]["CreateManualAdRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AdDto"];
+                        "application/json": components["schemas"]["AdDto"];
+                        "text/json": components["schemas"]["AdDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ads/campaigns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    competitorId?: string;
+                    platform?: string;
+                    status?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AdCampaignDto"][];
+                        "application/json": components["schemas"]["AdCampaignDto"][];
+                        "text/json": components["schemas"]["AdCampaignDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -813,6 +903,283 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/internal/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["StartRunResultDto"];
+                        "application/json": components["schemas"]["StartRunResultDto"];
+                        "text/json": components["schemas"]["StartRunResultDto"];
+                    };
+                };
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["StartRunResultDto"];
+                        "application/json": components["schemas"]["StartRunResultDto"];
+                        "text/json": components["schemas"]["StartRunResultDto"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/internal/ads/google/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["GoogleIdentityDto"][];
+                        "application/json": components["schemas"]["GoogleIdentityDto"][];
+                        "text/json": components["schemas"]["GoogleIdentityDto"][];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/internal/ads/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsIngestRequest"];
+                    "text/json": components["schemas"]["GoogleAdsIngestRequest"];
+                    "application/*+json": components["schemas"]["GoogleAdsIngestRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/internal/ads/meta/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MetaIdentityDto"][];
+                        "application/json": components["schemas"]["MetaIdentityDto"][];
+                        "text/json": components["schemas"]["MetaIdentityDto"][];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/internal/ads/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["MetaAdsIngestRequest"];
+                    "text/json": components["schemas"]["MetaAdsIngestRequest"];
+                    "application/*+json": components["schemas"]["MetaAdsIngestRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -1841,6 +2208,31 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AdCampaignDto: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            competitorId?: string;
+            competitorKey?: string | null;
+            competitorName?: string | null;
+            /** Format: uuid */
+            identityId?: string;
+            creativeHash?: string | null;
+            platform?: string | null;
+            body?: string | null;
+            /** Format: date-time */
+            firstSeenAt?: string;
+            /** Format: date-time */
+            lastSeenAt?: string;
+            status?: string | null;
+            /** Format: int32 */
+            adCount?: number;
+            /** Format: int32 */
+            activeAdCount?: number;
+            /** Format: int32 */
+            inactiveAdCount?: number;
+            ads?: components["schemas"]["AdDto"][] | null;
+        };
         AdDto: {
             /** Format: uuid */
             id?: string;
@@ -1869,6 +2261,21 @@ export interface components {
             lastSeenAt?: string;
             status?: string | null;
             creativeHash?: string | null;
+            /** Format: uuid */
+            productId?: string | null;
+            productTitle?: string | null;
+            productUrl?: string | null;
+            /** Format: uuid */
+            lazyBeanProductId?: string | null;
+            lazyBeanProductTitle?: string | null;
+            lazyBeanProductUrl?: string | null;
+            /** Format: double */
+            competitorPrice?: number | null;
+            /** Format: double */
+            lazyBeanPrice?: number | null;
+            pricePosition?: string | null;
+            /** Format: double */
+            priceDiffPercent?: number | null;
         };
         AdvertiserIdentityDto: {
             /** Format: uuid */
@@ -2023,6 +2430,21 @@ export interface components {
             ownershipEvidenceUrl?: string | null;
             notes?: string | null;
         };
+        CreateManualAdRequest: {
+            /** Format: uuid */
+            competitorId?: string;
+            platform?: string | null;
+            externalAdId?: string | null;
+            title?: string | null;
+            body?: string | null;
+            linkUrl?: string | null;
+            snapshotUrl?: string | null;
+            /** Format: date-time */
+            deliveryStartDate?: string | null;
+            /** Format: date-time */
+            deliveryStopDate?: string | null;
+            status?: string | null;
+        };
         CreateMatchCommand: {
             /** Format: uuid */
             competitorVariantId?: string | null;
@@ -2054,6 +2476,39 @@ export interface components {
             /** Format: int32 */
             totalCount?: number;
             ads?: components["schemas"]["AdDto"][] | null;
+        };
+        GoogleAdPayloadItem: {
+            externalAdId?: string | null;
+            format?: string | null;
+            title?: string | null;
+            body?: string | null;
+            snapshotUrl?: string | null;
+            linkUrl?: string | null;
+            /** Format: date-time */
+            firstSeen?: string | null;
+            /** Format: date-time */
+            lastSeen?: string | null;
+            rawJson?: string | null;
+        };
+        GoogleAdsIngestRequest: {
+            advertiserId?: string | null;
+            status?: string | null;
+            region?: string | null;
+            error?: string | null;
+            ads?: components["schemas"]["GoogleAdPayloadItem"][] | null;
+        };
+        GoogleIdentityDto: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            competitorId?: string;
+            competitorKey?: string | null;
+            competitorName?: string | null;
+            externalId?: string | null;
+            name?: string | null;
+            status?: string | null;
+            /** Format: date-time */
+            blockedUntil?: string | null;
         };
         LoginCommand: {
             username?: string | null;
@@ -2091,6 +2546,39 @@ export interface components {
             sizeVariantsPerCompetitor?: {
                 [key: string]: number;
             } | null;
+        };
+        MetaAdItemRequest: {
+            id?: string | null;
+            title?: string | null;
+            body?: string | null;
+            link?: string | null;
+            snapshotUrl?: string | null;
+            imageUrl?: string | null;
+            /** Format: date-time */
+            startDate?: string | null;
+            /** Format: date-time */
+            stopDate?: string | null;
+            status?: string | null;
+            rawJson?: string | null;
+        };
+        MetaAdsIngestRequest: {
+            pageId?: string | null;
+            status?: string | null;
+            error?: string | null;
+            ads?: components["schemas"]["MetaAdItemRequest"][] | null;
+        };
+        MetaIdentityDto: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            competitorId?: string;
+            competitorKey?: string | null;
+            competitorName?: string | null;
+            pageId?: string | null;
+            name?: string | null;
+            status?: string | null;
+            /** Format: date-time */
+            blockedUntil?: string | null;
         };
         MetaIntegrationStatusDto: {
             configured?: boolean;

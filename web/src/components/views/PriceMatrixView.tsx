@@ -5,6 +5,7 @@ interface PriceMatrixViewProps {
   matrix: PriceMatrixResponse | null;
   selectedRunId: string | null;
   isLoading?: boolean;
+  onOpenProductDetail?: (productId: string, title?: string, row?: PriceMatrixRow) => void;
 }
 
 const COMPETITOR_COLUMNS = [
@@ -19,6 +20,7 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
   matrix,
   selectedRunId,
   isLoading,
+  onOpenProductDetail,
 }) => {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
@@ -302,6 +304,16 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
                           {row.weightGrams && <span>{row.weightGrams}g</span>}
                           {row.unitCount && <span>{row.unitCount} caps</span>}
                           <span className="badge blue">{row.canonicalCategory}</span>
+                          {onOpenProductDetail && (
+                            <button
+                              type="button"
+                              className="btn-xs ghost"
+                              style={{ marginLeft: 'auto', fontSize: '10px', padding: '1px 6px' }}
+                              onClick={() => onOpenProductDetail(row.lazyBeanProductId, row.lazyBeanTitle, row)}
+                            >
+                              Details
+                            </button>
+                          )}
                         </div>
                       </div>
                     </td>

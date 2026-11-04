@@ -43,10 +43,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <button
           type="button"
-          aria-current={activeView === 'weekly-actions' ? 'page' : undefined}
-          onClick={() => onNavigate('weekly-actions')}
+          aria-current={activeView === 'offers' || activeView === 'weekly-actions' ? 'page' : undefined}
+          onClick={() => onNavigate('offers')}
         >
-          <span>Weekly actions</span>
+          <span>Promotions & offers</span>
         </button>
 
         <button
@@ -77,27 +77,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
 
         <details className="nav-secondary" open>
-          <summary>Settings & history</summary>
+          <summary>Settings & orchestration</summary>
+          <button
+            type="button"
+            aria-current={activeView === 'runs' || activeView === 'history' ? 'page' : undefined}
+            onClick={() => onNavigate('runs')}
+          >
+            <span>Collection runs</span>
+          </button>
           <button
             type="button"
             aria-current={activeView === 'sources' ? 'page' : undefined}
             onClick={() => onNavigate('sources')}
           >
-            <span>Manage sources</span>
-          </button>
-          <button
-            type="button"
-            aria-current={activeView === 'history' ? 'page' : undefined}
-            onClick={() => onNavigate('history')}
-          >
-            <span>Report history</span>
-          </button>
-          <button
-            type="button"
-            aria-current={activeView === 'improve-recommendations' ? 'page' : undefined}
-            onClick={() => onNavigate('improve-recommendations')}
-          >
-            <span>Internal data import</span>
+            <span>Manage sources & identities</span>
           </button>
         </details>
       </nav>

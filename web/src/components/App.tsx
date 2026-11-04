@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { api, type AuthenticatedUser, type CollectionRun, type PriceMatrixResponse, type CompetitorOffersResponse } from '../api/client';
+import { api, type AuthenticatedUser, type CollectionRun, type PriceMatrixResponse, type CompetitorOffersResponse, type PriceMatrixRow } from '../api/client';
 import { Sidebar } from './shell/Sidebar';
 import { Header } from './shell/Header';
 import { Toolbar } from './shell/Toolbar';
@@ -7,6 +7,12 @@ import { Footer } from './shell/Footer';
 import { LoginModal } from './auth/LoginModal';
 import { OverviewView } from './views/OverviewView';
 import { PriceMatrixView } from './views/PriceMatrixView';
+import { OffersView } from './views/OffersView';
+import { AdsCampaignsView } from './views/AdsCampaignsView';
+import { ReviewQueueView } from './views/ReviewQueueView';
+import { RunsView } from './views/RunsView';
+import { SourcesIdentitiesView } from './views/SourcesIdentitiesView';
+import { ProductDetailModal } from './views/ProductDetailModal';
 
 export const App: React.FC = () => {
   // Navigation State
@@ -25,11 +31,45 @@ export const App: React.FC = () => {
   const [reviewCount, setReviewCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Product Detail Modal State
+  const [isProductDetailOpen, setIsProductDetailOpen] = useState(false);
+  const [activeDetailProductId, setActiveDetailProductId] = useState<string | null>(null);
+  const [activeDetailTitle, setActiveDetailTitle] = useState<string | undefined>(undefined);
+  const [activeDetailRow, setActiveDetailRow] = useState<PriceMatrixRow | null>(null);
+
+  const openProductDetail = (productId: string, title?: string, row?: PriceMatrixRow) => {
+    setActiveDetailProductId(productId);
+    setActiveDetailTitle(title);
+    setActiveDetailRow(row || null);
+    setIsProductDetailOpen(true);
+  };
+
+  const closeProductDetail = () => {
+    setIsProductDetailOpen(false);
+    setActiveDetailProductId(null);
+    setActiveDetailTitle(undefined);
+    setActiveDetailRow(null);
+  };
+
   // Sync hash route with state
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
-      if (hash && ['overview', 'price-comparisons', 'weekly-actions', 'ads-campaigns', 'review-queue', 'sources', 'history', 'improve-recommendations'].includes(hash)) {
+      if (
+        hash &&
+        [
+          'overview',
+          'offers',
+          'weekly-actions',
+          'price-comparisons',
+          'ads-campaigns',
+          'review-queue',
+          'sources',
+          'runs',
+          'history',
+          'improve-recommendations',
+        ].includes(hash)
+      ) {
         setActiveView(hash);
       }
     };
@@ -212,35 +252,78 @@ export const App: React.FC = () => {
             />
           )}
 
+          {(activeView === 'offers' || activeView === 'weekly-actions') && (
+            <OffersView
+              selectedRunId={selectedRunId}
+              onOpenProductDetail={openProductDetail}
+            />
+          )}
+
           {activeView === 'price-comparisons' && (
             <PriceMatrixView
               matrix={matrix}
               selectedRunId={selectedRunId}
               isLoading={isLoading}
+              onOpenProductDetail={openProductDetail}
             />
           )}
 
-          {activeView !== 'overview' && activeView !== 'price-comparisons' && (
+          {activeView === 'ads-campaigns' && (
+            <AdsCampaignsView
+              onOpenProductDetail={openProductDetail}
+            />
+          )}
+
+          {activeView === 'review-queue' && (
+            <ReviewQueueView
+              onRefreshReviewsCount={fetchReviewCount}
+              onOpenProductDetail={openProductDetail}
+            />
+          )}
+
+          {(activeView === 'runs' || activeView === 'history') && (
+            <RunsView
+              user={user}
+              onOpenLogin={() => setIsLoginOpen(true)}
+              onNavigateToMatrix={(runId) => {
+                setSelectedRunId(runId);
+                navigateTo('price-comparisons');
+              }}
+              onRefreshRuns={handleReloadAll}
+            />
+          )}
+
+          {activeView === 'sources' && (
+            <SourcesIdentitiesView />
+          )}
+
+          {activeView === 'improve-recommendations' && (
             <div className="panel" style={{ padding: '40px', textAlign: 'center' }}>
-              <h2>{activeView.replace('-', ' ').toUpperCase()}</h2>
-              <p style={{ color: 'var(--muted)', marginTop: '8px' }}>
-                This view is scheduled for the next milestone. Switch back to <strong>Overview</strong> or{' '}
-                <strong>Price comparisons</strong>.
+              <div className="eyebrow">INTERNAL BUSINESS DATA</div>
+              <h2 style={{ marginTop: '8px' }}>Internal Data Import</h2>
+              <p style={{ color: 'var(--muted)', marginTop: '8px', maxWidth: '500px', margin: '8px auto 0' }}>
+                Upload internal sales velocity, inventory, or margins (CSV/XLSX) to enrich market positioning recommendations.
               </p>
-              <button
-                type="button"
-                className="btn-primary"
-                style={{ marginTop: '16px' }}
-                onClick={() => navigateTo('price-comparisons')}
-              >
-                Go to Price comparisons
-              </button>
+              <div style={{ marginTop: '20px', border: '2px dashed var(--line)', padding: '30px', borderRadius: '8px', background: '#fafbfc' }}>
+                <p style={{ margin: 0, color: 'var(--muted)', fontSize: '13px' }}>
+                  Drag and drop <code>.csv</code> or <code>.xlsx</code> file here, or click to browse
+                </p>
+              </div>
             </div>
           )}
         </main>
 
         <Footer />
       </div>
+
+      {/* Product Detail & Price History Modal */}
+      <ProductDetailModal
+        isOpen={isProductDetailOpen}
+        onClose={closeProductDetail}
+        productId={activeDetailProductId}
+        productTitle={activeDetailTitle}
+        matrixRow={activeDetailRow}
+      />
 
       {/* Login Dialog Modal */}
       <LoginModal
