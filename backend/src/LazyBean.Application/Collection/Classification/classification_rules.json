@@ -1,0 +1,415 @@
+{
+  "rules": [
+    {
+      "id": "capsules_vertuo",
+      "category": "CapsulesNespressoVertuo",
+      "priority": 100,
+      "confidence": 0.98,
+      "titlePatterns": [
+        "\\bvertuo\\b",
+        "\\bvertuoline\\b",
+        "فيرتو",
+        "فرتو"
+      ],
+      "negativeTitlePatterns": [
+        "\\b(?:machine|maker|holder|drawer|mug|cup|حامل|درج|ماكينة|آلة|صانعة)\\b"
+      ],
+      "productTypePatterns": [
+        "vertuo"
+      ],
+      "tagPatterns": [
+        "vertuo"
+      ]
+    },
+    {
+      "id": "capsules_dolce_gusto",
+      "category": "CapsulesDolceGusto",
+      "priority": 95,
+      "confidence": 0.98,
+      "titlePatterns": [
+        "\\bdolce\\s*gusto\\b",
+        "\\bdolcegusto\\b",
+        "دولتشي\\s*جوستو",
+        "دولتشى\\s*جوستو",
+        "دولتشي\\s*غوستو"
+      ],
+      "negativeTitlePatterns": [
+        "\\b(?:machine|maker|holder|drawer|stand|حامل|درج|ماكينة|آلة|صانعة)\\b"
+      ],
+      "productTypePatterns": [
+        "dolce gusto"
+      ],
+      "tagPatterns": [
+        "dolce gusto",
+        "dolce-gusto"
+      ]
+    },
+    {
+      "id": "capsules_nespresso_original",
+      "category": "CapsulesNespressoOriginal",
+      "priority": 90,
+      "confidence": 0.95,
+      "titlePatterns": [
+        "\\bnespresso\\s+(?:original|compatible)\\b",
+        "\\bcompatible\\s+(?:by|with)\\s+nespresso\\b",
+        "\\bnespresso\\s+capsules?\\b",
+        "\\bnespresso\\s+pods?\\b",
+        "\\bnespresso\\s+aluminium\\s+capsules?\\b",
+        "كبسولات\\s+(?:متوافقة\\s+مع\\s+)?نسبريسو",
+        "متوافق[ةه]?\\s+مع\\s+(?:ماكينات\\s+)?نسبريسو",
+        "(?=.*\\bnespresso\\b)(?=.*\\b(?:capsules?|pods?)\\b)",
+        "(?=.*نسبريسو)(?=.*كبسول)"
+      ],
+      "negativeTitlePatterns": [
+        "\\b(?:vertuo|machine|maker|holder|drawer|stand|mug|mugs|مج|كوب|حامل|درج|ماكينة|آلة|صانعة)\\b"
+      ],
+      "productTypePatterns": [
+        "nespresso"
+      ],
+      "tagPatterns": [
+        "nespresso capsules",
+        "nespresso"
+      ]
+    },
+    {
+      "id": "capsules_other",
+      "category": "CapsulesOther",
+      "priority": 85,
+      "confidence": 0.92,
+      "titlePatterns": [
+        "\\bcaffitaly\\b",
+        "\\ba\\s+modo\\s+mio\\b",
+        "\\blavazza\\s+blue\\b",
+        "\\bespresso\\s+point\\b",
+        "\\bk-?cup\\b",
+        "\\bese\\s+pods?\\b",
+        "\\bcapsules?\\b",
+        "\\bpods?\\b",
+        "كبسولات",
+        "كبسولة",
+        "كبسوله"
+      ],
+      "negativeTitlePatterns": [
+        "\\b(?:vertuo|dolce|machine|maker|holder|drawer|stand|mug|cup|مج|كوب|حامل|درج|ماكينة|آلة|صانعة|whole\\s+beans?|ground\\s+coffee|syrup|سيرب)\\b"
+      ],
+      "productTypePatterns": [
+        "capsules",
+        "capsule"
+      ],
+      "tagPatterns": [
+        "capsules",
+        "capsule",
+        "pods"
+      ]
+    },
+    {
+      "id": "turkish_coffee",
+      "category": "TurkishCoffee",
+      "priority": 80,
+      "confidence": 0.95,
+      "titlePatterns": [
+        "\\bturkish\\s+coffee\\b",
+        "\\bgreek\\s+coffee\\b",
+        "قهو[ةه]\\s+تركي(?:ة)?",
+        "بن\\s+تركي(?:ة)?",
+        "تركي\\s+(?:سادة|محوج)",
+        "فاتح\\s+(?:سادة|محوج)",
+        "وسط\\s+(?:سادة|محوج)",
+        "غامق\\s+(?:سادة|محوج)",
+        "قهوة\\s+تركية",
+        "بن\\s+(?:عبد\\s*المعبود|العميد|شاهين|نجار|ابو\\s*عوف)"
+      ],
+      "negativeTitlePatterns": [
+        "\\b(?:machine|maker|ماكينة|آلة|صانعة|كنكة|cezve|ibrik)\\b"
+      ],
+      "productTypePatterns": [
+        "turkish coffee",
+        "turkish"
+      ],
+      "tagPatterns": [
+        "turkish coffee",
+        "turkish-coffee",
+        "قهوة تركي"
+      ]
+    },
+    {
+      "id": "instant_coffee",
+      "category": "InstantCoffee",
+      "priority": 75,
+      "confidence": 0.95,
+      "titlePatterns": [
+        "\\binstant\\s+coffee\\b",
+        "\\bsoluble\\s+coffee\\b",
+        "\\bnescafe\\b",
+        "\\bgold\\s+blend\\b",
+        "\\b3\\s*in\\s*1\\b",
+        "\\b2\\s*in\\s*1\\b",
+        "\\b3\\s*x\\s*1\\b",
+        "\\bfreeze[- ]dried\\b",
+        "\\bcoffee\\s+sticks?\\b",
+        "سريع[ةه]\\s+التحضير",
+        "سريع[ةه]\\s+الذوبان",
+        "نسكافيه",
+        "قهو[ةه]\\s+سريع[ةه]",
+        "3\\s*في\\s*1",
+        "2\\s*في\\s*1"
+      ],
+      "negativeTitlePatterns": [
+        "\\b(?:machine|maker|ماكينة|كبسولات|capsules?)\\b"
+      ],
+      "productTypePatterns": [
+        "instant coffee",
+        "instant"
+      ],
+      "tagPatterns": [
+        "instant coffee",
+        "instant"
+      ]
+    },
+    {
+      "id": "coffee_beans",
+      "category": "CoffeeBeans",
+      "priority": 70,
+      "confidence": 0.95,
+      "titlePatterns": [
+        "\\bwhole\\s+beans?\\b",
+        "\\bcoffee\\s+beans?\\b",
+        "\\bespresso\\s+beans?\\b",
+        "\\broasted\\s+beans?\\b",
+        "\\bgreen\\s+beans?\\b",
+        "\\bbeans?\\b",
+        "حبوب\\s+(?:قهو[ةه]|بن|كامل[ةه]|بيليني)",
+        "بن\\s+حبوب",
+        "بن\\s+حصى",
+        "حبوب"
+      ],
+      "negativeTitlePatterns": [
+        "\\b(?:grinder|machine|maker|مطحنة|ماكينة|آلة|صانعة|candy|حلوى|boba|chocolate|شوكولاتة|جيلي|jelly|ground|مطحون|مطحونة|مطحونه|filter\\s+coffee)\\b"
+      ],
+      "productTypePatterns": [
+        "coffee beans",
+        "beans",
+        "whole bean"
+      ],
+      "tagPatterns": [
+        "coffee beans",
+        "beans",
+        "whole bean",
+        "حبوب"
+      ]
+    },
+    {
+      "id": "ground_coffee",
+      "category": "GroundCoffee",
+      "priority": 65,
+      "confidence": 0.92,
+      "titlePatterns": [
+        "\\bground\\s+coffee\\b",
+        "\\bfilter\\s+coffee\\b",
+        "\\bespresso\\s+ground\\b",
+        "\\bfilter\\s+ground\\b",
+        "\\bdrip\\s+coffee\\b",
+        "\\broast\\s*&\\s*ground\\b",
+        "\\bground\\b",
+        "قهو[ةه]\\s+مطحون[ةه]",
+        "بن\\s+مطحون",
+        "مطحون"
+      ],
+      "negativeTitlePatterns": [
+        "\\b(?:grinder|machine|maker|مطحنة|ماكينة|آلة|صانعة|موكا)\\b"
+      ],
+      "productTypePatterns": [
+        "ground coffee",
+        "ground"
+      ],
+      "tagPatterns": [
+        "ground coffee",
+        "ground",
+        "مطحون"
+      ]
+    },
+    {
+      "id": "equipment",
+      "category": "Equipment",
+      "priority": 60,
+      "confidence": 0.95,
+      "titlePatterns": [
+        "\\bespresso\\s+machine\\b",
+        "\\bcoffee\\s+machine\\b",
+        "\\bcoffee\\s+maker\\b",
+        "\\b(?:espresso|coffee|cold\\s*brew).{0,30}machine\\b",
+        "\\bmachine\\b",
+        "\\bde'?longhi\\b",
+        "\\bgrinder\\b",
+        "\\belectric\\s+grinder\\b",
+        "\\bmanual\\s+grinder\\b",
+        "\\bmoka\\s+pot\\b",
+        "\\bfrench\\s+press\\b",
+        "\\bchemex\\b",
+        "\\baeropress\\b",
+        "\\bv60\\s+dripper\\b",
+        "\\bkettle\\b",
+        "\\bgooseneck\\b",
+        "\\bmilk\\s+frother\\b",
+        "\\broaster\\b",
+        "\\bblender\\b",
+        "\\bflair\\b",
+        "ماكين[ةه]\\s+(?:قهو[ةه]|اسبريسو|كبسولات)",
+        "صانع[ةه]\\s+قهو[ةه]",
+        "آل[ةه]\\s+قهو[ةه]",
+        "مطحن[ةه](?:\\s+قهو[ةه])?",
+        "إبريق\\s+موكا",
+        "ابريق\\s+موكا",
+        "موكا\\s+بوت",
+        "فرنش\\s+برس",
+        "غلاي[ةه]",
+        "صانع\\s+رغو[ةه]",
+        "خفاق[ةه]\\s+حليب",
+        "ديلونجي",
+        "كيمكس"
+      ],
+      "negativeTitlePatterns": [
+        "\\b(?:cleaner|cleaning|brush|فرشاة|منظف|descaler)\\b"
+      ],
+      "productTypePatterns": [
+        "equipment",
+        "machine",
+        "machines",
+        "grinders",
+        "coffee makers"
+      ],
+      "tagPatterns": [
+        "equipment",
+        "machines",
+        "machine",
+        "grinder"
+      ]
+    },
+    {
+      "id": "accessories",
+      "category": "Accessories",
+      "priority": 55,
+      "confidence": 0.92,
+      "titlePatterns": [
+        "\\btamper\\b",
+        "\\bdistributor\\b",
+        "\\bportafilter\\b",
+        "\\bbottomless\\b",
+        "\\bpuck\\s*screen\\b",
+        "\\bdosing\\s+(?:cup|ring)\\b",
+        "\\b(?:digital\\s+)?scale\\b",
+        "\\bcoffee\\s+scale\\b",
+        "\\bpitcher\\b",
+        "\\bmilk\\s+pitcher\\b",
+        "\\bknock\\s*box\\b",
+        "\\btamping\\s+mat\\b",
+        "\\bcleaning\\s+brush\\b",
+        "\\bfilter\\s+papers?\\b",
+        "\\bv60\\s+filters?\\b",
+        "\\bpaper\\s+filters?\\b",
+        "\\bmugs?\\b",
+        "\\btumbler\\b",
+        "\\bcupping\\s+spoon\\b",
+        "\\bspoon\\s+with\\s+clip\\b",
+        "\\bwater\\s+bottle\\b",
+        "\\bcapsule\\s+holder\\b",
+        "\\bcapsules?\\s+(?:holder|drawer|stand)\\b",
+        "\\bbar\\s*mat\\b",
+        "ميزان",
+        "تامبر",
+        "موزع",
+        "بورتافلتر",
+        "باسكت",
+        "شاش[ةه]\\s+ترشيح",
+        "باك\\s+سكرين",
+        "كوب\\s+جرعات",
+        "حلق[ةه]\\s+توزيع",
+        "بيتشر",
+        "ابريق\\s+تبخير",
+        "صندوق\\s+تفريغ",
+        "فرشا[ةه]\\s+تنظيف",
+        "فرش[ةه]\\s+تنظيف",
+        "فلاتر\\s+(?:ورقي[ةه]|v60)",
+        "ورق\\s+ترشيح",
+        "كوب(?:\\s+بيكسى)?",
+        "اكواب",
+        "مج",
+        "معلق[ةه]\\s+(?:ومعيار\\s+)?الماتشا",
+        "بارمات",
+        "حامل\\s+كبسولات",
+        "ميدالي[ةه]"
+      ],
+      "negativeTitlePatterns": [],
+      "productTypePatterns": [
+        "accessories",
+        "tools",
+        "filters"
+      ],
+      "tagPatterns": [
+        "accessories",
+        "accessory",
+        "tools"
+      ]
+    },
+    {
+      "id": "other_consumables",
+      "category": "Other",
+      "priority": 40,
+      "confidence": 0.90,
+      "titlePatterns": [
+        "\\bair\\s*up\\b",
+        "\\bsyrup\\b",
+        "\\bsauce\\b",
+        "\\btea\\b",
+        "\\bgreen\\s+tea\\b",
+        "\\btea\\s+bags?\\b",
+        "\\bmatcha\\b",
+        "\\bboba\\b",
+        "\\bchocolate\\b",
+        "\\bbiscoff\\b",
+        "\\blotus\\b",
+        "\\bwafer\\b",
+        "\\bcandy\\b",
+        "\\bcookies?\\b",
+        "\\bbiscuits?\\b",
+        "\\bcreamer\\b",
+        "\\bmilk\\b",
+        "\\bsweetener\\b",
+        "\\bsugar\\b",
+        "\\bdescaler\\b",
+        "\\bcleaning\\s+(?:powder|tablets?|solution|liquid)\\b",
+        "\\bdetergent\\b",
+        "\\bbreath\\s+strips?\\b",
+        "\\bmint\\b",
+        "\\bpeanuts?\\b",
+        "سيرب",
+        "شا[يي]",
+        "ماتشا",
+        "شوكولات[ةه]",
+        "ويفر",
+        "بسكويت",
+        "بسكوت",
+        "حليب",
+        "سكر",
+        "محلول\\s+تنظيف",
+        "اقراص\\s+تنظيف",
+        "مزيل\\s+ترسبات",
+        "منظف",
+        "طقم\\s+تنظيف"
+      ],
+      "negativeTitlePatterns": [],
+      "productTypePatterns": [
+        "tea",
+        "syrup",
+        "sauces",
+        "sweets",
+        "cleaning"
+      ],
+      "tagPatterns": [
+        "tea",
+        "syrup",
+        "sweets"
+      ]
+    }
+  ]
+}

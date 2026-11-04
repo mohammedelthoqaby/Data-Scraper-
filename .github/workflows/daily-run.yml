@@ -1,0 +1,38 @@
+name: Daily Collection Run
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # 05:00 UTC daily (07:00 / 08:00 Egypt time)
+  workflow_dispatch:
+
+jobs:
+  trigger-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Internal Collection Run
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
+        run: |
+          if [ -z "$API_BASE_URL" ] || [ -z "$INTERNAL_TOKEN" ]; then
+            echo "::error::API_BASE_URL and INTERNAL_TOKEN secrets must be configured in GitHub repository secrets."
+            exit 1
+          fi
+
+          echo "Triggering daily collection run on $API_BASE_URL..."
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "$API_BASE_URL/api/internal/runs" \
+            -H "X-Internal-Token: $INTERNAL_TOKEN" \
+            -H "Content-Type: application/json")
+
+          HTTP_BODY=$(echo "$RESPONSE" | sed -e '$d')
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n 1 | cut -d':' -f2)
+
+          echo "Response status: $HTTP_STATUS"
+          echo "Response body: $HTTP_BODY"
+
+          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 202 ]; then
+            echo "Collection run initiated successfully."
+          else
+            echo "::error::Failed to trigger run. HTTP $HTTP_STATUS: $HTTP_BODY"
+            exit 1
+          fi

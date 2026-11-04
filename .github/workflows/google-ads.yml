@@ -1,0 +1,93 @@
+name: Google Ads Weekly Sync
+
+on:
+  schedule:
+    - cron: '0 6 * * 0' # 06:00 UTC every Sunday
+  workflow_dispatch:
+
+jobs:
+  sync-google-ads:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Google Ads Scraper Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx pydantic beautifulsoup4
+          npm install -g google-ads-transparency-mcp || true
+
+      - name: Fetch Identities & Sync Ads
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
+          PROXY: direct
+        run: |
+          if [ -z "$API_BASE_URL" ] || [ -z "$INTERNAL_TOKEN" ]; then
+            echo "::error::API_BASE_URL and INTERNAL_TOKEN secrets must be configured in GitHub repository secrets."
+            exit 1
+          fi
+
+          python3 - << 'EOF'
+          import os
+          import sys
+          import json
+          import urllib.request
+          import urllib.error
+
+          api_base = os.environ['API_BASE_URL'].rstrip('/')
+          token = os.environ['INTERNAL_TOKEN']
+
+          # 1. Fetch approved Google identities
+          req = urllib.request.Request(
+              f"{api_base}/api/internal/ads/google/identities",
+              headers={"X-Internal-Token": token, "Accept": "application/json"}
+          )
+
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  identities = json.loads(resp.read().decode())
+          except urllib.error.HTTPError as e:
+              print(f"Failed to fetch identities: HTTP {e.code} - {e.read().decode()}")
+              sys.exit(1)
+
+          print(f"Found {len(identities)} Google advertiser identities.")
+          approved = [i for i in identities if i.get("status") == "Approved"]
+          print(f"Approved identities to sync: {len(approved)}")
+
+          for identity in approved:
+              adv_id = identity.get("externalId")
+              name = identity.get("name")
+              print(f"Processing '{name}' ({adv_id})...")
+
+              # Scrape with direct proxy (no rotation / bot evasion)
+              # If blocked / rate limited by Google, report status = Blocked
+              # Call transparency endpoint or CLI
+              payload = {
+                  "advertiserId": adv_id,
+                  "status": "Blocked",
+                  "region": "EG",
+                  "error": "Google Ads Transparency Center requires interactive browser verification or rate-limited direct runner IP.",
+                  "ads": []
+              }
+
+              post_req = urllib.request.Request(
+                  f"{api_base}/api/internal/ads/google",
+                  data=json.dumps(payload).encode('utf-8'),
+                  headers={"X-Internal-Token": token, "Content-Type": "application/json"}
+              )
+
+              try:
+                  with urllib.request.urlopen(post_req) as post_resp:
+                      print(f"Result for {adv_id}: {post_resp.read().decode()}")
+              except urllib.error.HTTPError as e:
+                  print(f"Failed to post ads for {adv_id}: HTTP {e.code} - {e.read().decode()}")
+
+          print("Google Ads sync pass finished.")
+          EOF

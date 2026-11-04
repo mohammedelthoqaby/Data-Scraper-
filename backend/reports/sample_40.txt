@@ -1,0 +1,242 @@
+Sampled 40 items.
+
+### Sample 1: [strong-coffee] (CapsulesOther) - Score: 0.9800
+- **Competitor**: [39575] Caffè Vergnano Espresso Oro – Coffee Pods (150 Pods)
+  - URL: https://strongcoffee-eg.com/product/caffe-vergnano-espresso-oro-coffee-pods-150-pods/
+- **Lazy Bean**: [66856f97-647f-45eb-9974-6085cd7978f9] Caffè Vergnano Oro Pods – 150 Pods
+  - URL: https://lazzybean.com/single-product/66856f97-647f-45eb-9974-6085cd7978f9
+
+### Sample 2: [strong-coffee] (CapsulesOther) - Score: 0.9800
+- **Competitor**: [39565] Caffè Vergnano Espresso Oro – Coffee Pods (15 Pods)
+  - URL: https://strongcoffee-eg.com/product/caffe-vergnano-espresso-oro-coffee-pods-15-pods/
+- **Lazy Bean**: [b8e398ca-6047-47fa-82f1-07b126d03d33] Caffè Vergnano Oro Pods – 15 Pods
+  - URL: https://lazzybean.com/single-product/b8e398ca-6047-47fa-82f1-07b126d03d33
+
+### Sample 3: [coffee-zone-misr] (CoffeeBeans) - Score: 0.9800
+- **Competitor**: [15234477719718] Lavazza Expert Crema E Aroma Whole Beans Coffee - 1 Kg
+  - URL: https://coffeezonemisr.com/products/lavazza-expert-crema-e-aroma-whole-beans-coffee-1-kg
+- **Lazy Bean**: [0b07c23c-21dc-4a54-ba49-0997fd0260a2] Lavazza Expert Crema & Aroma Whole Beans Coffee – 1 kg
+  - URL: https://lazzybean.com/single-product/0b07c23c-21dc-4a54-ba49-0997fd0260a2
+
+### Sample 4: [coffee-zone-misr] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [15207595376806] Lavazza Espresso Italiano Classico – Ground Coffee 250g
+  - URL: https://coffeezonemisr.com/products/lavazza-espresso-italiano-classico-ground-coffee-250g
+- **Lazy Bean**: [03fd9996-49c0-4e55-b95d-3576639ec42a] Lavazza Espresso Italiano Classico Ground Coffee – 250g (Can)
+  - URL: https://lazzybean.com/single-product/03fd9996-49c0-4e55-b95d-3576639ec42a
+
+### Sample 5: [coffee-zone-misr] (CoffeeBeans) - Score: 0.9800
+- **Competitor**: [8531145818278] Lavazza Crema E Aroma Blue Whole Beans Coffee 1Kg
+  - URL: https://coffeezonemisr.com/products/lavazza-crema-e-aroma-blue
+- **Lazy Bean**: [e3fb656e-3f79-455c-9cd7-af20d1c8143a] Lavazza Crema E Aroma Blue Whole beans Coffee – 1 kg
+  - URL: https://lazzybean.com/single-product/e3fb656e-3f79-455c-9cd7-af20d1c8143a
+
+### Sample 6: [coffee-zone-misr] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [8537424887974] Lavazza Qualità Rossa Ground Coffee 250g
+  - URL: https://coffeezonemisr.com/products/lavazza-qualita-rossa
+- **Lazy Bean**: [59c1d57b-5712-4f9c-a3db-cfa4068fa1c9] Lavazza Qualità Rossa Ground Coffee – 250g
+  - URL: https://lazzybean.com/single-product/59c1d57b-5712-4f9c-a3db-cfa4068fa1c9
+
+### Sample 7: [fengany] (CapsulesNespressoOriginal) - Score: 0.9800
+- **Competitor**: [5404936634412] Nespresso - Volluto - 10 capsules
+  - URL: https://fengany.com/products/nespresso-volluto-10-capsules
+- **Lazy Bean**: [2aafb8b4-57b2-44fa-af27-2d1850e52323] Nespresso Volluto Original Coffee Capsules – 10 Capsules
+  - URL: https://lazzybean.com/single-product/2aafb8b4-57b2-44fa-af27-2d1850e52323
+
+### Sample 8: [fengany] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [7776534462508] Caffe Vergnano - Espresso Ground Coffee - Espressocasa - 250g
+  - URL: https://fengany.com/products/caffe-vergnano-ground-coffee-espressocasa-250g
+- **Lazy Bean**: [deb4e923-90a1-48b8-a557-f976b4d5df5c] Caffè Vergnano Espressocasa Ground Coffee – 250g
+  - URL: https://lazzybean.com/single-product/deb4e923-90a1-48b8-a557-f976b4d5df5c
+
+### Sample 9: [fengany] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [7998002397228] Melitta - Grand Aroma - Ground Coffee - 250g
+  - URL: https://fengany.com/products/melitta-grand-aroma-filter-ground-coffee-500g-copy-1
+- **Lazy Bean**: [3ccc050e-bf9b-4c0e-a579-eba875258a67] Melitta Grand Aroma Ground Coffee – 250g
+  - URL: https://lazzybean.com/single-product/3ccc050e-bf9b-4c0e-a579-eba875258a67
+
+### Sample 10: [fengany] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [5436150382636] Lavazza Qualita Oro Ground Coffee 250 grams
+  - URL: https://fengany.com/products/lavazza-qualita-oro-ground-coffee-250-grams
+- **Lazy Bean**: [ccfe15f7-002a-413d-bd4f-4f56f445d3a4] Lavazza Qualità Oro Ground Coffee – 250g
+  - URL: https://lazzybean.com/single-product/ccfe15f7-002a-413d-bd4f-4f56f445d3a4
+
+### Sample 11: [fengany] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [7776528367660] Caffe Vergnano - Espresso Ground Coffee - Antica Bottega - 250g
+  - URL: https://fengany.com/products/caffe-vergnano-ground-coffee-antica-bottega-250g
+- **Lazy Bean**: [ccc85101-62e6-420d-8e6f-41c0caed275a] Caffè Vergnano Antica Bottega Ground Coffee
+  - URL: https://lazzybean.com/single-product/ccc85101-62e6-420d-8e6f-41c0caed275a
+
+### Sample 12: [fengany] (CapsulesNespressoOriginal) - Score: 0.9800
+- **Competitor**: [6827834933292] Lavazza Qualita Rossa - Nespresso Compatible - 10 capsules
+  - URL: https://fengany.com/products/lavazza-qualita-rossa-nespresso-compatible-10-capsules
+- **Lazy Bean**: [05c56730-ed20-4d32-9c7f-7df226fd6b9c] Lavazza Nespresso Compatible Qualità Rossa – 10 Capsules
+  - URL: https://lazzybean.com/single-product/05c56730-ed20-4d32-9c7f-7df226fd6b9c
+
+### Sample 13: [fengany] (CoffeeBeans) - Score: 0.9800
+- **Competitor**: [7620629921836] Kimbo - Whole Beans - Extra Cream - 1kg
+  - URL: https://fengany.com/products/kimbo-extra-cream-whole-beans-1kg
+- **Lazy Bean**: [661fc4b9-4d35-45ee-87f4-1230fc6a9496] Kimbo Extra Cream – 1 kg
+  - URL: https://lazzybean.com/single-product/661fc4b9-4d35-45ee-87f4-1230fc6a9496
+
+### Sample 14: [fengany] (CapsulesDolceGusto) - Score: 0.9800
+- **Competitor**: [7775648677932] Caffe Vergnano - Dolce Gusto Compatible - Cremoso - 12 Capsule
+  - URL: https://fengany.com/products/caffe-vergnano-dolce-gusto-compatible-cremoso-12-capsule
+- **Lazy Bean**: [20d892f9-3936-43cf-adb8-e52480cc5646] Caffè Vergnano Cremoso Dolce Gusto® Compatible Capsules – 12 Capsules
+  - URL: https://lazzybean.com/single-product/20d892f9-3936-43cf-adb8-e52480cc5646
+
+### Sample 15: [coffee-and-cream] (CoffeeBeans) - Score: 0.9800
+- **Competitor**: [9549270581388] Caffe Milano - Platinum 100% Arabica Coffee Beans - 1kg
+  - URL: https://coffeeandcream.app/products/caffe-milano-platinum-100-arabica-coffee-beans-1kg
+- **Lazy Bean**: [1cbb5c24-7223-4f4c-896a-89b37b1c9563] Caffè Milano Platinum (100% Arabica) – 1 kg
+  - URL: https://lazzybean.com/single-product/1cbb5c24-7223-4f4c-896a-89b37b1c9563
+
+### Sample 16: [coffee-and-cream] (CapsulesNespressoOriginal) - Score: 0.9800
+- **Competitor**: [9426915590284] Caffè Vergnano Cremoso Riserva Torino — Nespresso Compatible (10 Capsules)
+  - URL: https://coffeeandcream.app/products/caffe-vergnano-cremoso-riserva-torino-nespresso-compatible-10-capsules
+- **Lazy Bean**: [5a2f97d3-a40d-4bf4-bce9-2bd43d1453ba] Caffè Vergnano Riserva Torino Cremoso Nespresso® Compatible Capsules – 10 Capsules
+  - URL: https://lazzybean.com/single-product/5a2f97d3-a40d-4bf4-bce9-2bd43d1453ba
+
+### Sample 17: [coffee-and-cream] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [8298757914764] Granell - Cinnamon Ground Coffee - 250g
+  - URL: https://coffeeandcream.app/products/granell-cinnamon-ground-coffee-250g
+- **Lazy Bean**: [b5455cd0-e834-479a-a1bb-9bbc3baecbc0] Granell Cinnamon Ground Coffee – 250g
+  - URL: https://lazzybean.com/single-product/b5455cd0-e834-479a-a1bb-9bbc3baecbc0
+
+### Sample 18: [coffee-and-cream] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [8116521173132] Granell - Hazelnut Ground Coffee - 250g
+  - URL: https://coffeeandcream.app/products/granell-hazelnut-ground-coffee-250g
+- **Lazy Bean**: [1b5ab595-4fc5-4a73-938f-83ee24b3c6bd] Granell Hazelnut Ground Coffee – 250g
+  - URL: https://lazzybean.com/single-product/1b5ab595-4fc5-4a73-938f-83ee24b3c6bd
+
+### Sample 19: [coffee-and-cream] (Other) - Score: 0.9800
+- **Competitor**: [8067441393804] Manutti Mint Syrup - 1L
+  - URL: https://coffeeandcream.app/products/manutti-mint-syrup-1l
+- **Lazy Bean**: [d02fe3f4-c78d-4498-8532-671e7c76a771] Manutti Mint Syrup – 1L
+  - URL: https://lazzybean.com/single-product/d02fe3f4-c78d-4498-8532-671e7c76a771
+
+### Sample 20: [coffee-and-cream] (Other) - Score: 0.9800
+- **Competitor**: [8067431497868] Manutti Vanilla Syrup - 1L
+  - URL: https://coffeeandcream.app/products/manutti-vanilla-syrup-1l
+- **Lazy Bean**: [7223d492-5b6d-4d33-8e02-977fa518881e] Manutti Vanilla Syrup – 1L
+  - URL: https://lazzybean.com/single-product/7223d492-5b6d-4d33-8e02-977fa518881e
+
+### Sample 21: [coffee-and-cream] (Other) - Score: 0.9800
+- **Competitor**: [9514831413388] Manutti - Pomegranate Syrup - 1L
+  - URL: https://coffeeandcream.app/products/manutti-pomegranate-syrup-1l
+- **Lazy Bean**: [5fc10c6d-72cd-4279-8eb6-4a12056a312a] Manutti Pomegranate Syrup – 1L
+  - URL: https://lazzybean.com/single-product/5fc10c6d-72cd-4279-8eb6-4a12056a312a
+
+### Sample 22: [coffee-and-cream] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [8298766368908] Granell - Caramel Waffle Ground Coffee - 250g
+  - URL: https://coffeeandcream.app/products/granell-caramel-waffle-ground-coffee-250g
+- **Lazy Bean**: [4cd3d4ec-1976-457a-a31f-ee094b994e3c] Granell Caramel Waffle Ground Coffee – 250g
+  - URL: https://lazzybean.com/single-product/4cd3d4ec-1976-457a-a31f-ee094b994e3c
+
+### Sample 23: [coffee-and-cream] (Other) - Score: 0.9800
+- **Competitor**: [7057498603660] Monin - Hazelnut Syrup - 250ml
+  - URL: https://coffeeandcream.app/products/monin-hazelnut-syrup-250ml
+- **Lazy Bean**: [dce95f4c-8f12-4c28-862c-68ae150aed70] Monin Hazelnut Syrup – 250ml
+  - URL: https://lazzybean.com/single-product/dce95f4c-8f12-4c28-862c-68ae150aed70
+
+### Sample 24: [coffee-and-cream] (Other) - Score: 0.9800
+- **Competitor**: [9809159782540] Manutti - Zero Sugar Pumpkin Spice Syrup - 350 ml
+  - URL: https://coffeeandcream.app/products/manutti-zero-sugar-pumpkin-spice-syrup-350-ml
+- **Lazy Bean**: [284f99a4-912e-48f2-af42-724df4a90469] Manutti Pumpkin Spice Zero Sugar Syrup – 350 ml
+  - URL: https://lazzybean.com/single-product/284f99a4-912e-48f2-af42-724df4a90469
+
+### Sample 25: [coffee-and-cream] (Other) - Score: 0.9800
+- **Competitor**: [7172731568268] Monin - Cranberry Syrup - 700ml
+  - URL: https://coffeeandcream.app/products/monin-cranberry-syrup-700ml
+- **Lazy Bean**: [0419cc6d-121e-4557-900f-cda0f31759a3] Monin Cranberry Syrup – 700ml
+  - URL: https://lazzybean.com/single-product/0419cc6d-121e-4557-900f-cda0f31759a3
+
+### Sample 26: [coffee-and-cream] (Other) - Score: 0.9800
+- **Competitor**: [8067443490956] Manutti Peach Puree - 1250 gm
+  - URL: https://coffeeandcream.app/products/manutti-peach-puree-1250-gm
+- **Lazy Bean**: [041ef81f-c736-4863-986c-65d82e6a662e] Manutti Peach Puree
+  - URL: https://lazzybean.com/single-product/041ef81f-c736-4863-986c-65d82e6a662e
+
+### Sample 27: [cafelax] (Other) - Score: 0.9800
+- **Competitor**: [8035366371618] Monin Hazelnut Syrup 250ml
+  - URL: https://cafelax.com/products/monin-hazelnut-syrup-250-ml
+- **Lazy Bean**: [dce95f4c-8f12-4c28-862c-68ae150aed70] Monin Hazelnut Syrup – 250ml
+  - URL: https://lazzybean.com/single-product/dce95f4c-8f12-4c28-862c-68ae150aed70
+
+### Sample 28: [cafelax] (Other) - Score: 0.9800
+- **Competitor**: [9971638501666] Manutti Chocolate Zero Sugar Syrup 350ml
+  - URL: https://cafelax.com/products/manutti-chocolate-zero-sugar-syrup-350ml
+- **Lazy Bean**: [297076b2-3486-4076-8b45-9ce7458eca5c] Manutti Chocolate Zero Sugar Syrup – 350 ml
+  - URL: https://lazzybean.com/single-product/297076b2-3486-4076-8b45-9ce7458eca5c
+
+### Sample 29: [cafelax] (Other) - Score: 0.9800
+- **Competitor**: [8035366437154] Monin Mojito Mint Syrup 250ml
+  - URL: https://cafelax.com/products/monin-mojito-mint-syrup-250-ml
+- **Lazy Bean**: [6019da9f-9b1e-4088-87ba-a78c87be29f5] Monin Mojito Mint Syrup – 250ml
+  - URL: https://lazzybean.com/single-product/6019da9f-9b1e-4088-87ba-a78c87be29f5
+
+### Sample 30: [cafelax] (Other) - Score: 0.9800
+- **Competitor**: [10140319842594] Manutti Passion Fruit Syrup 1L
+  - URL: https://cafelax.com/products/manutti-passion-fruit-syrup-1l
+- **Lazy Bean**: [9300d6f1-ea0b-4cd2-875e-873ab6ea7353] Manutti Passion Fruit Syrup – 1L
+  - URL: https://lazzybean.com/single-product/9300d6f1-ea0b-4cd2-875e-873ab6ea7353
+
+### Sample 31: [cafelax] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [9426966118690] Bristot Bio Organic Ground Coffee 250g
+  - URL: https://cafelax.com/products/bristot-bio-organic-ground-coffee-250g
+- **Lazy Bean**: [66b2cecf-64e7-466d-b02c-a344501f846d] Caffè Bristot Bio Organic Ground Coffee – 250g
+  - URL: https://lazzybean.com/single-product/66b2cecf-64e7-466d-b02c-a344501f846d
+
+### Sample 32: [cafelax] (CoffeeBeans) - Score: 1.0000
+- **Competitor**: [8846930575650] Lavazza La Reserva de Tierra Selection Espresso Whole Beans Coffee - 1 Kg
+  - URL: https://cafelax.com/products/lavazza-tierra-selection-whole-beans-coffee-1-kg
+- **Lazy Bean**: [681a4d51-89da-4db5-9efa-c6d41e3ac9d0] Lavazza La Reserva de Tierra Selection Espresso Whole Beans Coffee - 1 Kg
+  - URL: https://lazzybean.com/single-product/681a4d51-89da-4db5-9efa-c6d41e3ac9d0
+
+### Sample 33: [cafelax] (Other) - Score: 0.9800
+- **Competitor**: [8134211600674] Monin Hazelnut Syrup Sugar Free 250ml
+  - URL: https://cafelax.com/products/copy-of-monin-hazelnut-syrup-250ml-sugerr-free
+- **Lazy Bean**: [48c75828-0b0a-4e12-9eb3-ba1636ea792a] Monin Sugar Free Hazelnut Syrup - 250ml
+  - URL: https://lazzybean.com/single-product/48c75828-0b0a-4e12-9eb3-ba1636ea792a
+
+### Sample 34: [cafelax] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [9836928794914] Melitta Auslese Classic Ground Coffee 250g
+  - URL: https://cafelax.com/products/melitta-auslese-classic-ground-coffee-250g
+- **Lazy Bean**: [bd726fb9-5366-4f31-a5da-474e399c77ff] Melitta Auslese Classic Ground Coffee – 250g
+  - URL: https://lazzybean.com/single-product/bd726fb9-5366-4f31-a5da-474e399c77ff
+
+### Sample 35: [cafelax] (CoffeeBeans) - Score: 1.0000
+- **Competitor**: [9415053115682] Lavazza La Reserva de Tierra Colombia Espresso Whole Beans Coffee - 1 Kg
+  - URL: https://cafelax.com/products/lavazza-la-reserva-de-tierra-colombia-espresso-whole-beans-coffee-1-kg
+- **Lazy Bean**: [f6668e51-0660-459d-ba56-f0244acff232] Lavazza La Reserva de Tierra Colombia Espresso Whole Beans Coffee - 1 Kg
+  - URL: https://lazzybean.com/single-product/f6668e51-0660-459d-ba56-f0244acff232
+
+### Sample 36: [cafelax] (Other) - Score: 0.9800
+- **Competitor**: [9815056089378] Manutti Cherry Zero Sugar Syrup 350 ml
+  - URL: https://cafelax.com/products/manutti-cherry-zero-sugar-syrup-350-ml
+- **Lazy Bean**: [c6ac1177-1b19-4af3-8f39-cdb9da091e32] Manutti Cherry Syrup Zero Sugar – 350 ml
+  - URL: https://lazzybean.com/single-product/c6ac1177-1b19-4af3-8f39-cdb9da091e32
+
+### Sample 37: [cafelax] (Other) - Score: 0.9800
+- **Competitor**: [9738446209314] Manutti Watermelon Syrup 1L
+  - URL: https://cafelax.com/products/manutti-watermelon-syrup-1l
+- **Lazy Bean**: [8ab2074f-2ac4-40ae-89cd-0eb3e4f85f58] Manutti Watermelon Syrup – 1L
+  - URL: https://lazzybean.com/single-product/8ab2074f-2ac4-40ae-89cd-0eb3e4f85f58
+
+### Sample 38: [cafelax] (GroundCoffee) - Score: 0.9800
+- **Competitor**: [8035363422498] Kimbo Espresso Napoli Ground Coffee 250g
+  - URL: https://cafelax.com/products/kimbo-espresso-napoli-ground-coffee-250g
+- **Lazy Bean**: [8cba8122-4677-400c-a81c-f5c57964e536] Kimbo Espresso Napoli Coffee – 250g
+  - URL: https://lazzybean.com/single-product/8cba8122-4677-400c-a81c-f5c57964e536
+
+### Sample 39: [cafelax] (CoffeeBeans) - Score: 0.9800
+- **Competitor**: [8891793539362] Kimbo Decaffeinato Whole Beans Coffee 500g
+  - URL: https://cafelax.com/products/kimbo-decaffeinato-whole-beans-coffee-500g
+- **Lazy Bean**: [3ef39f07-87cf-4e3b-912d-b427259ca20d] Kimbo Espresso Decaffeinato Coffee – 500g
+  - URL: https://lazzybean.com/single-product/3ef39f07-87cf-4e3b-912d-b427259ca20d
+
+### Sample 40: [cafelax] (Other) - Score: 0.9800
+- **Competitor**: [8812123881762] Monin Chocolate Cookie Syrup 250ml
+  - URL: https://cafelax.com/products/monin-chocolate-cookie-syrup-250ml
+- **Lazy Bean**: [8e46eb85-795e-4b3b-825a-e612937a270d] Monin Chocolate Cookie Syrup – 250ml
+  - URL: https://lazzybean.com/single-product/8e46eb85-795e-4b3b-825a-e612937a270d
+

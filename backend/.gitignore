@@ -1,0 +1,8 @@
+bin/
+obj/
+*.user
+.vs/
+appsettings.*.local.json
+META-API.txt
+*.token
+*cookie*.txt

@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lazybean
+      POSTGRES_USER: lazybean
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - lazybean
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lazybean -d lazybean"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "16379:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - lazybean
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+networks:
+  # Fixed subnet so ForwardedHeaders:TrustedNetworks in appsettings.json can trust exactly
+  # this range instead of guessing at Docker's whole private allocation (172.16.0.0/12).
+  # The API/nginx containers (added when this stack grows a Dockerfile) join this same
+  # network and get an address inside 172.28.5.0/24.
+  lazybean:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.5.0/24
+
+volumes:
+  pgdata: {}
+  redisdata: {}

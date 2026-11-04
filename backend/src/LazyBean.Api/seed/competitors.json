@@ -1,0 +1,50 @@
+[
+  {
+    "key": "lazy-bean",
+    "name": "Lazy Bean",
+    "baseUrl": "https://api.lazzybean.com",
+    "platform": "LazzyBeanApi",
+    "isReference": true,
+    "minDelayMs": 3000
+  },
+  {
+    "key": "coffee-zone",
+    "name": "Coffee Zone Misr",
+    "baseUrl": "https://coffeezonemisr.com",
+    "platform": "Shopify",
+    "isReference": false,
+    "minDelayMs": 3000
+  },
+  {
+    "key": "fengany",
+    "name": "Fengany",
+    "baseUrl": "https://fengany.com",
+    "platform": "Shopify",
+    "isReference": false,
+    "minDelayMs": 3000
+  },
+  {
+    "key": "coffee-and-cream",
+    "name": "Coffee & Cream",
+    "baseUrl": "https://coffeeandcream.app",
+    "platform": "Shopify",
+    "isReference": false,
+    "minDelayMs": 3000
+  },
+  {
+    "key": "cafelax",
+    "name": "CAFELAX",
+    "baseUrl": "https://cafelax.com",
+    "platform": "Shopify",
+    "isReference": false,
+    "minDelayMs": 3000
+  },
+  {
+    "key": "strong-coffee",
+    "name": "Strong Coffee",
+    "baseUrl": "https://strongcoffee-eg.com",
+    "platform": "WooCommerce",
+    "isReference": false,
+    "minDelayMs": 3000
+  }
+]

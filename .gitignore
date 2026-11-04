@@ -1,0 +1,27 @@
+# .NET
+bin/
+obj/
+publish/
+*.user
+.vs/
+# Secrets and local configs
+appsettings.*.local.json
+META-API.txt
+*token*
+*cookie*.txt
+*secret*
+*.env*
+*.env
+*.env.local
+*.env.*.local
+scratch/
+**/data/evidence/
+data/evidence/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+Thumbs.db
+.DS_Store
