@@ -20,10 +20,8 @@ public class SelfKeepAliveHostedService(
             {
                 try
                 {
-                    var publicBase = configuration["App:PublicBaseUrl"];
-                    var selfUrl = !string.IsNullOrWhiteSpace(publicBase)
-                        ? $"{publicBase.TrimEnd('/')}/health"
-                        : configuration["SelfKeepAlive:Url"] ?? "http://localhost:5188/health";
+                    var publicBase = configuration["App:PublicBaseUrl"] ?? "http://localhost:5188";
+                    var selfUrl = $"{publicBase.TrimEnd('/')}/health";
 
                     var client = httpClientFactory.CreateClient();
                     client.Timeout = TimeSpan.FromSeconds(10);

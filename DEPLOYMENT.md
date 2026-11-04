@@ -1,6 +1,6 @@
 # LazyBean Competitor Intelligence - Deployment Guide
 
-This document describes how to deploy, configure, and maintain the LazyBean Competitor Intelligence platform across **MonsterASP.NET** (Backend API & PostgreSQL), **Netlify** (Frontend & Reverse Proxy), and **GitHub Actions** (Scheduled Automations & Ads Sync).
+This document describes how to deploy, configure, and maintain the LazyBean Competitor Intelligence platform across **MonsterASP.NET** (Backend API & PostgreSQL on `*.runasp.net`), **Netlify** (Frontend & Reverse Proxy), and **GitHub Actions** (Scheduled Automations & Ads Sync).
 
 ---
 
@@ -15,15 +15,17 @@ This document describes how to deploy, configure, and maintain the LazyBean Comp
                        ┌────────────────────────────────┐
                        │        Netlify CDN             │
                        │  - Astro / React Frontend UI   │
-                       │  - /api/* Proxy (force=200)    │
-                       │  - Signs with x-nf-sign header │
+                       │  - /api/* JWS-Signed Proxy     │
+                       │  - signed = "NETLIFY_PROXY_..."│
                        └───────────────┬────────────────┘
                                        │ HTTPS Proxy
                                        ▼
                     ┌──────────────────────────────────────┐
                     │      MonsterASP.NET (IIS/Windows)    │
                     │  - .NET 10 Web API (In-Process)      │
-                    │  - Verified x-nf-sign headers        │
+                    │  - https://lazy-bean.runasp.net      │
+                    │  - Verifies X-Nf-Sign JWS (HS256)    │
+                    │  - Checks iss="netlify" & exp        │
                     │  - Self Keep-Alive Ping (every 2m)   │
                     │  - Memory Working Set < 180 MB       │
                     └───────────────┬──────────────────────┘
@@ -49,7 +51,10 @@ This document describes how to deploy, configure, and maintain the LazyBean Comp
 
 ## 2. MonsterASP.NET Backend Configuration
 
-MonsterASP.NET provides Windows/IIS hosting with a 256 MB RAM limit.
+MonsterASP.NET provides Windows/IIS hosting on `*.runasp.net` domains with a 256 MB RAM limit.
+
+> [!IMPORTANT]
+> **HTTPS Prerequisite**: Free plan sites are provisioned on `*.runasp.net`. You **MUST** request HTTPS enablement for `https://lazy-bean.runasp.net` from MonsterASP support before configuring Netlify. Netlify must strictly proxy to HTTPS; never configure Netlify to proxy to `http://`.
 
 ### 2.1 Publish Application
 Run the dotnet publish command in Release mode:
@@ -63,17 +68,16 @@ Upload all files from `./publish` to the `site/wwwroot` directory on MonsterASP 
 ### 2.2 Environment Variables & App Settings
 Configure these settings in the MonsterASP Control Panel (**Websites -> Application Settings** or set them as environment variables). You can enter them using either colon notation (`Section:Key`) or double-underscore notation (`Section__Key`):
 
-| Setting Key (`:`) | Setting Key (`__`) | Description | Example Value |
+| Setting Key (`:`) | Setting Key (`__`) | Description | Example / Production Value |
 |---|---|---|---|
 | `ConnectionStrings:Default` | `ConnectionStrings__Default` | PostgreSQL Connection String | `Host=pg.monsterasp.net;Port=5432;Database=lazybean_prod;Username=lazybean_user;Password=YourSecurePassword!` |
 | `ConnectionStrings:Redis` | `ConnectionStrings__Redis` | Optional Redis cache string. If left blank, app defaults to in-memory HybridCache L1 safely. | `redis.monsterasp.net:6379` *(or leave blank)* |
 | `Admin:Username` | `Admin__Username` | Bootstrap Admin Login | `admin` |
 | `Admin:Password` | `Admin__Password` | Bootstrap Admin Password | `StrongRandomPassword123!` |
 | `Internal:Token` | `Internal__Token` | Secret token for GitHub Actions and runner scripts | `random-64-character-token-secret` |
-| `Security:NetlifyProxySecret` | `Security__NetlifyProxySecret` | Shared secret with Netlify reverse proxy (`x-nf-sign`) | `random-32-character-secret` |
+| `Security:NetlifyProxySecret` | `Security__NetlifyProxySecret` | Shared secret with Netlify reverse proxy (used to sign & verify JWS tokens) | `random-32-character-secret` |
 | `Security:UseHttpsRedirection` | `Security__UseHttpsRedirection` | Keep `false` behind reverse proxy | `false` |
-| `App:PublicBaseUrl` | `App__PublicBaseUrl` | Public URL for self keep-alive pings | `https://lazybean-api.monsterasp.net` |
-| `SelfKeepAlive:Url` | `SelfKeepAlive__Url` | Fallback URL to keep IIS worker alive during active runs | `https://lazybean-api.monsterasp.net/health` |
+| `App:PublicBaseUrl` | `App__PublicBaseUrl` | Backend URL used for self keep-alive pings and internal references | `https://lazy-bean.runasp.net` |
 | `ASPNETCORE_ENVIRONMENT` | `ASPNETCORE_ENVIRONMENT` | Hosting environment | `Production` |
 | `DOTNET_gcServer` | `DOTNET_gcServer` | Forces Workstation GC to keep memory under 200MB | `0` |
 | `Meta:AccessToken` | `Meta__AccessToken` | Optional Meta Graph API token for status checks | *(Optional)* |
@@ -104,45 +108,54 @@ MonsterASP provides managed database backups in the control panel:
 
 ---
 
-## 4. Netlify Frontend & Reverse Proxy
+## 4. Netlify Frontend & Signed Reverse Proxy
 
-The frontend is an Astro 5 + React 19 single-page application located in `/web`. Netlify serves static assets from the edge while proxying `/api/*` to MonsterASP so authentication cookies (`lazybean.auth`) remain first-party.
+The frontend is an Astro 5 + React 19 single-page application located in `/web`. Netlify serves static assets from the edge while proxying `/api/*` to the backend so authentication cookies (`lazybean.auth`) remain first-party.
 
 ### 4.1 Deployment Setup
 1. In Netlify, create a new site from your GitHub repository.
 2. Build Settings:
-   - **Base directory:** `web`
+   - **Base directory:** `web` (documented in `web/netlify.toml`)
    - **Build command:** `npm run build`
    - **Publish directory:** `dist`
 3. Environment Variables (**Site configuration -> Environment variables**):
    - `NETLIFY_PROXY_SECRET` = matching `Security:NetlifyProxySecret` on MonsterASP.
 
-### 4.2 Proxy Configuration (`web/netlify.toml` and root `netlify.toml`)
-Netlify proxies `/api/*` to MonsterASP with `force = true` and `status = 200`:
+### 4.2 Signed Proxy Configuration (`web/netlify.toml`)
+A single `netlify.toml` resides in `web/` configuring the signed proxy rule:
 ```toml
+# Netlify Configuration for Lazy Bean Market Intelligence
+# In Netlify Site Settings, configure Base Directory: "web"
+# Build Command: "npm run build"
+# Publish Directory: "dist"
+
 [build]
   publish = "dist"
   command = "npm run build"
 
+# Proxy /api/* requests to MonsterASP backend with JWS signed request header
+# Signed with the NETLIFY_PROXY_SECRET environment variable configured in Netlify
 [[redirects]]
   from = "/api/*"
-  to = "https://lazybean-api.monsterasp.net/api/:splat"
+  to = "https://lazy-bean.runasp.net/api/:splat"
   status = 200
   force = true
-  headers = { x-nf-sign = ":NETLIFY_PROXY_SECRET" }
+  signed = "NETLIFY_PROXY_SECRET"
 
-[[redirects]]
-  from = "/health"
-  to = "https://lazybean-api.monsterasp.net/health"
-  status = 200
-  force = true
-
+# Fallback for Astro SPA / client-side routing
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 ```
-MonsterASP's `NetlifyForwardedHeadersMiddleware` verifies `x-nf-sign`. If valid, it trusts `X-Forwarded-For` for client rate limiting; if missing or invalid, it strips the header to prevent IP spoofing.
+
+### 4.3 JWS Verification on Backend
+Netlify signs each proxied request by appending an `x-nf-sign` JWS (HS256) header.
+Backend middleware `NetlifyForwardedHeadersMiddleware`:
+1. Validates the HMAC-SHA256 signature using `Security:NetlifyProxySecret`.
+2. Validates that `iss == "netlify"`.
+3. Validates that the token expiration `exp` has not lapsed.
+4. **Only upon successful verification** does it trust `X-Forwarded-For` and `X-Forwarded-Proto`. If missing or invalid, forwarded headers are stripped to prevent IP spoofing.
 
 ---
 
@@ -153,7 +166,7 @@ Add these secrets in GitHub (**Settings -> Secrets and variables -> Actions**):
 
 | Secret Name | Value | Description |
 |---|---|---|
-| `API_BASE_URL` | `https://lazybean-api.monsterasp.net` | Backend URL on MonsterASP |
+| `API_BASE_URL` | `https://lazy-bean.runasp.net` | Backend URL on MonsterASP |
 | `INTERNAL_TOKEN` | Secret matching `Internal:Token` | Authorization for internal automation endpoints |
 
 ### 5.2 Workflows Overview
@@ -178,32 +191,36 @@ Add these secrets in GitHub (**Settings -> Secrets and variables -> Actions**):
 
 Follow these steps in order when setting up a fresh production environment:
 
-- [ ] **Step 1: Create MonsterASP PostgreSQL Database**
+- [ ] **Step 1: Request HTTPS for the runasp.net site from MonsterASP support (CRITICAL)**
+  - MonsterASP free tier sites default to `http://<site>.runasp.net`.
+  - Open a ticket with MonsterASP support to enable SSL/HTTPS for `https://lazy-bean.runasp.net`.
+  - Confirm `https://lazy-bean.runasp.net` loads via HTTPS before configuring the Netlify proxy. **Never point Netlify at http://**.
+- [ ] **Step 2: Create MonsterASP PostgreSQL Database**
   - In MonsterASP control panel, create a new PostgreSQL database.
   - Note down the connection string: `Host`, `Port`, `Database`, `Username`, `Password`.
-- [ ] **Step 2: Configure MonsterASP Environment Variables**
+- [ ] **Step 3: Configure MonsterASP Environment Variables**
   - Set `ConnectionStrings:Default` with the PostgreSQL credentials.
   - Set `Admin:Username` and `Admin:Password` to your chosen credentials.
   - Set `Internal:Token` to a secure 64-character random string.
   - Set `Security:NetlifyProxySecret` to a secure 32-character random string.
   - Set `Security:UseHttpsRedirection` to `false`.
-  - Set `App:PublicBaseUrl` to your MonsterASP site URL.
-- [ ] **Step 3: Deploy Backend Publish Artifact**
+  - Set `App:PublicBaseUrl` to `https://lazy-bean.runasp.net`.
+- [ ] **Step 4: Deploy Backend Publish Artifact**
   - Run `dotnet publish backend/src/LazyBean.Api/LazyBean.Api.csproj -c Release -o publish`.
   - Upload contents of `publish/` to MonsterASP `site/wwwroot/`.
-- [ ] **Step 4: Verify Database Auto-Migration**
-  - Navigate to `https://lazybean-api.monsterasp.net/health`.
+- [ ] **Step 5: Verify Database Auto-Migration & Backend Health**
+  - Navigate to `https://lazy-bean.runasp.net/health`.
   - Verify HTTP 200 OK (`Healthy`).
   - On first boot, EF Core creates all tables and seeds the 6 sources and admin user.
-- [ ] **Step 5: Setup Netlify Frontend**
+- [ ] **Step 6: Setup Netlify Frontend**
   - Connect GitHub repository in Netlify with base directory `web`.
-  - Set environment variable `NETLIFY_PROXY_SECRET` matching the secret in Step 2.
+  - Set environment variable `NETLIFY_PROXY_SECRET` matching the secret in Step 3.
   - Trigger deployment. Ensure static build finishes and `dist` is published.
-  - Verify `https://<your-site>.netlify.app/health` proxies successfully to backend.
-- [ ] **Step 6: Configure GitHub Actions Secrets**
-  - In GitHub repository settings, add `API_BASE_URL` and `INTERNAL_TOKEN`.
+  - Verify `https://<your-site>.netlify.app` loads the Unlock operations screen when unauthenticated.
+- [ ] **Step 7: Configure GitHub Actions Secrets**
+  - In GitHub repository settings, add `API_BASE_URL` (`https://lazy-bean.runasp.net`) and `INTERNAL_TOKEN`.
   - Register the self-hosted Windows runner with labels `self-hosted, lazybean-collector`.
-- [ ] **Step 7: Run Smoke Test Protocol**
+- [ ] **Step 8: Run Smoke Test Protocol**
   - Execute the 5 verification tests below.
 
 ---
@@ -213,9 +230,9 @@ Follow these steps in order when setting up a fresh production environment:
 Run these verification tests immediately after deployment:
 
 ### Test 1: Health Check
-Verify the API and PostgreSQL connectivity:
+Verify the backend API and PostgreSQL connectivity directly:
 ```bash
-curl -i https://lazybean-api.monsterasp.net/health
+curl -i https://lazy-bean.runasp.net/health
 ```
 **Expected Response:**
 ```http
@@ -225,16 +242,10 @@ Content-Type: text/plain
 Healthy
 ```
 
-Verify the Netlify reverse proxy rewrite:
-```bash
-curl -i https://your-site.netlify.app/health
-```
-**Expected Response:** HTTP 200 OK `Healthy`.
-
 ---
 
 ### Test 2: Admin Authentication & Cookie Policy
-Attempt login with configured admin credentials:
+Attempt login through Netlify proxy with configured admin credentials:
 ```bash
 curl -i -X POST https://your-site.netlify.app/api/auth/login \
   -H "Content-Type: application/json" \
@@ -259,14 +270,14 @@ Verify protected route success with cookie:
 ```bash
 curl -i https://your-site.netlify.app/api/runs -b cookies.txt
 ```
-**Expected Response:** HTTP 200 OK `[]` (or list of existing runs).
+**Expected Response:** HTTP 200 OK (returns list of runs).
 
 ---
 
 ### Test 3: Collection Run Trigger & Execution
 Trigger a collection run via the internal endpoint using the shared token:
 ```bash
-curl -i -X POST https://lazybean-api.monsterasp.net/api/internal/runs \
+curl -i -X POST https://lazy-bean.runasp.net/api/internal/runs \
   -H "X-Internal-Token: YOUR_INTERNAL_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"trigger":"SmokeTest"}'
@@ -313,7 +324,7 @@ curl -s https://your-site.netlify.app/api/price-matrix/latest -b cookies.txt
 ### Test 5: Ads Ingestion, Campaigns & Product Linking
 Test Meta Ads ingestion via internal endpoint:
 ```bash
-curl -i -X POST https://lazybean-api.monsterasp.net/api/internal/ads/meta \
+curl -i -X POST https://lazy-bean.runasp.net/api/internal/ads/meta \
   -H "X-Internal-Token: YOUR_INTERNAL_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
