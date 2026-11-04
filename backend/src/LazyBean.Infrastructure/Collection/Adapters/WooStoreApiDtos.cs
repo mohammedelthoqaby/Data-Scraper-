@@ -8,6 +8,7 @@ public sealed record WooProduct(
     [property: JsonPropertyName("id")] long Id,
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("permalink")] string Permalink,
+    [property: JsonPropertyName("slug")] string? Slug,
     [property: JsonPropertyName("sku")] string? Sku,
     [property: JsonPropertyName("type")] string Type,
     [property: JsonPropertyName("is_in_stock")] bool IsInStock,

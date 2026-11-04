@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using LazyBean.Application.Ads.Common;
 using LazyBean.Application.Collection.Classification;
 using LazyBean.Application.Collection.Contracts;
 using LazyBean.Application.Collection.Normalization;
@@ -216,6 +217,9 @@ public class CollectionRunExecutor(
                     product.Title = decodedTitle;
                     product.NormalizedTitle = TitleNormalizer.NormalizeForMatching(raw.Title);
                     product.CanonicalUrl = raw.CanonicalUrl;
+                    product.Handle = !string.IsNullOrWhiteSpace(raw.Handle)
+                        ? raw.Handle
+                        : CreativeHashHelper.ExtractProductHandle(raw.CanonicalUrl);
                     product.Category = raw.Category;
                     product.ProductType = raw.ProductType;
                     product.VendorId = raw.VendorId;

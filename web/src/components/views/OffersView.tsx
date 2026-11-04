@@ -10,8 +10,8 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
   // Offer Source: 'competitor' vs 'reference'
   const [sourceType, setSourceType] = useState<'competitor' | 'reference'>('competitor');
   
-  // Status filter: 'all' | 'new' | 'ongoing' | 'ended'
-  const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'ongoing' | 'ended'>('all');
+  // Status filter: 'new' (default) | 'ongoing' | 'ended' | 'all'
+  const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'ongoing' | 'ended'>('new');
   
   // Search & Competitor filters
   const [search, setSearch] = useState('');
@@ -191,18 +191,8 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
         </button>
       </div>
 
-      {/* Status Tabs */}
+      {/* Status Tabs - Defaults to New, All is opt-in */}
       <div className="tab-bar" style={{ borderBottom: '1px solid var(--line)', marginBottom: '16px' }}>
-        <button
-          type="button"
-          className={`tab-btn ${statusFilter === 'all' ? 'active' : ''}`}
-          onClick={() => setStatusFilter('all')}
-        >
-          All Offers
-          <span className="tab-count">
-            {sourceType === 'competitor' ? competitorCounts.all : referenceCounts.all}
-          </span>
-        </button>
         <button
           type="button"
           className={`tab-btn ${statusFilter === 'new' ? 'active' : ''}`}
@@ -231,6 +221,16 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
           Ended
           <span className="tab-count">
             {sourceType === 'competitor' ? competitorCounts.ended : referenceCounts.ended}
+          </span>
+        </button>
+        <button
+          type="button"
+          className={`tab-btn ${statusFilter === 'all' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('all')}
+        >
+          All Offers (Opt-in)
+          <span className="tab-count">
+            {sourceType === 'competitor' ? competitorCounts.all : referenceCounts.all}
           </span>
         </button>
       </div>

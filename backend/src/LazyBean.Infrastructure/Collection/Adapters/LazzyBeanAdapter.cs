@@ -269,7 +269,8 @@ public class LazzyBeanAdapter : ICompetitorAdapter
                         VendorId: vendorId,
                         WeightGrams: weightGrams,
                         Roast: item.RoastName,
-                        Brand: brand);
+                        Brand: brand,
+                        Handle: item.Id);
 
                     yield return rawProduct;
                 }

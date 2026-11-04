@@ -14,7 +14,8 @@ public sealed record RawProduct(
     string? VendorId = null,
     int? WeightGrams = null,
     string? Roast = null,
-    string? Brand = null);
+    string? Brand = null,
+    string? Handle = null);
 
 public sealed record RawVariant(
     string ExternalId,

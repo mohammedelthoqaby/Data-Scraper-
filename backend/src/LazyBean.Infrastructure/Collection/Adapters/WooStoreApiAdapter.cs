@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using LazyBean.Application.Ads.Common;
 using LazyBean.Application.Collection.Contracts;
 using LazyBean.Application.Collection.Orchestration;
 using LazyBean.Domain.Entities;
@@ -192,7 +193,8 @@ public class WooStoreApiAdapter : ICompetitorAdapter
         Variants: [ToRawVariant(product.Id.ToString(CultureInfo.InvariantCulture), null, product.Sku, product.IsInStock, product.Prices)],
         ProductType: product.Type,
         Vendor: null,
-        Tags: product.Categories.Count > 0 ? string.Join(", ", product.Categories.Select(c => c.Name)) : null);
+        Tags: product.Categories.Count > 0 ? string.Join(", ", product.Categories.Select(c => c.Name)) : null,
+        Handle: product.Slug ?? CreativeHashHelper.ExtractProductHandle(product.Permalink) ?? product.Permalink);
 
     private async Task<RawProduct> MapVariableAsync(
         WooProduct product,
@@ -245,7 +247,8 @@ public class WooStoreApiAdapter : ICompetitorAdapter
             Variants: variants,
             ProductType: product.Type,
             Vendor: null,
-            Tags: product.Categories.Count > 0 ? string.Join(", ", product.Categories.Select(c => c.Name)) : null);
+            Tags: product.Categories.Count > 0 ? string.Join(", ", product.Categories.Select(c => c.Name)) : null,
+            Handle: product.Slug ?? CreativeHashHelper.ExtractProductHandle(product.Permalink) ?? product.Permalink);
     }
 
     private static RawVariant ToRawVariant(

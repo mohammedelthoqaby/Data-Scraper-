@@ -141,6 +141,7 @@ public class ShopifyAdapter : ICompetitorAdapter
         Vendor: product.Vendor,
         Tags: product.FormattedTags,
         Brand: product.Vendor,
+        Handle: product.Handle,
         Variants: product.Variants.Select(v => new RawVariant(
             ExternalId: v.Id.ToString(CultureInfo.InvariantCulture),
             Title: v.Title,

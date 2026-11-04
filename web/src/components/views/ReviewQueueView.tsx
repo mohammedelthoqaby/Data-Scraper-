@@ -80,10 +80,12 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
   };
 
   const handleSelectAll = () => {
-    if (selectedIds.size === filteredReviews.length) {
+    if (selectedIds.size > 0 && selectedIds.size === Math.min(filteredReviews.length, 50)) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredReviews.map((r) => r.id!).filter(Boolean)));
+      // Limit bulk selection strictly to visible page up to 50
+      const visibleIds = filteredReviews.slice(0, 50).map((r) => r.id!).filter(Boolean);
+      setSelectedIds(new Set(visibleIds));
     }
   };
 
@@ -110,21 +112,23 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
     }
   };
 
-  // Bulk decision
+  // Bulk decision (capped at max 50 on currently visible page/filter with confirm dialog)
   const handleBulkDecision = async (decision: 'approve' | 'reject') => {
     if (selectedIds.size === 0) return;
+    const count = Math.min(selectedIds.size, 50);
     const confirmed = window.confirm(
-      `Are you sure you want to ${decision} ${selectedIds.size} selected matches?`
+      `Confirm bulk ${decision} for ${count} selected match(es) on this visible page?`
     );
     if (!confirmed) return;
 
     setIsSubmitting(true);
     setActionMessage(null);
     try {
-      const decisions = Array.from(selectedIds).map((id) => ({
+      const targetIds = Array.from(selectedIds).slice(0, 50);
+      const decisions = targetIds.map((id) => ({
         id,
         decision,
-        notes: notesMap[id] || `Bulk ${decision} verified by operator`,
+        notes: notesMap[id] || `Bulk ${decision} verified on visible page`,
       }));
 
       await api.POST('/api/matches/decisions', {
@@ -132,11 +136,15 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
       });
 
       // Remove processed items
-      const selectedSet = new Set(selectedIds);
+      const selectedSet = new Set(targetIds);
       setReviews((prev) => prev.filter((r) => !selectedSet.has(r.id!)));
       setTotalCount((prev) => Math.max(0, prev - selectedSet.size));
-      setSelectedIds(new Set());
-      setActionMessage(`Successfully bulk ${decision === 'approve' ? 'approved' : 'rejected'} ${decisions.length} matches.`);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        targetIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      setActionMessage(`Successfully bulk ${decision === 'approve' ? 'approved' : 'rejected'} ${decisions.length} visible matches.`);
       if (onRefreshReviewsCount) onRefreshReviewsCount();
     } catch (err: any) {
       alert(err?.message || 'Failed to submit bulk decisions');
@@ -170,16 +178,16 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
           <input
             type="checkbox"
             id="selectAllReviews"
-            checked={filteredReviews.length > 0 && selectedIds.size === filteredReviews.length}
+            checked={filteredReviews.length > 0 && selectedIds.size > 0 && selectedIds.size === Math.min(filteredReviews.length, 50)}
             onChange={handleSelectAll}
             style={{ width: '18px', height: '18px', cursor: 'pointer' }}
           />
           <label htmlFor="selectAllReviews" style={{ fontWeight: 600, fontSize: '14px', cursor: 'pointer' }}>
-            Select All ({filteredReviews.length})
+            Select Visible Page (up to {Math.min(filteredReviews.length, 50)})
           </label>
           {selectedIds.size > 0 && (
             <span className="badge good" style={{ marginLeft: '6px' }}>
-              {selectedIds.size} selected
+              {Math.min(selectedIds.size, 50)} selected (max 50)
             </span>
           )}
         </div>
@@ -192,7 +200,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
             disabled={selectedIds.size === 0 || isSubmitting}
             onClick={() => handleBulkDecision('approve')}
           >
-            ✓ Bulk Approve Selected ({selectedIds.size})
+            ✓ Bulk Approve ({Math.min(selectedIds.size, 50)})
           </button>
           <button
             type="button"
@@ -201,7 +209,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
             disabled={selectedIds.size === 0 || isSubmitting}
             onClick={() => handleBulkDecision('reject')}
           >
-            ✕ Bulk Reject Selected ({selectedIds.size})
+            ✕ Bulk Reject ({Math.min(selectedIds.size, 50)})
           </button>
         </div>
       </div>
