@@ -26,8 +26,10 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.Property(p => p.Roast).HasMaxLength(100);
         builder.Property(p => p.Origin).HasMaxLength(100);
         builder.Property(p => p.Status).HasConversion<string>().HasMaxLength(30);
+        builder.Property(p => p.Handle).HasMaxLength(500);
 
         // One product per (competitor, external id) - the adapter's own product identity.
         builder.HasIndex(p => new { p.CompetitorId, p.ExternalId }).IsUnique();
+        builder.HasIndex(p => new { p.CompetitorId, p.Handle });
     }
 }

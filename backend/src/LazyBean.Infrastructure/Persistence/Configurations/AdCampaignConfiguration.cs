@@ -13,6 +13,7 @@ public class AdCampaignConfiguration : IEntityTypeConfiguration<AdCampaign>
         builder.Property(c => c.Platform).HasConversion<string>().HasMaxLength(20);
         builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(c => c.CreativeHash).HasMaxLength(100);
+        builder.Property(c => c.Body).HasMaxLength(4000);
 
         builder.HasIndex(c => c.CompetitorId);
         builder.HasIndex(c => c.IdentityId);

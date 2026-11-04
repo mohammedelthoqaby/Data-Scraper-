@@ -376,8 +376,43 @@ public class InternalApiController(
 
         var competitorProducts = await readContext.Query<Product>()
             .Where(p => p.CompetitorId == identity.CompetitorId)
-            .Select(p => new { p.Id, p.CanonicalUrl })
             .ToListAsync(ct);
+
+        // Ensure handles are stored on products if missing
+        var updatedHandles = false;
+        foreach (var p in competitorProducts)
+        {
+            if (string.IsNullOrWhiteSpace(p.Handle) && !string.IsNullOrWhiteSpace(p.CanonicalUrl))
+            {
+                p.Handle = CreativeHashHelper.ExtractProductHandle(p.CanonicalUrl);
+                if (!string.IsNullOrWhiteSpace(p.Handle))
+                {
+                    unitOfWork.Products.Update(p);
+                    updatedHandles = true;
+                }
+            }
+        }
+        if (updatedHandles)
+        {
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+
+        // Fast lookups for ad -> product matching
+        var productsByHandle = competitorProducts
+            .Where(p => !string.IsNullOrWhiteSpace(p.Handle))
+            .GroupBy(p => p.Handle!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var productsByNormUrl = competitorProducts
+            .Where(p => !string.IsNullOrWhiteSpace(p.CanonicalUrl))
+            .GroupBy(p => CreativeHashHelper.NormalizeProductUrl(p.CanonicalUrl), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var existingCampaigns = await readContext.Query<AdCampaign>()
+            .Where(c => c.IdentityId == identity.Id)
+            .ToListAsync(ct);
+        var campaignsByHash = existingCampaigns.ToDictionary(c => c.CreativeHash, StringComparer.OrdinalIgnoreCase);
+        var touchedCampaigns = new HashSet<AdCampaign>();
 
         var seenAdIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var now = DateTimeOffset.UtcNow;
@@ -388,18 +423,17 @@ public class InternalApiController(
             foreach (var rawAd in request.Ads)
             {
                 seenAdIds.Add(rawAd.Id);
-                var creativeHash = CreativeHashHelper.Compute(rawAd.Title, rawAd.Body, rawAd.SnapshotUrl);
+                // Campaign grouping: identity + normalized body
+                var creativeHash = CreativeHashHelper.Compute(identity.Id, rawAd.Body);
 
-                var campaign = await readContext.Query<AdCampaign>()
-                    .FirstOrDefaultAsync(c => c.IdentityId == identity.Id && c.CreativeHash == creativeHash, ct);
-
-                if (campaign == null)
+                if (!campaignsByHash.TryGetValue(creativeHash, out var campaign))
                 {
                     campaign = new AdCampaign
                     {
                         CompetitorId = identity.CompetitorId,
                         IdentityId = identity.Id,
                         CreativeHash = creativeHash,
+                        Body = rawAd.Body,
                         Platform = AdPlatform.Meta,
                         FirstSeenAt = now,
                         LastSeenAt = now,
@@ -407,25 +441,33 @@ public class InternalApiController(
                     };
                     await unitOfWork.AdCampaigns.AddAsync(campaign, ct);
                     await unitOfWork.SaveChangesAsync(ct);
+                    campaignsByHash[creativeHash] = campaign;
                 }
                 else
                 {
                     campaign.LastSeenAt = now;
-                    unitOfWork.AdCampaigns.Update(campaign);
+                    if (string.IsNullOrWhiteSpace(campaign.Body) && !string.IsNullOrWhiteSpace(rawAd.Body))
+                    {
+                        campaign.Body = rawAd.Body;
+                    }
+                    touchedCampaigns.Add(campaign);
                 }
 
                 Guid? matchedProductId = null;
                 if (!string.IsNullOrWhiteSpace(rawAd.Link))
                 {
-                    var cleanLink = StripTrackingParams(rawAd.Link);
-                    var matchedComp = competitorProducts.FirstOrDefault(p =>
-                        !string.IsNullOrWhiteSpace(p.CanonicalUrl) &&
-                        (cleanLink.Equals(p.CanonicalUrl, StringComparison.OrdinalIgnoreCase) ||
-                         cleanLink.StartsWith(p.CanonicalUrl, StringComparison.OrdinalIgnoreCase) ||
-                         p.CanonicalUrl.StartsWith(cleanLink, StringComparison.OrdinalIgnoreCase)));
-                    if (matchedComp != null)
+                    var adHandle = CreativeHashHelper.ExtractProductHandle(rawAd.Link);
+                    if (!string.IsNullOrWhiteSpace(adHandle) && productsByHandle.TryGetValue(adHandle, out var foundByHandle))
                     {
-                        matchedProductId = matchedComp.Id;
+                        matchedProductId = foundByHandle.Id;
+                    }
+                    else
+                    {
+                        var normAdUrl = CreativeHashHelper.NormalizeProductUrl(rawAd.Link);
+                        if (productsByNormUrl.TryGetValue(normAdUrl, out var foundByUrl))
+                        {
+                            matchedProductId = foundByUrl.Id;
+                        }
                     }
                 }
 
@@ -439,8 +481,11 @@ public class InternalApiController(
                 {
                     existing.MissingCount = 0;
                     existing.LastSeenAt = now;
+                    existing.CampaignId = campaign.Id;
+                    existing.CreativeHash = creativeHash;
+                    existing.Body = rawAd.Body ?? existing.Body;
                     if (rawAd.StopDate.HasValue) existing.DeliveryStopDate = rawAd.StopDate.Value.ToUniversalTime();
-                    if (existing.ProductId == null && matchedProductId.HasValue) existing.ProductId = matchedProductId;
+                    if (matchedProductId.HasValue) existing.ProductId = matchedProductId;
                     if (!string.IsNullOrWhiteSpace(rawAd.Link)) existing.LinkUrl = rawAd.Link;
                     if (!string.IsNullOrWhiteSpace(rawAd.SnapshotUrl)) existing.SnapshotUrl = rawAd.SnapshotUrl;
 
@@ -532,6 +577,11 @@ public class InternalApiController(
                 }
                 unitOfWork.Ads.Update(ad);
             }
+        }
+
+        foreach (var tc in touchedCampaigns)
+        {
+            unitOfWork.AdCampaigns.Update(tc);
         }
 
         await unitOfWork.SaveChangesAsync(ct);

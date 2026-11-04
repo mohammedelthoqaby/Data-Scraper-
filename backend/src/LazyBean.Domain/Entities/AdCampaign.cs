@@ -12,4 +12,5 @@ public class AdCampaign : BaseEntity, IAggregateRoot
     public DateTimeOffset FirstSeenAt { get; set; }
     public DateTimeOffset LastSeenAt { get; set; }
     public AdStatus Status { get; set; } = AdStatus.Active;
+    public string? Body { get; set; }
 }

@@ -19,4 +19,14 @@ public record AdDto(
     DateTimeOffset FirstSeenAt,
     DateTimeOffset LastSeenAt,
     string Status,
-    string CreativeHash);
+    string CreativeHash,
+    Guid? ProductId = null,
+    string? ProductTitle = null,
+    string? ProductUrl = null,
+    Guid? LazyBeanProductId = null,
+    string? LazyBeanProductTitle = null,
+    string? LazyBeanProductUrl = null,
+    decimal? CompetitorPrice = null,
+    decimal? LazyBeanPrice = null,
+    string? PricePosition = null,
+    decimal? PriceDiffPercent = null);

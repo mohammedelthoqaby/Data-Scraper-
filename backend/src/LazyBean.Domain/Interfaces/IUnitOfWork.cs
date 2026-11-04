@@ -11,6 +11,7 @@ public interface IUnitOfWork : IDisposable
     IRepository<Entities.AdCampaign> AdCampaigns { get; }
     IRepository<Entities.Ad> Ads { get; }
     IRepository<Entities.ChangeEvent> ChangeEvents { get; }
+    IRepository<Entities.Product> Products { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

@@ -26,4 +26,5 @@ public class Product : BaseEntity, IAggregateRoot
     public DateTimeOffset FirstSeenAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset LastSeenAt { get; set; } = DateTimeOffset.UtcNow;
     public ProductStatus Status { get; set; } = ProductStatus.Active;
+    public string? Handle { get; set; }
 }

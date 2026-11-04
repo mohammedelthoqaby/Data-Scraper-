@@ -45,6 +45,18 @@ public class AdsController(ISender sender) : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("campaigns")]
+    [ProducesResponseType(typeof(IReadOnlyList<AdCampaignDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<AdCampaignDto>>> GetCampaigns(
+        [FromQuery] Guid? competitorId,
+        [FromQuery] string? platform,
+        [FromQuery] string? status,
+        CancellationToken ct)
+    {
+        var result = await sender.Send(new LazyBean.Application.Ads.Queries.GetCampaigns.GetCampaignsQuery(competitorId, platform, status), ct);
+        return Ok(result);
+    }
+
     [HttpPost]
     [ProducesResponseType(typeof(AdDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -94,7 +106,7 @@ public class AdsController(ISender sender) : ControllerBase
             ? request.ExternalAdId.Trim()
             : $"MANUAL_{Guid.NewGuid():N}";
 
-        var creativeHash = CreativeHashHelper.Compute(request.Title, request.Body, request.SnapshotUrl);
+        var creativeHash = CreativeHashHelper.Compute(identity.Id, request.Body);
 
         var campaign = await readContext.Query<AdCampaign>()
             .FirstOrDefaultAsync(c => c.IdentityId == identity.Id && c.CreativeHash == creativeHash, ct);
@@ -107,6 +119,7 @@ public class AdsController(ISender sender) : ControllerBase
                 CompetitorId = competitor.Id,
                 IdentityId = identity.Id,
                 CreativeHash = creativeHash,
+                Body = request.Body,
                 Platform = platform,
                 FirstSeenAt = now,
                 LastSeenAt = now,
@@ -118,6 +131,10 @@ public class AdsController(ISender sender) : ControllerBase
         else
         {
             campaign.LastSeenAt = now;
+            if (string.IsNullOrWhiteSpace(campaign.Body) && !string.IsNullOrWhiteSpace(request.Body))
+            {
+                campaign.Body = request.Body;
+            }
             unitOfWork.AdCampaigns.Update(campaign);
         }
 

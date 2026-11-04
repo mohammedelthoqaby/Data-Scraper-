@@ -126,6 +126,10 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Body")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<Guid>("CompetitorId")
                         .HasColumnType("uuid");
 
@@ -591,6 +595,10 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("FirstSeenAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Handle")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<DateTimeOffset>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -650,6 +658,8 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CompetitorId", "ExternalId")
                         .IsUnique();
+
+                    b.HasIndex("CompetitorId", "Handle");
 
                     b.ToTable("products", (string)null);
                 });

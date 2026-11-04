@@ -3,11 +3,16 @@ namespace LazyBean.Application.Ads.Dtos;
 public record AdCampaignDto(
     Guid Id,
     Guid CompetitorId,
+    string CompetitorKey,
+    string CompetitorName,
     Guid IdentityId,
     string CreativeHash,
     string Platform,
+    string? Body,
     DateTimeOffset FirstSeenAt,
     DateTimeOffset LastSeenAt,
     string Status,
     int AdCount,
+    int ActiveAdCount,
+    int InactiveAdCount,
     IReadOnlyList<AdDto> Ads);
