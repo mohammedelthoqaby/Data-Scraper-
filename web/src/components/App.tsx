@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { api, type AuthenticatedUser, type CollectionRun, type PriceMatrixResponse, type CompetitorOffersResponse, type PriceMatrixRow } from '../api/client';
+import { api, onUnauthorized, type AuthenticatedUser, type CollectionRun, type PriceMatrixResponse, type CompetitorOffersResponse, type PriceMatrixRow } from '../api/client';
 import { Sidebar } from './shell/Sidebar';
 import { Header } from './shell/Header';
 import { Toolbar } from './shell/Toolbar';
 import { Footer } from './shell/Footer';
 import { LoginModal } from './auth/LoginModal';
+import { UnlockScreen } from './auth/UnlockScreen';
 import { OverviewView } from './views/OverviewView';
 import { PriceMatrixView } from './views/PriceMatrixView';
 import { OffersView } from './views/OffersView';
@@ -21,6 +22,7 @@ export const App: React.FC = () => {
 
   // Auth State
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
 
   // Data State
@@ -87,38 +89,48 @@ export const App: React.FC = () => {
   // Check existing session
   const checkSession = useCallback(async () => {
     try {
-      const { data } = await api.GET('/api/auth/me');
-      if (data) {
+      const { data, response } = await api.GET('/api/auth/me');
+      if (response?.status === 200 && data) {
         setUser(data);
+        return data;
+      } else {
+        setUser(null);
+        return null;
       }
     } catch {
       setUser(null);
+      return null;
     }
   }, []);
 
   // Fetch runs
   const fetchRuns = useCallback(async () => {
     try {
-      const { data } = await api.GET('/api/runs', {
+      const { data, response } = await api.GET('/api/runs', {
         params: { query: { page: 1, pageSize: 10 } },
       });
-      if (data?.runs && data.runs.length > 0) {
-        setRuns(data.runs);
-        if (!selectedRunId) {
-          const completedRun = data.runs.find(r => r.status === 'Completed') || data.runs[0];
-          setSelectedRunId(completedRun.id);
+      if (response?.status === 200 && data) {
+        const runsList: CollectionRun[] = Array.isArray(data)
+          ? (data as any)
+          : (data as any)?.runs ?? [];
+        if (runsList.length > 0) {
+          setRuns(runsList);
+          const completedRun = runsList.find((r) => r.status === 'Completed') || runsList[0];
+          if (completedRun?.id) {
+            setSelectedRunId((prev) => prev ?? completedRun.id);
+          }
         }
       }
     } catch (err) {
       console.error('Failed to fetch runs:', err);
     }
-  }, [selectedRunId]);
+  }, []);
 
   // Fetch reviews count
   const fetchReviewCount = useCallback(async () => {
     try {
-      const { data } = await api.GET('/api/reviews');
-      if (data?.totalCount != null) {
+      const { data, response } = await api.GET('/api/reviews');
+      if (response?.status === 200 && data?.totalCount != null) {
         setReviewCount(data.totalCount);
       }
     } catch (err) {
@@ -131,13 +143,13 @@ export const App: React.FC = () => {
     setIsLoading(true);
     try {
       if (runId) {
-        const { data } = await api.GET('/api/runs/{id}/price-matrix', {
+        const { data, response } = await api.GET('/api/runs/{id}/price-matrix', {
           params: { path: { id: runId } },
         });
-        if (data) setMatrix(data);
+        if (response?.status === 200 && data) setMatrix(data);
       } else {
-        const { data } = await api.GET('/api/price-matrix/latest');
-        if (data) setMatrix(data);
+        const { data, response } = await api.GET('/api/price-matrix/latest');
+        if (response?.status === 200 && data) setMatrix(data);
       }
     } catch (err) {
       console.error('Failed to fetch price matrix:', err);
@@ -149,46 +161,78 @@ export const App: React.FC = () => {
   // Fetch competitor offers
   const fetchOffers = useCallback(async (runId: string) => {
     try {
-      const { data } = await api.GET('/api/runs/{id}/competitor-offers', {
+      const { data, response } = await api.GET('/api/runs/{id}/competitor-offers', {
         params: { path: { id: runId }, query: { status: 'all' } },
       });
-      if (data) setOffers(data);
+      if (response?.status === 200 && data) setOffers(data);
     } catch (err) {
       console.error('Failed to fetch competitor offers:', err);
     }
   }, []);
 
-  // Initial load
-  useEffect(() => {
-    checkSession();
-    fetchRuns();
-    fetchReviewCount();
-    fetchMatrix();
-  }, [checkSession, fetchRuns, fetchReviewCount, fetchMatrix]);
+  const clearData = useCallback(() => {
+    setRuns([]);
+    setSelectedRunId(null);
+    setMatrix(null);
+    setOffers(null);
+    setReviewCount(0);
+  }, []);
 
-  // Reload data when selected run changes
+  // Initial load: verify authentication before requesting protected data
   useEffect(() => {
-    if (selectedRunId) {
+    let mounted = true;
+    setIsCheckingAuth(true);
+
+    checkSession().then((authenticatedUser) => {
+      if (!mounted) return;
+      setIsCheckingAuth(false);
+      if (authenticatedUser) {
+        fetchRuns();
+        fetchReviewCount();
+        fetchMatrix();
+      } else {
+        clearData();
+      }
+    });
+
+    // When an API call returns 401 Unauthorized, revoke session and clear data
+    const unsubscribe = onUnauthorized(() => {
+      if (!mounted) return;
+      setUser(null);
+      clearData();
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [checkSession, fetchRuns, fetchReviewCount, fetchMatrix, clearData]);
+
+  // Reload data when selected run changes (only if authenticated)
+  useEffect(() => {
+    if (user && selectedRunId) {
       fetchMatrix(selectedRunId);
       fetchOffers(selectedRunId);
     }
-  }, [selectedRunId, fetchMatrix, fetchOffers]);
+  }, [user, selectedRunId, fetchMatrix, fetchOffers]);
 
   const handleLogout = async () => {
     try {
       await api.POST('/api/auth/logout');
-      setUser(null);
     } catch (err) {
       console.error('Logout error:', err);
+    } finally {
+      setUser(null);
+      clearData();
     }
   };
 
-  const handleReloadAll = () => {
+  const handleReloadAll = useCallback(() => {
     fetchRuns();
     fetchMatrix(selectedRunId);
     if (selectedRunId) fetchOffers(selectedRunId);
     fetchReviewCount();
-  };
+  }, [fetchRuns, fetchMatrix, fetchOffers, fetchReviewCount, selectedRunId]);
 
   const handleStartRun = async () => {
     if (!user) {
@@ -233,83 +277,122 @@ export const App: React.FC = () => {
         />
 
         <main className="main-content">
-          <Toolbar
-            runs={runs}
-            selectedRunId={selectedRunId}
-            onSelectRun={(id) => setSelectedRunId(id)}
-            onReload={handleReloadAll}
-            isLoading={isLoading}
-          />
-
-          {/* Active View Outlet */}
-          {activeView === 'overview' && (
-            <OverviewView
-              matrix={matrix}
-              offers={offers}
-              reviewCount={reviewCount}
-              onNavigate={navigateTo}
-              onRefreshCollection={handleStartRun}
-            />
-          )}
-
-          {(activeView === 'offers' || activeView === 'weekly-actions') && (
-            <OffersView
-              selectedRunId={selectedRunId}
-              onOpenProductDetail={openProductDetail}
-            />
-          )}
-
-          {activeView === 'price-comparisons' && (
-            <PriceMatrixView
-              matrix={matrix}
-              selectedRunId={selectedRunId}
-              isLoading={isLoading}
-              onOpenProductDetail={openProductDetail}
-            />
-          )}
-
-          {activeView === 'ads-campaigns' && (
-            <AdsCampaignsView
-              onOpenProductDetail={openProductDetail}
-            />
-          )}
-
-          {activeView === 'review-queue' && (
-            <ReviewQueueView
-              onRefreshReviewsCount={fetchReviewCount}
-              onOpenProductDetail={openProductDetail}
-            />
-          )}
-
-          {(activeView === 'runs' || activeView === 'history') && (
-            <RunsView
-              user={user}
-              onOpenLogin={() => setIsLoginOpen(true)}
-              onNavigateToMatrix={(runId) => {
-                setSelectedRunId(runId);
-                navigateTo('price-comparisons');
+          {isCheckingAuth ? (
+            <div
+              className="workspace-loading"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '60vh',
+                flexDirection: 'column',
+                gap: '12px',
               }}
-              onRefreshRuns={handleReloadAll}
-            />
-          )}
-
-          {activeView === 'sources' && (
-            <SourcesIdentitiesView />
-          )}
-
-          {activeView === 'improve-recommendations' && (
-            <div className="panel" style={{ padding: '40px', textAlign: 'center' }}>
-              <div className="eyebrow">INTERNAL BUSINESS DATA</div>
-              <h2 style={{ marginTop: '8px' }}>Internal Data Import</h2>
-              <p style={{ color: 'var(--muted)', marginTop: '8px', maxWidth: '500px', margin: '8px auto 0' }}>
-                Upload internal sales velocity, inventory, or margins (CSV/XLSX) to enrich market positioning recommendations.
-              </p>
-              <div style={{ marginTop: '20px', border: '2px dashed var(--line)', padding: '30px', borderRadius: '8px', background: '#fafbfc' }}>
-                <p style={{ margin: 0, color: 'var(--muted)', fontSize: '13px' }}>
-                  Drag and drop <code>.csv</code> or <code>.xlsx</code> file here, or click to browse
-                </p>
+            >
+              <div className="mark" style={{ width: 36, height: 36 }}>
+                <img
+                  src="/assets/logo.png"
+                  alt="Lazy Bean logo"
+                  width="36"
+                  height="36"
+                  style={{ objectFit: 'contain' }}
+                />
+              </div>
+              <div style={{ color: 'var(--muted)', fontSize: '14px' }}>
+                Checking operations authorization...
               </div>
             </div>
+          ) : !user ? (
+            <UnlockScreen
+              onSuccess={(loggedInUser) => {
+                setUser(loggedInUser);
+                setIsLoginOpen(false);
+                fetchRuns();
+                fetchReviewCount();
+                fetchMatrix();
+              }}
+            />
+          ) : (
+            <>
+              <Toolbar
+                runs={runs}
+                selectedRunId={selectedRunId}
+                onSelectRun={(id) => setSelectedRunId(id)}
+                onReload={handleReloadAll}
+                isLoading={isLoading}
+              />
+
+              {/* Active View Outlet */}
+              {activeView === 'overview' && (
+                <OverviewView
+                  matrix={matrix}
+                  offers={offers}
+                  reviewCount={reviewCount}
+                  onNavigate={navigateTo}
+                  onRefreshCollection={handleStartRun}
+                />
+              )}
+
+              {(activeView === 'offers' || activeView === 'weekly-actions') && (
+                <OffersView
+                  selectedRunId={selectedRunId}
+                  onOpenProductDetail={openProductDetail}
+                />
+              )}
+
+              {activeView === 'price-comparisons' && (
+                <PriceMatrixView
+                  matrix={matrix}
+                  selectedRunId={selectedRunId}
+                  isLoading={isLoading}
+                  onOpenProductDetail={openProductDetail}
+                />
+              )}
+
+              {activeView === 'ads-campaigns' && (
+                <AdsCampaignsView
+                  onOpenProductDetail={openProductDetail}
+                />
+              )}
+
+              {activeView === 'review-queue' && (
+                <ReviewQueueView
+                  onRefreshReviewsCount={fetchReviewCount}
+                  onOpenProductDetail={openProductDetail}
+                />
+              )}
+
+              {(activeView === 'runs' || activeView === 'history') && (
+                <RunsView
+                  user={user}
+                  onOpenLogin={() => setIsLoginOpen(true)}
+                  onNavigateToMatrix={(runId) => {
+                    setSelectedRunId(runId);
+                    navigateTo('price-comparisons');
+                  }}
+                  onRefreshRuns={handleReloadAll}
+                />
+              )}
+
+              {activeView === 'sources' && (
+                <SourcesIdentitiesView />
+              )}
+
+              {activeView === 'improve-recommendations' && (
+                <div className="panel" style={{ padding: '40px', textAlign: 'center' }}>
+                  <div className="eyebrow">INTERNAL BUSINESS DATA</div>
+                  <h2 style={{ marginTop: '8px' }}>Internal Data Import</h2>
+                  <p style={{ color: 'var(--muted)', marginTop: '8px', maxWidth: '500px', margin: '8px auto 0' }}>
+                    Upload internal sales velocity, inventory, or margins (CSV/XLSX) to enrich market positioning recommendations.
+                  </p>
+                  <div style={{ marginTop: '20px', border: '2px dashed var(--line)', padding: '30px', borderRadius: '8px', background: '#fafbfc' }}>
+                    <p style={{ margin: 0, color: 'var(--muted)', fontSize: '13px' }}>
+                      Drag and drop <code>.csv</code> or <code>.xlsx</code> file here, or click to browse
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </main>
 

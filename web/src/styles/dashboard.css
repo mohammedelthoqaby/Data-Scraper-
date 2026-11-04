@@ -1473,3 +1473,22 @@ footer.workspace-footer {
     grid-template-columns: 1fr;
   }
 }
+
+/* Unlock / Login View */
+.unlock-screen-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 65vh;
+  padding: 24px;
+}
+
+.unlock-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  max-width: 440px;
+  overflow: hidden;
+}

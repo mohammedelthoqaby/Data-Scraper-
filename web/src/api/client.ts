@@ -9,6 +9,28 @@ export const api = createClient<paths>({
   },
 });
 
+type UnauthorizedListener = () => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener);
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
+
+export function notifyUnauthorized(): void {
+  unauthorizedListeners.forEach((fn) => fn());
+}
+
+api.use({
+  onResponse({ response, schemaPath }) {
+    if (response.status === 401 && schemaPath !== '/api/auth/me' && schemaPath !== '/api/auth/login') {
+      notifyUnauthorized();
+    }
+  },
+});
+
 export type Schemas = components['schemas'];
 export type PriceMatrixResponse = Schemas['PriceMatrixResponseDto'];
 export type PriceMatrixRow = Schemas['PriceMatrixRowDto'];
