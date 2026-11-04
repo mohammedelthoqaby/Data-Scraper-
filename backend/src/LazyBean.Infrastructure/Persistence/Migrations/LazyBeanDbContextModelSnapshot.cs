@@ -70,10 +70,18 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<int>("MissingCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("Platform")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("ProductId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("RawDataJson")
                         .HasColumnType("jsonb");
@@ -101,6 +109,8 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.HasIndex("CompetitorId");
 
                     b.HasIndex("IdentityId");
+
+                    b.HasIndex("ProductId");
 
                     b.HasIndex("Status");
 

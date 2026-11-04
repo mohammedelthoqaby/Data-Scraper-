@@ -21,4 +21,6 @@ public class Ad : BaseEntity, IAggregateRoot
     public AdStatus Status { get; set; } = AdStatus.Active;
     public string CreativeHash { get; set; } = string.Empty;
     public string? RawDataJson { get; set; }
+    public int MissingCount { get; set; } = 0;
+    public Guid? ProductId { get; set; }
 }

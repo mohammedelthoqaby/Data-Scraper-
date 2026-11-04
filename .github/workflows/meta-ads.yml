@@ -1,0 +1,59 @@
+name: Meta Ads Weekly Sync
+
+on:
+  schedule:
+    - cron: '0 7 * * 0' # 07:00 UTC every Sunday
+  workflow_dispatch:
+
+jobs:
+  sync-meta-ads:
+    runs-on: [self-hosted, lazybean-collector]
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python Virtual Environment
+        run: |
+          if (-not (Test-Path ".venv")) {
+            try {
+              python -m venv .venv
+            } catch {
+              python3 -m venv .venv
+            }
+          }
+          
+          if (Test-Path "./.venv/Scripts/python.exe") {
+            $py = "./.venv/Scripts/python.exe"
+            $pip = "./.venv/Scripts/pip.exe"
+          } else {
+            $py = "./.venv/bin/python"
+            $pip = "./.venv/bin/pip"
+          }
+          
+          & $pip install --upgrade pip
+          & $pip install -r tools/meta-ads/requirements.txt
+
+      - name: Run Meta Ads Sync Pass
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
+          DELAY_MIN_SECONDS: "20"
+          DELAY_MAX_SECONDS: "40"
+          MAX_ADS_PER_PAGE: "50"
+        run: |
+          if (-not $env:API_BASE_URL -or -not $env:INTERNAL_TOKEN) {
+            Write-Error "API_BASE_URL and INTERNAL_TOKEN secrets must be configured in GitHub repository secrets."
+            exit 1
+          }
+          
+          if (Test-Path "./.venv/Scripts/python.exe") {
+            $py = "./.venv/Scripts/python.exe"
+          } else {
+            $py = "./.venv/bin/python"
+          }
+          
+          & $py tools/meta-ads/sync.py

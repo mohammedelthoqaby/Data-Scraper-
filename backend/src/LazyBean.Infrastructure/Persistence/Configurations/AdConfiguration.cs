@@ -19,10 +19,13 @@ public class AdConfiguration : IEntityTypeConfiguration<Ad>
         builder.Property(a => a.SnapshotUrl).HasMaxLength(2000);
         builder.Property(a => a.CreativeHash).HasMaxLength(100);
         builder.Property(a => a.RawDataJson).HasColumnType("jsonb");
+        builder.Property(a => a.MissingCount).HasDefaultValue(0);
+        builder.Property(a => a.ProductId).IsRequired(false);
 
         builder.HasIndex(a => a.CompetitorId);
         builder.HasIndex(a => a.IdentityId);
         builder.HasIndex(a => a.CampaignId);
+        builder.HasIndex(a => a.ProductId);
         builder.HasIndex(a => new { a.Platform, a.ExternalAdId }).IsUnique();
         builder.HasIndex(a => a.Status);
     }

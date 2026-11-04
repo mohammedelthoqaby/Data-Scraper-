@@ -10,6 +10,7 @@ public interface IUnitOfWork : IDisposable
     IRepository<Entities.AdvertiserIdentity> AdvertiserIdentities { get; }
     IRepository<Entities.AdCampaign> AdCampaigns { get; }
     IRepository<Entities.Ad> Ads { get; }
+    IRepository<Entities.ChangeEvent> ChangeEvents { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

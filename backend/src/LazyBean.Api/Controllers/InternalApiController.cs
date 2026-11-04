@@ -42,6 +42,34 @@ public record GoogleIdentityDto(
     string Status,
     DateTimeOffset? BlockedUntil);
 
+public record MetaIdentityDto(
+    Guid Id,
+    Guid CompetitorId,
+    string CompetitorKey,
+    string CompetitorName,
+    string PageId,
+    string Name,
+    string Status,
+    DateTimeOffset? BlockedUntil);
+
+public record MetaAdItemRequest(
+    string Id,
+    string? Title,
+    string? Body,
+    string? Link,
+    string? SnapshotUrl,
+    string? ImageUrl,
+    DateTimeOffset? StartDate,
+    DateTimeOffset? StopDate,
+    string? Status,
+    string? RawJson);
+
+public record MetaAdsIngestRequest(
+    string PageId,
+    string Status,
+    string? Error,
+    List<MetaAdItemRequest>? Ads);
+
 [ApiController]
 [Route("api/internal")]
 [AllowAnonymous]
@@ -266,5 +294,262 @@ public class InternalApiController(
         }
 
         return Ok(new { status = "Success", ingestedCount });
+    }
+
+    [HttpGet("ads/meta/identities")]
+    [ProducesResponseType(typeof(IReadOnlyList<MetaIdentityDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMetaIdentities(CancellationToken ct)
+    {
+        if (!IsAuthorized())
+        {
+            return Unauthorized(new { error = "Invalid or missing Internal:Token header." });
+        }
+
+        var identities = await (
+            from i in readContext.Query<AdvertiserIdentity>()
+            join c in readContext.Query<Competitor>() on i.CompetitorId equals c.Id
+            where i.Platform == AdPlatform.Meta && i.Status == AdvertiserIdentityStatus.Approved
+            select new MetaIdentityDto(
+                i.Id,
+                i.CompetitorId,
+                c.Key,
+                c.Name,
+                i.ExternalId,
+                i.Name,
+                i.Status.ToString(),
+                i.BlockedUntil)
+        ).ToListAsync(ct);
+
+        return Ok(identities);
+    }
+
+    [HttpPost("ads/meta")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> IngestMetaAds([FromBody] MetaAdsIngestRequest request, CancellationToken ct)
+    {
+        if (!IsAuthorized())
+        {
+            return Unauthorized(new { error = "Invalid or missing Internal:Token header." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.PageId))
+        {
+            return BadRequest(new { error = "PageId is required." });
+        }
+
+        var identity = await readContext.Query<AdvertiserIdentity>()
+            .FirstOrDefaultAsync(i => i.Platform == AdPlatform.Meta && i.ExternalId == request.PageId, ct);
+
+        if (identity == null)
+        {
+            return NotFound(new { error = $"Meta advertiser identity with Page ID '{request.PageId}' not found." });
+        }
+
+        if (string.Equals(request.Status, "Blocked", StringComparison.OrdinalIgnoreCase))
+        {
+            identity.Block(DateTimeOffset.UtcNow.AddHours(24), request.Error ?? "Meta Ad Library rate-limited or blocked direct scraper.");
+            unitOfWork.AdvertiserIdentities.Update(identity);
+            await unitOfWork.SaveChangesAsync(ct);
+            logger.LogWarning("Marked Meta advertiser identity '{Name}' ({PageId}) as Blocked for 24h: {Error}", identity.Name, identity.ExternalId, request.Error);
+            return Ok(new { status = "Blocked", message = "Advertiser identity marked Blocked for 24h." });
+        }
+
+        if (string.Equals(request.Status, "Failed", StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogError("Meta collection failed for '{Name}' ({PageId}): {Error}. Not treating as removal.", identity.Name, identity.ExternalId, request.Error);
+            return Ok(new { status = "Failed", message = request.Error });
+        }
+
+        if (identity.BlockedUntil.HasValue)
+        {
+            identity.Unblock();
+            unitOfWork.AdvertiserIdentities.Update(identity);
+        }
+
+        var existingAds = await readContext.Query<Ad>()
+            .Where(a => a.IdentityId == identity.Id)
+            .ToListAsync(ct);
+        var existingByExternalId = existingAds.ToDictionary(a => a.ExternalAdId, StringComparer.OrdinalIgnoreCase);
+
+        var competitorProducts = await readContext.Query<Product>()
+            .Where(p => p.CompetitorId == identity.CompetitorId)
+            .Select(p => new { p.Id, p.CanonicalUrl })
+            .ToListAsync(ct);
+
+        var seenAdIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var now = DateTimeOffset.UtcNow;
+        var ingestedCount = 0;
+
+        if (request.Ads != null && request.Ads.Count > 0)
+        {
+            foreach (var rawAd in request.Ads)
+            {
+                seenAdIds.Add(rawAd.Id);
+                var creativeHash = CreativeHashHelper.Compute(rawAd.Title, rawAd.Body, rawAd.SnapshotUrl);
+
+                var campaign = await readContext.Query<AdCampaign>()
+                    .FirstOrDefaultAsync(c => c.IdentityId == identity.Id && c.CreativeHash == creativeHash, ct);
+
+                if (campaign == null)
+                {
+                    campaign = new AdCampaign
+                    {
+                        CompetitorId = identity.CompetitorId,
+                        IdentityId = identity.Id,
+                        CreativeHash = creativeHash,
+                        Platform = AdPlatform.Meta,
+                        FirstSeenAt = now,
+                        LastSeenAt = now,
+                        Status = AdStatus.Active
+                    };
+                    await unitOfWork.AdCampaigns.AddAsync(campaign, ct);
+                    await unitOfWork.SaveChangesAsync(ct);
+                }
+                else
+                {
+                    campaign.LastSeenAt = now;
+                    unitOfWork.AdCampaigns.Update(campaign);
+                }
+
+                Guid? matchedProductId = null;
+                if (!string.IsNullOrWhiteSpace(rawAd.Link))
+                {
+                    var cleanLink = StripTrackingParams(rawAd.Link);
+                    var matchedComp = competitorProducts.FirstOrDefault(p =>
+                        !string.IsNullOrWhiteSpace(p.CanonicalUrl) &&
+                        (cleanLink.Equals(p.CanonicalUrl, StringComparison.OrdinalIgnoreCase) ||
+                         cleanLink.StartsWith(p.CanonicalUrl, StringComparison.OrdinalIgnoreCase) ||
+                         p.CanonicalUrl.StartsWith(cleanLink, StringComparison.OrdinalIgnoreCase)));
+                    if (matchedComp != null)
+                    {
+                        matchedProductId = matchedComp.Id;
+                    }
+                }
+
+                var targetStatus = string.Equals(rawAd.Status, "Inactive", StringComparison.OrdinalIgnoreCase)
+                    ? AdStatus.Inactive
+                    : string.Equals(rawAd.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                        ? AdStatus.Active
+                        : (rawAd.StopDate.HasValue && rawAd.StopDate.Value <= now ? AdStatus.Inactive : AdStatus.Active);
+
+                if (existingByExternalId.TryGetValue(rawAd.Id, out var existing))
+                {
+                    existing.MissingCount = 0;
+                    existing.LastSeenAt = now;
+                    if (rawAd.StopDate.HasValue) existing.DeliveryStopDate = rawAd.StopDate.Value.ToUniversalTime();
+                    if (existing.ProductId == null && matchedProductId.HasValue) existing.ProductId = matchedProductId;
+                    if (!string.IsNullOrWhiteSpace(rawAd.Link)) existing.LinkUrl = rawAd.Link;
+                    if (!string.IsNullOrWhiteSpace(rawAd.SnapshotUrl)) existing.SnapshotUrl = rawAd.SnapshotUrl;
+
+                    if (existing.Status == AdStatus.Active && targetStatus == AdStatus.Inactive)
+                    {
+                        existing.Status = AdStatus.Inactive;
+                        var stopEvent = new ChangeEvent
+                        {
+                            RunId = Guid.Empty,
+                            AdId = existing.Id,
+                            Type = ChangeEventType.AdStopped,
+                            OldValue = existing.Title ?? existing.ExternalAdId
+                        };
+                        await unitOfWork.ChangeEvents.AddAsync(stopEvent, ct);
+                    }
+                    else if (existing.Status == AdStatus.Inactive && targetStatus == AdStatus.Active)
+                    {
+                        existing.Status = AdStatus.Active;
+                        var startEvent = new ChangeEvent
+                        {
+                            RunId = Guid.Empty,
+                            AdId = existing.Id,
+                            Type = ChangeEventType.AdStarted,
+                            NewValue = existing.Title ?? existing.ExternalAdId
+                        };
+                        await unitOfWork.ChangeEvents.AddAsync(startEvent, ct);
+                    }
+                    unitOfWork.Ads.Update(existing);
+                }
+                else
+                {
+                    var newAd = new Ad
+                    {
+                        CompetitorId = identity.CompetitorId,
+                        IdentityId = identity.Id,
+                        CampaignId = campaign.Id,
+                        ExternalAdId = rawAd.Id,
+                        Platform = AdPlatform.Meta,
+                        Title = rawAd.Title ?? identity.Name,
+                        Body = rawAd.Body,
+                        LinkUrl = rawAd.Link,
+                        SnapshotUrl = rawAd.SnapshotUrl ?? $"https://www.facebook.com/ads/library/?id={rawAd.Id}",
+                        DeliveryStartDate = rawAd.StartDate?.ToUniversalTime(),
+                        DeliveryStopDate = rawAd.StopDate?.ToUniversalTime(),
+                        FirstSeenAt = (rawAd.StartDate ?? now).ToUniversalTime(),
+                        LastSeenAt = now,
+                        Status = targetStatus,
+                        CreativeHash = creativeHash,
+                        MissingCount = 0,
+                        ProductId = matchedProductId,
+                        RawDataJson = rawAd.RawJson
+                    };
+                    await unitOfWork.Ads.AddAsync(newAd, ct);
+
+                    if (targetStatus == AdStatus.Active)
+                    {
+                        var startEvent = new ChangeEvent
+                        {
+                            RunId = Guid.Empty,
+                            AdId = newAd.Id,
+                            Type = ChangeEventType.AdStarted,
+                            NewValue = newAd.Title ?? newAd.ExternalAdId
+                        };
+                        await unitOfWork.ChangeEvents.AddAsync(startEvent, ct);
+                    }
+                    ingestedCount++;
+                }
+            }
+        }
+
+        // Handle missing ads from this Success run (ended when missing from 2 consecutive Success runs)
+        foreach (var ad in existingAds)
+        {
+            if (!seenAdIds.Contains(ad.ExternalAdId) && ad.Status == AdStatus.Active)
+            {
+                ad.MissingCount++;
+                if (ad.MissingCount >= 2)
+                {
+                    ad.Status = AdStatus.Inactive;
+                    ad.DeliveryStopDate = now;
+                    var stopEvent = new ChangeEvent
+                    {
+                        RunId = Guid.Empty,
+                        AdId = ad.Id,
+                        Type = ChangeEventType.AdStopped,
+                        OldValue = ad.Title ?? ad.ExternalAdId
+                    };
+                    await unitOfWork.ChangeEvents.AddAsync(stopEvent, ct);
+                }
+                unitOfWork.Ads.Update(ad);
+            }
+        }
+
+        await unitOfWork.SaveChangesAsync(ct);
+        return Ok(new { status = "Success", ingestedCount, totalProcessed = seenAdIds.Count });
+    }
+
+    private static string StripTrackingParams(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return string.Empty;
+        try
+        {
+            var uri = new Uri(url);
+            return $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}".TrimEnd('/');
+        }
+        catch
+        {
+            var qIdx = url.IndexOf('?');
+            return (qIdx > 0 ? url[..qIdx] : url).TrimEnd('/');
+        }
     }
 }

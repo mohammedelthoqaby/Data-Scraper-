@@ -48,4 +48,14 @@ public class AdvertiserIdentity : BaseEntity, IAggregateRoot
         }
         UpdatedAt = DateTimeOffset.UtcNow;
     }
+
+    public void Unblock()
+    {
+        if (Status == AdvertiserIdentityStatus.Blocked)
+        {
+            Status = AdvertiserIdentityStatus.Approved;
+        }
+        BlockedUntil = null;
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
 }
