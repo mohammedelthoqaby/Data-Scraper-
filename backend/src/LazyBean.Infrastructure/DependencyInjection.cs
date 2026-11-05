@@ -113,6 +113,7 @@ public static class DependencyInjection
         services.AddScoped<IAiTriageService, AiReviewTriageService>();
         services.AddScoped<IAlertService, AlertService>();
         services.AddSingleton<ICollectionProgressTracker, CollectionProgressTracker>();
+        services.AddSingleton<IDiagnosticsErrorBuffer, LazyBean.Infrastructure.Diagnostics.DiagnosticsErrorBuffer>();
         services.AddSingleton<IRunQueue, ChannelRunQueue>();
         services.AddSingleton<IRunCancellationTokenRegistry, RunCancellationTokenRegistry>();
         services.AddHostedService<CollectionRunBackgroundService>();

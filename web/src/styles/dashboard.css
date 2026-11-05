@@ -560,12 +560,127 @@ h2.panel-title {
 }
 
 /* Price Comparison Matrix */
+/* Viewport-locked layout so table scrolls internally with sticky header */
+body:has(.workspace-fixed-matrix) {
+  overflow: hidden;
+}
+
+.workspace.workspace-fixed-matrix {
+  height: 100vh;
+  overflow: hidden;
+}
+
+main.main-content.main-content-matrix {
+  padding: 14px 20px 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.price-matrix-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.price-matrix-view .page-heading {
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.price-matrix-view .page-heading .view-title {
+  font-size: 22px;
+}
+
+.price-matrix-view .page-heading .subtitle {
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.price-matrix-view .stats-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.price-matrix-view .stat-card {
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.price-matrix-view .stat-number {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0;
+}
+
+.price-matrix-view .stat-label {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.price-matrix-view .stat-sub {
+  display: none;
+}
+
 .matrix-container {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
   margin-bottom: 20px;
+}
+
+.price-matrix-view .matrix-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+.price-matrix-view .matrix-filters-bar {
+  padding: 8px 14px;
+  flex-shrink: 0;
+}
+
+.price-matrix-view .matrix-pager {
+  padding: 6px 14px;
+  flex-shrink: 0;
+}
+
+.price-matrix-view .matrix-table-wrap {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+@media (max-height: 640px) {
+  body:has(.workspace-fixed-matrix) {
+    overflow: auto;
+  }
+  .workspace.workspace-fixed-matrix {
+    height: auto;
+    overflow: visible;
+  }
+  main.main-content.main-content-matrix {
+    overflow: visible;
+    height: auto;
+  }
+  .price-matrix-view {
+    height: auto;
+    overflow: visible;
+  }
+  .price-matrix-view .matrix-table-wrap {
+    max-height: 65vh;
+  }
 }
 
 .matrix-filters-bar {

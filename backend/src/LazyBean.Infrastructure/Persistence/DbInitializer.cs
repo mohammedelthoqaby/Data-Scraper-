@@ -341,9 +341,9 @@ public static class DbInitializer
                 }
                 else if (run.Status == CollectionRunStatus.Running)
                 {
-                    run.Status = CollectionRunStatus.Failed;
+                    run.Status = CollectionRunStatus.Interrupted;
                     run.FinishedAt = now;
-                    logger.LogWarning("Marked interrupted CollectionRun {RunId} as Failed (reason: interrupted).", run.Id);
+                    logger.LogWarning("Marked interrupted CollectionRun {RunId} as Interrupted (reason: server restart).", run.Id);
                 }
             }
         }
@@ -356,11 +356,11 @@ public static class DbInitializer
         {
             foreach (var cr in runningCompetitorRuns)
             {
-                cr.Status = CompetitorRunStatus.Failed;
+                cr.Status = CompetitorRunStatus.Interrupted;
                 cr.Errors += 1;
                 cr.Coverage = RunCoverage.Partial;
                 logger.LogWarning(
-                    "Marked interrupted CompetitorRun {CompetitorRunId} (Run {RunId}, Competitor {CompetitorId}) as Failed (reason: interrupted).",
+                    "Marked interrupted CompetitorRun {CompetitorRunId} (Run {RunId}, Competitor {CompetitorId}) as Interrupted (reason: server restart).",
                     cr.Id, cr.RunId, cr.CompetitorId);
             }
         }

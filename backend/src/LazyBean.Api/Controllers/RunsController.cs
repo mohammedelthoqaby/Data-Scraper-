@@ -101,20 +101,21 @@ public class RunsController(ISender sender) : ControllerBase
     {
         var compRuns = await (
             from cr in db.Query<CompetitorRun>()
-            join c in db.Query<Competitor>() on cr.CompetitorId equals c.Id
+            join c in db.Query<Competitor>() on cr.CompetitorId equals c.Id into compJoin
+            from c in compJoin.DefaultIfEmpty()
             where cr.RunId == run.Id
             select new CompetitorProgressDto(
                 cr.CompetitorId,
-                c.Key,
-                c.Name,
-                c.IsReference,
+                c != null ? c.Key : "unknown",
+                c != null ? c.Name : "Unknown Competitor",
+                c != null && c.IsReference,
                 cr.Status.ToString(),
                 cr.Pages,
                 cr.Pages,
                 cr.Products,
                 cr.CreatedAt,
                 null,
-                c.CollectionHost)
+                c != null ? c.CollectionHost : "server")
         ).ToListAsync(ct);
 
         if (compRuns.Count == 0)
@@ -127,16 +128,16 @@ public class RunsController(ISender sender) : ControllerBase
 
             compRuns = competitors.Select(c => new CompetitorProgressDto(
                 c.Id,
-                c.Key,
-                c.Name,
-                c.IsReference,
+                c != null ? c.Key : "unknown",
+                c != null ? c.Name : "Unknown Competitor",
+                c != null && c.IsReference,
                 run.Status == CollectionRunStatus.Running ? "Running" : "Queued",
                 0,
                 null,
                 0,
                 run.CreatedAt,
                 null,
-                c.CollectionHost)).ToList();
+                c != null ? c.CollectionHost : "server")).ToList();
         }
 
         var phases = new List<PhaseProgressDto>();

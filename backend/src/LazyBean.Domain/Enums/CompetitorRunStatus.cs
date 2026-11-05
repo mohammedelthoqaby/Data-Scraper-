@@ -10,5 +10,7 @@ public enum CompetitorRunStatus
     // Product count dropped sharply vs. recent runs - likely a broken adapter, not a
     // real catalog shrink. Products are never marked Removed off a Degraded run.
     Degraded = 4,
-    Cancelled = 5
+    Cancelled = 5,
+    Suspicious = 6,
+    Interrupted = 7
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -11,26 +11,31 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "CollectionHost",
-                table: "competitors",
-                type: "character varying(32)",
-                maxLength: 32,
-                nullable: false,
-                defaultValue: "server");
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'competitors' AND column_name = 'CollectionHost'
+                    ) THEN
+                        ALTER TABLE competitors ADD COLUMN ""CollectionHost"" character varying(32) NOT NULL DEFAULT 'server';
+                    END IF;
 
-            migrationBuilder.AddColumn<DateTimeOffset>(
-                name: "LastCallAt",
-                table: "ai_settings",
-                type: "timestamp with time zone",
-                nullable: true);
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'ai_settings' AND column_name = 'LastCallAt'
+                    ) THEN
+                        ALTER TABLE ai_settings ADD COLUMN ""LastCallAt"" timestamp with time zone NULL;
+                    END IF;
 
-            migrationBuilder.AddColumn<string>(
-                name: "LastCallStatus",
-                table: "ai_settings",
-                type: "character varying(100)",
-                maxLength: 100,
-                nullable: true);
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'ai_settings' AND column_name = 'LastCallStatus'
+                    ) THEN
+                        ALTER TABLE ai_settings ADD COLUMN ""LastCallStatus"" character varying(100) NULL;
+                    END IF;
+                END $$;
+            ");
         }
 
         /// <inheritdoc />

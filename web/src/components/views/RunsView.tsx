@@ -26,6 +26,7 @@ export const RunsView: React.FC<RunsViewProps> = ({
   onActiveProgressChange,
 }) => {
   const [runs, setRuns] = useState<RunDto[]>([]);
+  const [runsError, setRunsError] = useState<{ status?: number; message: string; correlationId?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -57,11 +58,24 @@ export const RunsView: React.FC<RunsViewProps> = ({
     setIsLoading(true);
     try {
       const res = await api.GET('/api/runs');
-      if (res.data) {
+      if (res.error || !res.response.ok) {
+        const errObj: any = res.error || {};
+        setRunsError({
+          status: res.response.status,
+          message: errObj.title || errObj.detail || errObj.message || `Server returned error (${res.response.status})`,
+          correlationId: errObj.correlationId || res.response.headers.get('x-correlation-id') || undefined,
+        });
+      } else if (res.data) {
+        setRunsError(null);
         setRuns(res.data);
       }
     } catch (err: any) {
       console.error('Failed to fetch runs:', err);
+      setRunsError({
+        status: err.status || 500,
+        message: err.message || 'Network error fetching collection history',
+        correlationId: err.correlationId,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -259,6 +273,50 @@ export const RunsView: React.FC<RunsViewProps> = ({
             {isStarting ? 'Initiating Run...' : '▶ Start Collection Run'}
           </button>
         </div>
+
+        {runsError && (
+          <div
+            style={{
+              padding: '16px 20px',
+              background: '#fee2e2',
+              border: '1px solid #f87171',
+              borderRadius: '8px',
+              margin: '16px',
+              color: '#991b1b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>
+                ⚠️ Failed to load Collection History (HTTP {runsError.status || 500})
+              </div>
+              <div style={{ fontSize: '13px' }}>{runsError.message}</div>
+              {runsError.correlationId && (
+                <div style={{ fontSize: '11px', color: '#b91c1c', marginTop: '4px', fontFamily: 'monospace' }}>
+                  Correlation ID: {runsError.correlationId}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{
+                background: '#fff',
+                borderColor: '#dc2626',
+                color: '#dc2626',
+                fontWeight: 600,
+                padding: '6px 16px',
+                flexShrink: 0,
+              }}
+              onClick={fetchRunsList}
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </div>
 
       {matchNotice && (
@@ -506,7 +564,7 @@ export const RunsView: React.FC<RunsViewProps> = ({
       <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
         <div className="panel-header" style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)' }}>
           <h2 className="panel-title" style={{ fontSize: '16px' }}>
-            Collection History {isLoading ? <span className="skeleton skeleton-text" style={{ width: '40px', display: 'inline-block' }} /> : `(${runs.length})`}
+            Collection History {isLoading ? <span className="skeleton skeleton-text" style={{ width: '40px', display: 'inline-block' }} /> : runsError ? '(Error)' : `(${runs.length})`}
           </h2>
           <button
             type="button"
@@ -553,7 +611,10 @@ export const RunsView: React.FC<RunsViewProps> = ({
                   let parsedPhases: any[] = [];
                   if (r.phasesJson) {
                     try {
-                      parsedPhases = JSON.parse(r.phasesJson);
+                      const parsed = JSON.parse(r.phasesJson);
+                      if (Array.isArray(parsed)) {
+                        parsedPhases = parsed;
+                      }
                     } catch {}
                   }
 

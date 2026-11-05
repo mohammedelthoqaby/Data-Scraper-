@@ -68,6 +68,7 @@ export const App: React.FC = () => {
   const [runs, setRuns] = useState<CollectionRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [matrix, setMatrix] = useState<PriceMatrixResponse | null>(null);
+  const [matrixError, setMatrixError] = useState<{ status?: number; message: string } | null>(null);
   const [offers, setOffers] = useState<CompetitorOffersResponse | null>(null);
   const [reviewCount, setReviewCount] = useState<number>(0);
   const [alertCount, setAlertCount] = useState<number>(0);
@@ -196,16 +197,36 @@ export const App: React.FC = () => {
     setIsLoading(true);
     try {
       if (runId) {
-        const { data, response } = await api.GET('/api/runs/{id}/price-matrix', {
+        const res = await api.GET('/api/runs/{id}/price-matrix', {
           params: { path: { id: runId } },
         });
-        if (response?.status === 200 && data) setMatrix(data);
+        if (res.error || !res.response.ok) {
+          setMatrixError({
+            status: res.response.status,
+            message: (res.error as any)?.title || (res.error as any)?.message || `Server returned error (${res.response.status})`,
+          });
+        } else if (res.data) {
+          setMatrixError(null);
+          setMatrix(res.data);
+        }
       } else {
-        const { data, response } = await api.GET('/api/price-matrix/latest');
-        if (response?.status === 200 && data) setMatrix(data);
+        const res = await api.GET('/api/price-matrix/latest');
+        if (res.error || !res.response.ok) {
+          setMatrixError({
+            status: res.response.status,
+            message: (res.error as any)?.title || (res.error as any)?.message || `Server returned error (${res.response.status})`,
+          });
+        } else if (res.data) {
+          setMatrixError(null);
+          setMatrix(res.data);
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch price matrix:', err);
+      setMatrixError({
+        status: err?.status || 500,
+        message: err?.message || 'Network error fetching price matrix',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -227,6 +248,7 @@ export const App: React.FC = () => {
     setRuns([]);
     setSelectedRunId(null);
     setMatrix(null);
+    setMatrixError(null);
     setOffers(null);
     setReviewCount(0);
   }, []);
@@ -326,7 +348,7 @@ export const App: React.FC = () => {
       />
 
       {/* Main Workspace */}
-      <div className="workspace">
+      <div className={`workspace ${activeView === 'price-comparisons' ? 'workspace-fixed-matrix' : ''}`}>
         <Header
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
           user={user}
@@ -335,7 +357,7 @@ export const App: React.FC = () => {
           onNavigateToRuns={() => navigateTo('runs')}
         />
 
-        <main className="main-content">
+        <main className={`main-content ${activeView === 'price-comparisons' ? 'main-content-matrix' : ''}`}>
           {isCheckingAuth ? (
             <div
               className="workspace-loading"
@@ -402,9 +424,11 @@ export const App: React.FC = () => {
               {activeView === 'price-comparisons' && (
                 <PriceMatrixView
                   matrix={matrix}
+                  matrixError={matrixError}
                   selectedRunId={selectedRunId}
                   isLoading={isLoading}
                   onOpenProductDetail={openProductDetail}
+                  onRetry={() => fetchMatrix(selectedRunId)}
                 />
               )}
 

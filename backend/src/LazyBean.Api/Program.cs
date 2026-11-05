@@ -161,6 +161,40 @@ app.Logger.LogInformation("Test logo.svg Exists: {Exists}, PhysicalPath: {Physic
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<LazyBeanDbContext>();
+
+    try
+    {
+        var appliedMigrations = (await db.Database.GetAppliedMigrationsAsync()).ToList();
+        app.Logger.LogInformation("Database applied migrations ({Count}): {Migrations}",
+            appliedMigrations.Count, string.Join(", ", appliedMigrations));
+
+        // Reconcile legacy hand-written migration entry in __EFMigrationsHistory if present
+        await db.Database.ExecuteSqlRawAsync(@"
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.tables WHERE table_name = '__EFMigrationsHistory'
+                ) THEN
+                    IF EXISTS (
+                        SELECT 1 FROM ""__EFMigrationsHistory"" 
+                        WHERE ""MigrationId"" = '20261105183500_AddCollectionHostAndAiCallStatus'
+                    ) AND NOT EXISTS (
+                        SELECT 1 FROM ""__EFMigrationsHistory"" 
+                        WHERE ""MigrationId"" = '20261105173443_AddCollectionHostAndAiCallStatus'
+                    ) THEN
+                        INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
+                        VALUES ('20261105173443_AddCollectionHostAndAiCallStatus', '9.0.2')
+                        ON CONFLICT DO NOTHING;
+                    END IF;
+                END IF;
+            END $$;
+        ");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Failed to log applied migrations or reconcile __EFMigrationsHistory.");
+    }
+
     var pendingMigrations = (await db.Database.GetPendingMigrationsAsync()).ToList();
     if (pendingMigrations.Count > 0)
     {
@@ -173,6 +207,43 @@ using (var scope = app.Services.CreateScope())
     else
     {
         app.Logger.LogInformation("Database is up to date (no pending migrations).");
+    }
+
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync(@"
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'competitors') THEN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'competitors' AND column_name = 'CollectionHost') THEN
+                        ALTER TABLE competitors ADD COLUMN ""CollectionHost"" character varying(32) NOT NULL DEFAULT 'server';
+                    END IF;
+                END IF;
+
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'ai_settings') THEN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'ai_settings' AND column_name = 'LastCallAt') THEN
+                        ALTER TABLE ai_settings ADD COLUMN ""LastCallAt"" timestamp with time zone NULL;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'ai_settings' AND column_name = 'LastCallStatus') THEN
+                        ALTER TABLE ai_settings ADD COLUMN ""LastCallStatus"" character varying(100) NULL;
+                    END IF;
+                END IF;
+
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'collection_runs') THEN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'collection_runs' AND column_name = 'MatchesCount') THEN
+                        ALTER TABLE collection_runs ADD COLUMN ""MatchesCount"" integer NULL;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'collection_runs' AND column_name = 'PhasesJson') THEN
+                        ALTER TABLE collection_runs ADD COLUMN ""PhasesJson"" text NULL;
+                    END IF;
+                END IF;
+            END $$;
+        ");
+        app.Logger.LogInformation("Database critical schema columns verified idempotently.");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Failed to verify critical database schema columns idempotently.");
     }
 }
 

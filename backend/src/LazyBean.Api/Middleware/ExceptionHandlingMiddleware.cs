@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using LazyBean.Application.Common.Interfaces;
 using LazyBean.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -9,7 +10,10 @@ namespace LazyBean.Api.Middleware;
 
 // Single place that turns domain/application exceptions into consistent ProblemDetails
 // JSON responses, so controllers stay free of try/catch noise.
-public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
+public class ExceptionHandlingMiddleware(
+    RequestDelegate next,
+    ILogger<ExceptionHandlingMiddleware> logger,
+    IDiagnosticsErrorBuffer? diagnosticsErrorBuffer = null)
 {
     public async Task InvokeAsync(HttpContext context)
     {
@@ -44,15 +48,28 @@ public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Exception
             _ => (HttpStatusCode.InternalServerError, "An unexpected error occurred.", null)
         };
 
-        if (statusCode == HttpStatusCode.InternalServerError)
-        {
-            logger.LogError(exception, "Unhandled exception processing {Method} {Path}",
-                context.Request.Method, context.Request.Path);
-        }
-
         var correlationId = context.Items.TryGetValue(CorrelationIdMiddleware.HeaderName, out var id)
             ? id?.ToString()
             : context.TraceIdentifier;
+
+        if (statusCode == HttpStatusCode.InternalServerError)
+        {
+            logger.LogError(
+                exception,
+                "[CorrelationId: {CorrelationId}] Unhandled exception processing {Method} {Path}: {Message}\n{StackTrace}",
+                correlationId,
+                context.Request.Method,
+                context.Request.Path,
+                exception.Message,
+                exception.StackTrace);
+
+            diagnosticsErrorBuffer?.RecordError(
+                context.Request.Path.Value ?? "",
+                context.Request.Method,
+                correlationId,
+                exception,
+                (int)statusCode);
+        }
 
         var problem = new Dictionary<string, object?>
         {

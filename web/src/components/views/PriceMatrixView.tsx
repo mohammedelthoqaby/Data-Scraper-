@@ -4,9 +4,11 @@ import { undoMatch } from '../../api/alerts';
 
 interface PriceMatrixViewProps {
   matrix: PriceMatrixResponse | null;
+  matrixError?: { status?: number; message: string } | null;
   selectedRunId: string | null;
   isLoading?: boolean;
   onOpenProductDetail?: (productId: string, title?: string, row?: PriceMatrixRow) => void;
+  onRetry?: () => void;
 }
 
 const COMPETITOR_COLUMNS = [
@@ -19,9 +21,11 @@ const COMPETITOR_COLUMNS = [
 
 export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
   matrix,
+  matrixError,
   selectedRunId,
   isLoading,
   onOpenProductDetail,
+  onRetry,
 }) => {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
@@ -144,6 +148,47 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
           <div className="stat-sub">In coffee & accessories</div>
         </div>
       </div>
+
+      {matrixError && (
+        <div
+          style={{
+            padding: '16px 20px',
+            background: '#fee2e2',
+            border: '1px solid #f87171',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            color: '#991b1b',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>
+              ⚠️ Failed to load Price Comparisons (HTTP {matrixError.status || 500})
+            </div>
+            <div style={{ fontSize: '13px' }}>{matrixError.message}</div>
+          </div>
+          {onRetry && (
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{
+                background: '#fff',
+                borderColor: '#dc2626',
+                color: '#dc2626',
+                fontWeight: 600,
+                padding: '6px 16px',
+                flexShrink: 0,
+              }}
+              onClick={onRetry}
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Matrix Container */}
       <div className="matrix-container">

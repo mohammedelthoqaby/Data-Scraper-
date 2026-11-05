@@ -309,8 +309,34 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
           </div>
         </div>
       ) : error ? (
-        <div className="callout" style={{ borderLeftColor: '#962f32', color: '#962f32' }}>
-          {error}
+        <div
+          className="callout"
+          style={{
+            borderLeftColor: '#962f32',
+            color: '#962f32',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+          }}
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{
+              background: '#fff',
+              borderColor: '#962f32',
+              color: '#962f32',
+              fontWeight: 600,
+              padding: '4px 12px',
+              fontSize: '12px',
+              flexShrink: 0,
+            }}
+            onClick={fetchOffers}
+          >
+            Retry
+          </button>
         </div>
       ) : displayedOffers.length === 0 ? (
         <div className="panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--muted)' }}>

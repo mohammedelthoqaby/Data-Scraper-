@@ -60,11 +60,11 @@ public class StartupRecoveryTests(TestDatabaseFixture testDb)
 
             // Assertions
             var recoveredRun = await db.CollectionRuns.AsNoTracking().SingleAsync(r => r.Id == stuckRun.Id);
-            Assert.Equal(CollectionRunStatus.Failed, recoveredRun.Status);
+            Assert.Equal(CollectionRunStatus.Interrupted, recoveredRun.Status);
             Assert.NotNull(recoveredRun.FinishedAt);
 
             var recoveredCr = await db.CompetitorRuns.AsNoTracking().SingleAsync(cr => cr.Id == stuckCompetitorRun.Id);
-            Assert.Equal(CompetitorRunStatus.Failed, recoveredCr.Status);
+            Assert.Equal(CompetitorRunStatus.Interrupted, recoveredCr.Status);
             Assert.Equal(RunCoverage.Partial, recoveredCr.Coverage);
             Assert.Equal(1, recoveredCr.Errors);
         }

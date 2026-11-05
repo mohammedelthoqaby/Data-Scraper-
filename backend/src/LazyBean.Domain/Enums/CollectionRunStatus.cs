@@ -7,5 +7,6 @@ public enum CollectionRunStatus
     Completed = 2,
     Failed = 3,
     Partial = 4,
-    Cancelled = 5
+    Cancelled = 5,
+    Interrupted = 6
 }

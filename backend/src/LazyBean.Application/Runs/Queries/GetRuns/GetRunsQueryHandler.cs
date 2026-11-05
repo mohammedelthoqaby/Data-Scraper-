@@ -29,16 +29,17 @@ public class GetRunsQueryHandler(IReadDbContext readContext, ICacheService cache
 
                 var compRuns = await (
                     from cr in readContext.Query<CompetitorRun>()
-                    join c in readContext.Query<Competitor>() on cr.CompetitorId equals c.Id
+                    join c in readContext.Query<Competitor>() on cr.CompetitorId equals c.Id into compJoin
+                    from c in compJoin.DefaultIfEmpty()
                     where runIds.Contains(cr.RunId)
                     select new
                     {
                         cr.RunId,
                         Dto = new CompetitorRunDto(
                             cr.CompetitorId,
-                            c.Key,
-                            c.Name,
-                            c.IsReference,
+                            c != null ? c.Key : "unknown",
+                            c != null ? c.Name : "Unknown Competitor",
+                            c != null && c.IsReference,
                             cr.Status.ToString(),
                             cr.Coverage.ToString(),
                             cr.Pages,

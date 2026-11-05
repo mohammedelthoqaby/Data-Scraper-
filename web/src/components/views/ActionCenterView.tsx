@@ -41,6 +41,7 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
   // History Modal State
   const [historyAlertId, setHistoryAlertId] = useState<string | null>(null);
   const [historyItems, setHistoryItems] = useState<AlertHistoryEntry[]>([]);
+  const [loadError, setLoadError] = useState<{ status?: number; message: string } | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState<boolean>(false);
 
   const loadData = useCallback(async () => {
@@ -59,9 +60,14 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
       setAlerts(alertList);
       setSummary(summaryData);
       setHealth(healthData);
+      setLoadError(null);
       onRefreshAlertCount?.();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load Action Center data:', err);
+      setLoadError({
+        status: err?.status || 500,
+        message: err?.message || 'Failed to load Action Center alerts',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -292,7 +298,44 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
 
       {/* 4. Alert Cards List */}
       <div className="alert-cards-container">
-        {isLoading ? (
+        {loadError ? (
+          <div
+            style={{
+              padding: '16px 20px',
+              background: '#fee2e2',
+              border: '1px solid #f87171',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              color: '#991b1b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>
+                ⚠️ Failed to load Action Center data (HTTP {loadError.status || 500})
+              </div>
+              <div style={{ fontSize: '13px' }}>{loadError.message}</div>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{
+                background: '#fff',
+                borderColor: '#dc2626',
+                color: '#dc2626',
+                fontWeight: 600,
+                padding: '6px 16px',
+                flexShrink: 0,
+              }}
+              onClick={loadData}
+            >
+              Retry
+            </button>
+          </div>
+        ) : isLoading ? (
           <div>
             <div className="skeleton-card" style={{ marginBottom: '16px' }}>
               <div className="skeleton skeleton-row" style={{ width: '30%', height: '20px' }} />

@@ -16,14 +16,20 @@ export const DataQualityView: React.FC<DataQualityViewProps> = ({
   const [healthInfo, setHealthInfo] = useState<DataHealthInfo | null>(null);
   const [isLoadingAudit, setIsLoadingAudit] = useState<boolean>(false);
   const [auditMessage, setAuditMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<{ status?: number; message: string } | null>(null);
 
   const loadAuditData = async () => {
     setIsLoadingAudit(true);
     try {
       const items = await fetchAuditMatches();
       setAuditMatches(items);
-    } catch (err) {
+      setLoadError(null);
+    } catch (err: any) {
       console.error('Failed to load match audit:', err);
+      setLoadError({
+        status: err?.status || 500,
+        message: err?.message || 'Failed to load match audit sample',
+      });
     } finally {
       setIsLoadingAudit(false);
     }
@@ -136,7 +142,44 @@ export const DataQualityView: React.FC<DataQualityViewProps> = ({
             </button>
           </div>
 
-          {isLoadingAudit ? (
+          {loadError ? (
+            <div
+              style={{
+                padding: '16px 20px',
+                background: '#fee2e2',
+                border: '1px solid #f87171',
+                borderRadius: '8px',
+                margin: '16px 0',
+                color: '#991b1b',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>
+                  ⚠️ Failed to load match audit sample (HTTP {loadError.status || 500})
+                </div>
+                <div style={{ fontSize: '13px' }}>{loadError.message}</div>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{
+                  background: '#fff',
+                  borderColor: '#dc2626',
+                  color: '#dc2626',
+                  fontWeight: 600,
+                  padding: '6px 16px',
+                  flexShrink: 0,
+                }}
+                onClick={loadAuditData}
+              >
+                Retry
+              </button>
+            </div>
+          ) : isLoadingAudit ? (
             <div style={{ padding: '40px', textAlign: 'center' }}>
               <div className="spinner" />
               <p>Sampling AI matches...</p>

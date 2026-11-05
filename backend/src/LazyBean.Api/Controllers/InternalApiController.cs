@@ -133,6 +133,19 @@ public class InternalApiController(
         return Accepted(result);
     }
 
+    [HttpGet("diagnostics/last-errors")]
+    [ProducesResponseType(typeof(DiagnosticsSummary), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult GetLastErrors([FromServices] IDiagnosticsErrorBuffer errorBuffer)
+    {
+        if (!IsAuthorized())
+        {
+            return Unauthorized(new { error = "Invalid or missing X-Internal-Token header." });
+        }
+
+        return Ok(errorBuffer.GetSummary());
+    }
+
     [HttpGet("runs/latest")]
     [ProducesResponseType(typeof(RunDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
