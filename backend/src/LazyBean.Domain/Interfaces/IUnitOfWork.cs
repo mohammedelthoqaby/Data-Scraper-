@@ -19,4 +19,5 @@ public interface IUnitOfWork : IDisposable
     IRepository<Entities.AlertSetting> AlertSettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
+    void ClearTracker();
 }

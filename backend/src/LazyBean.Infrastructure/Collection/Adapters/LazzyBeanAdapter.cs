@@ -203,6 +203,11 @@ public class LazzyBeanAdapter : ICompetitorAdapter
                         break;
                     }
                     prodData = JsonSerializer.Deserialize<LazzyBeanProductsResponse>(prodResponse.Body, JsonOpts);
+                    if (prodData?.Data?.Pagination is { } pag)
+                    {
+                        CollectionRunContext.SetTotalPages(pag.LastPage);
+                        CollectionRunContext.SetStatusMessage($"{catName}: page {page} of {pag.LastPage} ({seenProductIds.Count} items)");
+                    }
                 }
                 catch (Exception ex)
                 {

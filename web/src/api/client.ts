@@ -50,3 +50,56 @@ export type ReviewMatchItem = Schemas['ReviewMatchItemDto'];
 export type RunDto = Schemas['RunDto'];
 export type PriceHistoryResponse = Schemas['PriceHistoryResponseDto'];
 export type PriceHistoryPoint = Schemas['PriceHistoryPointDto'];
+
+export interface CompetitorProgress {
+  competitorId: string;
+  competitorKey: string;
+  competitorName: string;
+  isReference: boolean;
+  status: string;
+  currentPage: number;
+  totalPages: number | null;
+  productsSaved: number;
+  lastUpdated: string;
+  lastMessage: string | null;
+}
+
+export interface PhaseProgress {
+  name: string;
+  status: string;
+  message: string | null;
+  durationMs: number | null;
+}
+
+export interface RunProgress {
+  runId: string;
+  status: string;
+  overallPercent: number;
+  isStalled: boolean;
+  lastLogMessage: string | null;
+  lastProgressAt: string;
+  competitors: CompetitorProgress[];
+  phases: PhaseProgress[];
+}
+
+export async function fetchRunProgress(runId: string): Promise<RunProgress | null> {
+  const res = await fetch(`/api/runs/${runId}/progress`, { credentials: 'include' });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchActiveRunProgress(): Promise<RunProgress | null> {
+  const res = await fetch(`/api/runs/active/progress`, { credentials: 'include' });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function triggerMatchingNow(): Promise<any> {
+  const res = await fetch('/api/matches/run', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error(`Matching failed: ${res.statusText}`);
+  return res.json();
+}

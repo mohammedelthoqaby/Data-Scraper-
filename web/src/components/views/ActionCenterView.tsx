@@ -212,7 +212,9 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
           className={`action-kpi-card urgent ${severityFilter === 'Urgent' ? 'selected' : ''}`}
           onClick={() => setSeverityFilter(severityFilter === 'Urgent' ? 'All' : 'Urgent')}
         >
-          <div className="kpi-num">{summary?.urgentCount ?? 0}</div>
+          <div className="kpi-num">
+            {isLoading && !summary ? <span className="skeleton skeleton-number" /> : summary?.urgentCount ?? 0}
+          </div>
           <div className="kpi-label">{language === 'ar' ? 'تنبيهات عاجلة' : 'Urgent Alerts'}</div>
           <div className="kpi-hint">{language === 'ar' ? 'فوارق أسعار، إعلانات، ونفاد مخزون' : 'Gaps ≥10%, ad threats, OOS'}</div>
         </div>
@@ -221,7 +223,9 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
           className={`action-kpi-card opportunity ${severityFilter === 'Opportunity' ? 'selected' : ''}`}
           onClick={() => setSeverityFilter(severityFilter === 'Opportunity' ? 'All' : 'Opportunity')}
         >
-          <div className="kpi-num">{summary?.opportunityCount ?? 0}</div>
+          <div className="kpi-num">
+            {isLoading && !summary ? <span className="skeleton skeleton-number" /> : summary?.opportunityCount ?? 0}
+          </div>
           <div className="kpi-label">{language === 'ar' ? 'فرص ربحية' : 'Opportunities'}</div>
           <div className="kpi-hint">{language === 'ar' ? 'مخزون حصري وهامش زيادة أسعار' : 'Exclusive inventory, margin room'}</div>
         </div>
@@ -230,7 +234,9 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
           className={`action-kpi-card watch ${severityFilter === 'Watch' ? 'selected' : ''}`}
           onClick={() => setSeverityFilter(severityFilter === 'Watch' ? 'All' : 'Watch')}
         >
-          <div className="kpi-num">{summary?.watchCount ?? 0}</div>
+          <div className="kpi-num">
+            {isLoading && !summary ? <span className="skeleton skeleton-number" /> : summary?.watchCount ?? 0}
+          </div>
           <div className="kpi-label">{language === 'ar' ? 'مراقبة ومتابعة' : 'Watch Items'}</div>
           <div className="kpi-hint">{language === 'ar' ? 'حملات خصم وفوارق زمنية > 14 يوماً' : 'Big campaigns, prolonged gaps'}</div>
         </div>
@@ -239,7 +245,9 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
           className={`action-kpi-card total ${severityFilter === 'All' ? 'selected' : ''}`}
           onClick={() => setSeverityFilter('All')}
         >
-          <div className="kpi-num">{summary?.totalActive ?? 0}</div>
+          <div className="kpi-num">
+            {isLoading && !summary ? <span className="skeleton skeleton-number" /> : summary?.totalActive ?? 0}
+          </div>
           <div className="kpi-label">{language === 'ar' ? 'إجمالي النشطة' : 'Total Active'}</div>
           <div className="kpi-hint">{language === 'ar' ? 'تتطلب قراراً من المدير' : 'Requiring manager decision'}</div>
         </div>
@@ -285,9 +293,17 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
       {/* 4. Alert Cards List */}
       <div className="alert-cards-container">
         {isLoading ? (
-          <div className="loading-state">
-            <div className="spinner" />
-            <p>Loading manager action items...</p>
+          <div>
+            <div className="skeleton-card" style={{ marginBottom: '16px' }}>
+              <div className="skeleton skeleton-row" style={{ width: '30%', height: '20px' }} />
+              <div className="skeleton skeleton-row" style={{ width: '75%', height: '24px' }} />
+              <div className="skeleton skeleton-row" style={{ width: '90%', height: '16px' }} />
+            </div>
+            <div className="skeleton-card" style={{ marginBottom: '16px' }}>
+              <div className="skeleton skeleton-row" style={{ width: '30%', height: '20px' }} />
+              <div className="skeleton skeleton-row" style={{ width: '75%', height: '24px' }} />
+              <div className="skeleton skeleton-row" style={{ width: '90%', height: '16px' }} />
+            </div>
           </div>
         ) : alerts.length === 0 ? (
           <div className="empty-state-card">

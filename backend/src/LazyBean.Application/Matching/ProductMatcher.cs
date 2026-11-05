@@ -169,148 +169,6 @@ public class ProductMatcher : IProductMatcher
             }
         }
 
-        // Load reference products and variants
-        var refQuery = await (
-            from p in _readContext.Query<Product>()
-            join v in _readContext.Query<Variant>() on p.Id equals v.ProductId
-            where p.CompetitorId == referenceCompetitor.Id && p.Status == ProductStatus.Active
-            select new
-            {
-                ProductId = p.Id,
-                VariantId = v.Id,
-                ExternalId = p.ExternalId,
-                CompetitorId = p.CompetitorId,
-                Title = p.Title,
-                NormalizedTitle = p.NormalizedTitle,
-                Category = p.Category,
-                ProductType = p.ProductType,
-                Vendor = p.Vendor,
-                Brand = p.Brand,
-                CanonicalCategory = p.CanonicalCategory,
-                WeightGrams = p.WeightGrams,
-                UnitCount = p.UnitCount,
-                Tags = p.Tags,
-                Roast = p.Roast,
-                Price = _readContext.Query<PriceObservation>()
-                    .Where(po => po.VariantId == v.Id)
-                    .OrderByDescending(po => po.ObservedAt)
-                    .Select(po => po.Price)
-                    .FirstOrDefault(),
-                CanonicalUrl = p.CanonicalUrl
-            }).ToListAsync(ct);
-
-        var refProducts = refQuery.Select(p =>
-        {
-            var weight = p.WeightGrams ?? TitleNormalizer.ExtractWeightGrams(p.Title);
-            var unit = p.UnitCount ?? TitleNormalizer.ExtractUnitCount(p.Title, p.CanonicalCategory);
-            var vol = TitleNormalizer.ExtractVolumeMl(p.Title);
-            var brand = DetectBrand(p.Brand ?? p.Vendor, p.Title, dynamicBrands);
-            var capsule = TitleNormalizer.ExtractCapsuleSystem(p.Title, p.CanonicalCategory);
-            var beverage = TitleNormalizer.ExtractBeverageType(p.Title, p.CanonicalCategory);
-            var distTokens = ExtractDistinguishingTokens(p.Title, brand, weight, unit, vol, p.CanonicalCategory, _genericTokens);
-
-            return new MatchCandidate
-            {
-                ProductId = p.ProductId,
-                VariantId = p.VariantId,
-                ExternalId = p.ExternalId,
-                CompetitorId = p.CompetitorId,
-                CompetitorKey = referenceCompetitor.Key,
-                Title = p.Title,
-                NormalizedTitle = p.NormalizedTitle,
-                Category = p.Category,
-                ProductType = p.ProductType,
-                Tags = p.Tags,
-                Roast = p.Roast,
-                Vendor = p.Vendor,
-                CanonicalCategory = p.CanonicalCategory,
-                WeightGrams = weight,
-                UnitCount = unit,
-                VolumeMl = vol,
-                Price = p.Price,
-                CanonicalUrl = p.CanonicalUrl,
-                Tokens = TitleSimilarity.ExtractTokens(p.Title),
-                Brand = brand,
-                CapsuleSystem = capsule,
-                BeverageType = beverage,
-                DistinguishingTokens = distTokens
-            };
-        }).ToList();
-
-        _logger.LogInformation("Loaded {Count} reference product variants for matching.", refProducts.Count);
-
-        // Load all competitor products and variants
-        var compQuery = await (
-            from p in _readContext.Query<Product>()
-            join v in _readContext.Query<Variant>() on p.Id equals v.ProductId
-            join c in _readContext.Query<Competitor>() on p.CompetitorId equals c.Id
-            where !c.IsReference && c.Enabled && p.Status == ProductStatus.Active
-            select new
-            {
-                ProductId = p.Id,
-                VariantId = v.Id,
-                ExternalId = p.ExternalId,
-                CompetitorId = p.CompetitorId,
-                CompetitorKey = c.Key,
-                Title = p.Title,
-                NormalizedTitle = p.NormalizedTitle,
-                Category = p.Category,
-                ProductType = p.ProductType,
-                Vendor = p.Vendor,
-                Brand = p.Brand,
-                CanonicalCategory = p.CanonicalCategory,
-                WeightGrams = p.WeightGrams,
-                UnitCount = p.UnitCount,
-                Tags = p.Tags,
-                Roast = p.Roast,
-                Price = _readContext.Query<PriceObservation>()
-                    .Where(po => po.VariantId == v.Id)
-                    .OrderByDescending(po => po.ObservedAt)
-                    .Select(po => po.Price)
-                    .FirstOrDefault(),
-                CanonicalUrl = p.CanonicalUrl
-            }).ToListAsync(ct);
-
-        var compProducts = compQuery.Select(p =>
-        {
-            var weight = p.WeightGrams ?? TitleNormalizer.ExtractWeightGrams(p.Title);
-            var unit = p.UnitCount ?? TitleNormalizer.ExtractUnitCount(p.Title, p.CanonicalCategory);
-            var vol = TitleNormalizer.ExtractVolumeMl(p.Title);
-            var brand = DetectBrand(p.Brand ?? p.Vendor, p.Title, dynamicBrands);
-            var capsule = TitleNormalizer.ExtractCapsuleSystem(p.Title, p.CanonicalCategory);
-            var beverage = TitleNormalizer.ExtractBeverageType(p.Title, p.CanonicalCategory);
-            var distTokens = ExtractDistinguishingTokens(p.Title, brand, weight, unit, vol, p.CanonicalCategory, _genericTokens);
-
-            return new MatchCandidate
-            {
-                ProductId = p.ProductId,
-                VariantId = p.VariantId,
-                ExternalId = p.ExternalId,
-                CompetitorId = p.CompetitorId,
-                CompetitorKey = p.CompetitorKey,
-                Title = p.Title,
-                NormalizedTitle = p.NormalizedTitle,
-                Category = p.Category,
-                ProductType = p.ProductType,
-                Tags = p.Tags,
-                Roast = p.Roast,
-                Vendor = p.Vendor,
-                CanonicalCategory = p.CanonicalCategory,
-                WeightGrams = weight,
-                UnitCount = unit,
-                VolumeMl = vol,
-                Price = p.Price,
-                CanonicalUrl = p.CanonicalUrl,
-                Tokens = TitleSimilarity.ExtractTokens(p.Title),
-                Brand = brand,
-                CapsuleSystem = capsule,
-                BeverageType = beverage,
-                DistinguishingTokens = distTokens
-            };
-        }).ToList();
-
-        _logger.LogInformation("Loaded {Count} competitor product variants for matching.", compProducts.Count);
-
         // Existing matches to avoid duplicate inserts
         var existingMatches = await _readContext.Query<ProductMatch>()
             .ToDictionaryAsync(m => (m.CompetitorVariantId, m.ReferenceVariantId), ct);
@@ -343,161 +201,238 @@ public class ProductMatcher : IProductMatcher
         var sizeVariantCount = 0;
         var reviewItemCount = 0;
 
-        // Group reference products by (CanonicalCategory, Brand)
-        var refByCategoryAndBrand = refProducts
-            .Where(p => p.Brand != null)
-            .GroupBy(p => (p.CanonicalCategory, p.Brand!))
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        var refByCategory = refProducts
-            .GroupBy(p => p.CanonicalCategory)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        // Process matching grouped by CanonicalCategory to maintain low working set memory
-        foreach (var categoryGroup in compProducts.GroupBy(p => p.CanonicalCategory))
+        // Process matching category-by-category to stay strictly within 256 MB RAM
+        var categories = Enum.GetValues<CanonicalCategory>();
+        foreach (var category in categories)
         {
-            var category = categoryGroup.Key;
+            var refQuery = await (
+                from p in _readContext.Query<Product>()
+                join v in _readContext.Query<Variant>() on p.Id equals v.ProductId
+                where p.CompetitorId == referenceCompetitor.Id && p.CanonicalCategory == category && p.Status == ProductStatus.Active
+                select new
+                {
+                    ProductId = p.Id,
+                    VariantId = v.Id,
+                    ExternalId = p.ExternalId,
+                    CompetitorId = p.CompetitorId,
+                    Title = p.Title,
+                    NormalizedTitle = p.NormalizedTitle,
+                    Category = p.Category,
+                    ProductType = p.ProductType,
+                    Vendor = p.Vendor,
+                    Brand = p.Brand,
+                    CanonicalCategory = p.CanonicalCategory,
+                    WeightGrams = p.WeightGrams,
+                    UnitCount = p.UnitCount,
+                    Tags = p.Tags,
+                    Roast = p.Roast,
+                    Price = _readContext.Query<PriceObservation>()
+                        .Where(po => po.VariantId == v.Id)
+                        .OrderByDescending(po => po.ObservedAt)
+                        .Select(po => po.Price)
+                        .FirstOrDefault(),
+                    CanonicalUrl = p.CanonicalUrl
+                }).ToListAsync(ct);
 
-            foreach (var comp in categoryGroup)
-        {
-            List<MatchCandidate>? candidates = null;
-
-            if (comp.Brand != null && refByCategoryAndBrand.TryGetValue((comp.CanonicalCategory, comp.Brand), out var brandMatches))
-            {
-                candidates = brandMatches;
-            }
-            else if (comp.Brand == null && refByCategory.TryGetValue(comp.CanonicalCategory, out var catMatches))
-            {
-                candidates = catMatches;
-            }
-
-            if (candidates is null || candidates.Count == 0)
+            if (refQuery.Count == 0)
                 continue;
 
-            MatchCandidate? bestCandidate = null;
-            MatchEvaluation? bestEval = null;
+            var compQuery = await (
+                from p in _readContext.Query<Product>()
+                join v in _readContext.Query<Variant>() on p.Id equals v.ProductId
+                join c in _readContext.Query<Competitor>() on p.CompetitorId equals c.Id
+                where !c.IsReference && c.Enabled && p.CanonicalCategory == category && p.Status == ProductStatus.Active
+                select new
+                {
+                    ProductId = p.Id,
+                    VariantId = v.Id,
+                    ExternalId = p.ExternalId,
+                    CompetitorId = p.CompetitorId,
+                    CompetitorKey = c.Key,
+                    Title = p.Title,
+                    NormalizedTitle = p.NormalizedTitle,
+                    Category = p.Category,
+                    ProductType = p.ProductType,
+                    Vendor = p.Vendor,
+                    Brand = p.Brand,
+                    CanonicalCategory = p.CanonicalCategory,
+                    WeightGrams = p.WeightGrams,
+                    UnitCount = p.UnitCount,
+                    Tags = p.Tags,
+                    Roast = p.Roast,
+                    Price = _readContext.Query<PriceObservation>()
+                        .Where(po => po.VariantId == v.Id)
+                        .OrderByDescending(po => po.ObservedAt)
+                        .Select(po => po.Price)
+                        .FirstOrDefault(),
+                    CanonicalUrl = p.CanonicalUrl
+                }).ToListAsync(ct);
 
-            foreach (var reference in candidates)
+            if (compQuery.Count == 0)
+                continue;
+
+            var refProducts = refQuery.Select(p => MapCandidate(
+                p.ProductId, p.VariantId, p.ExternalId, p.CompetitorId, referenceCompetitor.Key,
+                p.Title, p.NormalizedTitle, p.Category, p.ProductType, p.Vendor, p.Brand,
+                p.CanonicalCategory, p.WeightGrams, p.UnitCount, p.Tags, p.Roast, p.Price, p.CanonicalUrl, dynamicBrands)).ToList();
+
+            var compProducts = compQuery.Select(p => MapCandidate(
+                p.ProductId, p.VariantId, p.ExternalId, p.CompetitorId, p.CompetitorKey,
+                p.Title, p.NormalizedTitle, p.Category, p.ProductType, p.Vendor, p.Brand,
+                p.CanonicalCategory, p.WeightGrams, p.UnitCount, p.Tags, p.Roast, p.Price, p.CanonicalUrl, dynamicBrands)).ToList();
+
+            var refByBrand = refProducts
+                .Where(p => p.Brand != null)
+                .GroupBy(p => p.Brand!)
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var comp in compProducts)
             {
-                var eval = EvaluateMatch(comp, reference, _genericTokens);
-                if (eval.Decision == MatchDecision.None)
+                List<MatchCandidate>? candidates = null;
+
+                if (comp.Brand != null && refByBrand.TryGetValue(comp.Brand, out var brandMatches))
+                {
+                    candidates = brandMatches;
+                }
+                else if (comp.Brand == null)
+                {
+                    candidates = refProducts;
+                }
+
+                if (candidates is null || candidates.Count == 0)
                     continue;
 
-                if (bestEval is null || eval.Score > bestEval.Score ||
-                    (eval.Decision == MatchDecision.Auto && bestEval.Decision != MatchDecision.Auto))
+                MatchCandidate? bestCandidate = null;
+                MatchEvaluation? bestEval = null;
+
+                foreach (var reference in candidates)
                 {
-                    bestEval = eval;
-                    bestCandidate = reference;
+                    var eval = EvaluateMatch(comp, reference, _genericTokens);
+                    if (eval.Decision == MatchDecision.None)
+                        continue;
+
+                    if (bestEval is null || eval.Score > bestEval.Score ||
+                        (eval.Decision == MatchDecision.Auto && bestEval.Decision != MatchDecision.Auto))
+                    {
+                        bestEval = eval;
+                        bestCandidate = reference;
+                    }
+                }
+
+                if (bestCandidate is null || bestEval is null)
+                    continue;
+
+                var matchKey = (comp.VariantId, bestCandidate.VariantId);
+
+                if (bestEval.Decision == MatchDecision.Auto)
+                {
+                    if (existingMatches.TryGetValue(matchKey, out var match))
+                    {
+                        match.Score = bestEval.Score;
+                        match.Status = MatchStatus.Auto;
+                    }
+                    else
+                    {
+                        var newMatch = new ProductMatch
+                        {
+                            CompetitorVariantId = comp.VariantId,
+                            ReferenceVariantId = bestCandidate.VariantId,
+                            Score = bestEval.Score,
+                            Method = MatchMethod.Automatic,
+                            Status = MatchStatus.Auto
+                        };
+                        await _unitOfWork.ProductMatches.AddAsync(newMatch, ct);
+                        existingMatches[matchKey] = newMatch;
+                    }
+
+                    autoAcceptedCount++;
+                    matchesPerCompetitor[comp.CompetitorKey] = matchesPerCompetitor.GetValueOrDefault(comp.CompetitorKey) + 1;
+                }
+                else if (bestEval.Decision == MatchDecision.SizeVariant)
+                {
+                    if (existingMatches.TryGetValue(matchKey, out var match))
+                    {
+                        match.Score = bestEval.Score;
+                        match.Status = MatchStatus.SizeVariant;
+                    }
+                    else
+                    {
+                        var newMatch = new ProductMatch
+                        {
+                            CompetitorVariantId = comp.VariantId,
+                            ReferenceVariantId = bestCandidate.VariantId,
+                            Score = bestEval.Score,
+                            Method = MatchMethod.Automatic,
+                            Status = MatchStatus.SizeVariant
+                        };
+                        await _unitOfWork.ProductMatches.AddAsync(newMatch, ct);
+                        existingMatches[matchKey] = newMatch;
+                    }
+
+                    sizeVariantCount++;
+                    sizeVariantsPerCompetitor[comp.CompetitorKey] = sizeVariantsPerCompetitor.GetValueOrDefault(comp.CompetitorKey) + 1;
+                }
+                else if (bestEval.Decision == MatchDecision.Review)
+                {
+                    if (!existingReviewKeys.Contains(matchKey))
+                    {
+                        var payload = new
+                        {
+                            CompetitorVariantId = comp.VariantId,
+                            ReferenceVariantId = bestCandidate.VariantId,
+                            CompetitorProductId = comp.ProductId,
+                            ReferenceProductId = bestCandidate.ProductId,
+                            CompetitorExternalId = comp.ExternalId,
+                            ReferenceExternalId = bestCandidate.ExternalId,
+                            CompetitorTitle = comp.Title,
+                            ReferenceTitle = bestCandidate.Title,
+                            CompetitorVendor = comp.Vendor,
+                            ReferenceVendor = bestCandidate.Vendor,
+                            CompetitorBrand = comp.Brand,
+                            ReferenceBrand = bestCandidate.Brand,
+                            CompetitorPrice = comp.Price,
+                            ReferencePrice = bestCandidate.Price,
+                            CompetitorCategory = comp.Category ?? comp.CanonicalCategory.ToString(),
+                            ReferenceCategory = bestCandidate.Category ?? bestCandidate.CanonicalCategory.ToString(),
+                            CanonicalCategory = comp.CanonicalCategory.ToString(),
+                            Score = bestEval.Score,
+                            CanonicalUrl = comp.CanonicalUrl,
+                            ReferenceUrl = bestCandidate.CanonicalUrl,
+                            CompetitorWeightGrams = comp.WeightGrams,
+                            ReferenceWeightGrams = bestCandidate.WeightGrams,
+                            CompetitorUnitCount = comp.UnitCount,
+                            ReferenceUnitCount = bestCandidate.UnitCount,
+                            CompetitorCapsuleSystem = comp.CapsuleSystem,
+                            ReferenceCapsuleSystem = bestCandidate.CapsuleSystem,
+                            CompetitorBeverageType = comp.BeverageType,
+                            ReferenceBeverageType = bestCandidate.BeverageType
+                        };
+
+                        var review = new ReviewItem
+                        {
+                            Kind = ReviewItemKind.ProductMatch,
+                            Status = ReviewStatus.Pending,
+                            Reason = bestEval.Reason,
+                            PayloadJson = JsonSerializer.Serialize(payload)
+                        };
+
+                        await _unitOfWork.ReviewItems.AddAsync(review, ct);
+                        existingReviewKeys.Add(matchKey);
+                        reviewItemCount++;
+                    }
                 }
             }
 
-            if (bestCandidate is null || bestEval is null)
-                continue;
-
-            var matchKey = (comp.VariantId, bestCandidate.VariantId);
-
-            if (bestEval.Decision == MatchDecision.Auto)
-            {
-                if (existingMatches.TryGetValue(matchKey, out var match))
-                {
-                    match.Score = bestEval.Score;
-                    match.Status = MatchStatus.Auto;
-                }
-                else
-                {
-                    var newMatch = new ProductMatch
-                    {
-                        CompetitorVariantId = comp.VariantId,
-                        ReferenceVariantId = bestCandidate.VariantId,
-                        Score = bestEval.Score,
-                        Method = MatchMethod.Automatic,
-                        Status = MatchStatus.Auto
-                    };
-                    await _unitOfWork.ProductMatches.AddAsync(newMatch, ct);
-                    existingMatches[matchKey] = newMatch;
-                }
-
-                autoAcceptedCount++;
-                matchesPerCompetitor[comp.CompetitorKey] = matchesPerCompetitor.GetValueOrDefault(comp.CompetitorKey) + 1;
-            }
-            else if (bestEval.Decision == MatchDecision.SizeVariant)
-            {
-                if (existingMatches.TryGetValue(matchKey, out var match))
-                {
-                    match.Score = bestEval.Score;
-                    match.Status = MatchStatus.SizeVariant;
-                }
-                else
-                {
-                    var newMatch = new ProductMatch
-                    {
-                        CompetitorVariantId = comp.VariantId,
-                        ReferenceVariantId = bestCandidate.VariantId,
-                        Score = bestEval.Score,
-                        Method = MatchMethod.Automatic,
-                        Status = MatchStatus.SizeVariant
-                    };
-                    await _unitOfWork.ProductMatches.AddAsync(newMatch, ct);
-                    existingMatches[matchKey] = newMatch;
-                }
-
-                sizeVariantCount++;
-                sizeVariantsPerCompetitor[comp.CompetitorKey] = sizeVariantsPerCompetitor.GetValueOrDefault(comp.CompetitorKey) + 1;
-            }
-            else if (bestEval.Decision == MatchDecision.Review)
-            {
-                if (!existingReviewKeys.Contains(matchKey))
-                {
-                    var payload = new
-                    {
-                        CompetitorVariantId = comp.VariantId,
-                        ReferenceVariantId = bestCandidate.VariantId,
-                        CompetitorProductId = comp.ProductId,
-                        ReferenceProductId = bestCandidate.ProductId,
-                        CompetitorExternalId = comp.ExternalId,
-                        ReferenceExternalId = bestCandidate.ExternalId,
-                        CompetitorTitle = comp.Title,
-                        ReferenceTitle = bestCandidate.Title,
-                        CompetitorVendor = comp.Vendor,
-                        ReferenceVendor = bestCandidate.Vendor,
-                        CompetitorBrand = comp.Brand,
-                        ReferenceBrand = bestCandidate.Brand,
-                        CompetitorPrice = comp.Price,
-                        ReferencePrice = bestCandidate.Price,
-                        CompetitorCategory = comp.Category ?? comp.CanonicalCategory.ToString(),
-                        ReferenceCategory = bestCandidate.Category ?? bestCandidate.CanonicalCategory.ToString(),
-                        CanonicalCategory = comp.CanonicalCategory.ToString(),
-                        Score = bestEval.Score,
-                        CanonicalUrl = comp.CanonicalUrl,
-                        ReferenceUrl = bestCandidate.CanonicalUrl,
-                        CompetitorWeightGrams = comp.WeightGrams,
-                        ReferenceWeightGrams = bestCandidate.WeightGrams,
-                        CompetitorUnitCount = comp.UnitCount,
-                        ReferenceUnitCount = bestCandidate.UnitCount,
-                        CompetitorCapsuleSystem = comp.CapsuleSystem,
-                        ReferenceCapsuleSystem = bestCandidate.CapsuleSystem,
-                        CompetitorBeverageType = comp.BeverageType,
-                        ReferenceBeverageType = bestCandidate.BeverageType
-                    };
-
-                    var review = new ReviewItem
-                    {
-                        Kind = ReviewItemKind.ProductMatch,
-                        Status = ReviewStatus.Pending,
-                        Reason = bestEval.Reason,
-                        PayloadJson = JsonSerializer.Serialize(payload)
-                    };
-
-                    await _unitOfWork.ReviewItems.AddAsync(review, ct);
-                    existingReviewKeys.Add(matchKey);
-                    reviewItemCount++;
-                }
-            }
+            // Save and clear EF tracker per category to stay within 256 MB RAM
+            await _unitOfWork.SaveChangesAsync(ct);
+            _unitOfWork.ClearTracker();
 
             var catWsMb = Process.GetCurrentProcess().WorkingSet64 / (1024 * 1024);
-            _logger.LogInformation("Matching category {Category} processed. Current working set: {WorkingSet} MB.", category, catWsMb);
+            _logger.LogInformation("Matching category {Category} processed ({CompCount} comp, {RefCount} ref). Current working set: {WorkingSet} MB.",
+                category, compProducts.Count, refProducts.Count, catWsMb);
+
+            GC.Collect(0, GCCollectionMode.Optimized);
         }
-    }
 
         await _unitOfWork.SaveChangesAsync(ct);
         await _cache.RemoveByTagAsync("products", ct);
@@ -509,6 +444,63 @@ public class ProductMatcher : IProductMatcher
             autoAcceptedCount, sizeVariantCount, reviewItemCount, wsMb, heapMb);
 
         return new MatchingResult(autoAcceptedCount, reviewItemCount, matchesPerCompetitor, sizeVariantCount, sizeVariantsPerCompetitor);
+    }
+
+    private MatchCandidate MapCandidate(
+        Guid productId,
+        Guid variantId,
+        string externalId,
+        Guid competitorId,
+        string competitorKey,
+        string title,
+        string? normalizedTitle,
+        string? category,
+        string? productType,
+        string? vendor,
+        string? brand,
+        CanonicalCategory canonicalCategory,
+        int? weightGrams,
+        int? unitCount,
+        string? tags,
+        string? roast,
+        decimal? price,
+        string? canonicalUrl,
+        HashSet<string> dynamicBrands)
+    {
+        var weight = weightGrams ?? TitleNormalizer.ExtractWeightGrams(title);
+        var unit = unitCount ?? TitleNormalizer.ExtractUnitCount(title, canonicalCategory);
+        var vol = TitleNormalizer.ExtractVolumeMl(title);
+        var detectedBrand = DetectBrand(brand ?? vendor, title, dynamicBrands);
+        var capsule = TitleNormalizer.ExtractCapsuleSystem(title, canonicalCategory);
+        var beverage = TitleNormalizer.ExtractBeverageType(title, canonicalCategory);
+        var distTokens = ExtractDistinguishingTokens(title, detectedBrand, weight, unit, vol, canonicalCategory, _genericTokens);
+
+        return new MatchCandidate
+        {
+            ProductId = productId,
+            VariantId = variantId,
+            ExternalId = externalId,
+            CompetitorId = competitorId,
+            CompetitorKey = competitorKey,
+            Title = title,
+            NormalizedTitle = normalizedTitle,
+            Category = category,
+            ProductType = productType,
+            Tags = tags,
+            Roast = roast,
+            Vendor = vendor,
+            CanonicalCategory = canonicalCategory,
+            WeightGrams = weight,
+            UnitCount = unit,
+            VolumeMl = vol,
+            Price = price ?? 0m,
+            CanonicalUrl = canonicalUrl ?? "",
+            Tokens = TitleSimilarity.ExtractTokens(title),
+            Brand = detectedBrand,
+            CapsuleSystem = capsule,
+            BeverageType = beverage,
+            DistinguishingTokens = distTokens
+        };
     }
 
     public static MatchEvaluation EvaluateMatch(

@@ -123,6 +123,7 @@ public class ShopifyAdapter : ICompetitorAdapter
             }
 
             CollectionRunContext.IncrementPageCount();
+            CollectionRunContext.SetStatusMessage($"Page {page} ({seenIds.Count} products collected)");
 
             foreach (var product in parsed.Products)
             {

@@ -123,8 +123,10 @@ public class WooStoreApiAdapter : ICompetitorAdapter
             if (page == 1 && int.TryParse(response.GetHeader("X-WP-TotalPages"), out var pages))
             {
                 totalPages = Math.Max(pages, 1);
+                CollectionRunContext.SetTotalPages(totalPages);
             }
 
+            CollectionRunContext.SetStatusMessage($"Page {page} of {totalPages}");
             var products = JsonSerializer.Deserialize<List<WooProduct>>(response.Body) ?? [];
             CollectionRunContext.IncrementPageCount();
 

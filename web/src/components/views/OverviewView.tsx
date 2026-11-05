@@ -82,19 +82,31 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
       {/* 3 KPI Summary Cards */}
       <div className="stats-grid-3">
         <div className="stat-card" onClick={() => onNavigate('price-comparisons')}>
-          <div className="stat-number">{suggestedActionsCount}</div>
+          <div className="stat-number">
+            {matrix ? suggestedActionsCount : <span className="skeleton skeleton-number" />}
+          </div>
           <div className="stat-label">Suggested actions</div>
           <div className="stat-sub">Prices needing review or restock</div>
         </div>
 
         <div className="stat-card" onClick={() => onNavigate('price-comparisons')}>
-          <div className="stat-number">{totalComparisons}</div>
+          <div className="stat-number">
+            {matrix ? totalComparisons : <span className="skeleton skeleton-number" />}
+          </div>
           <div className="stat-label">Supported price comparisons</div>
           <div className="stat-sub">Verified matching products</div>
         </div>
 
         <div className="stat-card" onClick={() => onNavigate('attention')}>
-          <div className="stat-number">{totalUrgentCount > 0 ? totalUrgentCount : reviewCount}</div>
+          <div className="stat-number">
+            {isLoadingAttention && totalUrgentCount === 0 && reviewCount === 0 ? (
+              <span className="skeleton skeleton-number" />
+            ) : totalUrgentCount > 0 ? (
+              totalUrgentCount
+            ) : (
+              reviewCount
+            )}
+          </div>
           <div className="stat-label">Urgent action alerts</div>
           <div className="stat-sub">Action Center items requiring decision</div>
         </div>
@@ -114,7 +126,13 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           </button>
         </div>
 
-        {recentChanges.length > 0 ? (
+        {offers === null ? (
+          <div style={{ padding: '12px 0' }}>
+            <div className="skeleton skeleton-row" />
+            <div className="skeleton skeleton-row" />
+            <div className="skeleton skeleton-row" />
+          </div>
+        ) : recentChanges.length > 0 ? (
           recentChanges.map((change) => (
             <div key={change.offerId} className="decision-row">
               <div className="decision-content">
@@ -276,9 +294,11 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             );
           })
         ) : isLoadingAttention ? (
-          <p style={{ color: 'var(--muted)', fontSize: '13px', padding: '16px 0' }}>
-            Analyzing market facts and price positions...
-          </p>
+          <div style={{ padding: '12px 0' }}>
+            <div className="skeleton skeleton-row" />
+            <div className="skeleton skeleton-row" />
+            <div className="skeleton skeleton-row" />
+          </div>
         ) : rankedAttention.length > 0 ? (
           rankedAttention.map((item) => {
             const headline = lang === 'ar' && item.headlineAr ? item.headlineAr : item.headline;

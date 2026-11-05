@@ -581,6 +581,12 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("FinishedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("MatchesCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PhasesJson")
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 

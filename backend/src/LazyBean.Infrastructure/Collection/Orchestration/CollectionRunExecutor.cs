@@ -7,11 +7,13 @@ using LazyBean.Application.Collection.Normalization;
 using LazyBean.Application.Collection.Orchestration;
 using LazyBean.Application.Collection.Validation;
 using LazyBean.Application.Common.Interfaces;
+using LazyBean.Application.Matching;
 using LazyBean.Domain.Entities;
 using LazyBean.Domain.Enums;
 using LazyBean.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace LazyBean.Infrastructure.Collection.Orchestration;
@@ -30,6 +32,8 @@ public class CollectionRunExecutor(
     ICollectorHttpClient? http,
     IConfiguration? configuration,
     IGoogleAdsSyncService? googleAdsSyncService,
+    IServiceScopeFactory? serviceScopeFactory,
+    ICollectionProgressTracker? progressTracker,
     ILogger<CollectionRunExecutor> logger) : ICollectionRunExecutor
 {
     public CollectionRunExecutor(
@@ -37,7 +41,7 @@ public class CollectionRunExecutor(
         ICompetitorAdapterResolver adapters,
         ICacheService cache,
         ILogger<CollectionRunExecutor> logger)
-        : this(dbContextFactory, adapters, cache, new ProductClassifier(), null, null, null, logger)
+        : this(dbContextFactory, adapters, cache, new ProductClassifier(), null, null, null, null, null, logger)
     {
     }
 
@@ -47,7 +51,7 @@ public class CollectionRunExecutor(
         ICacheService cache,
         IProductClassifier classifier,
         ILogger<CollectionRunExecutor> logger)
-        : this(dbContextFactory, adapters, cache, classifier, null, null, null, logger)
+        : this(dbContextFactory, adapters, cache, classifier, null, null, null, null, null, logger)
     {
     }
 
@@ -59,7 +63,20 @@ public class CollectionRunExecutor(
         ICollectorHttpClient? http,
         IConfiguration? configuration,
         ILogger<CollectionRunExecutor> logger)
-        : this(dbContextFactory, adapters, cache, classifier, http, configuration, null, logger)
+        : this(dbContextFactory, adapters, cache, classifier, http, configuration, null, null, null, logger)
+    {
+    }
+
+    public CollectionRunExecutor(
+        IDbContextFactory<LazyBeanDbContext> dbContextFactory,
+        ICompetitorAdapterResolver adapters,
+        ICacheService cache,
+        IProductClassifier classifier,
+        ICollectorHttpClient? http,
+        IConfiguration? configuration,
+        IGoogleAdsSyncService? googleAdsSyncService,
+        ILogger<CollectionRunExecutor> logger)
+        : this(dbContextFactory, adapters, cache, classifier, http, configuration, googleAdsSyncService, null, null, logger)
     {
     }
 
@@ -79,6 +96,7 @@ public class CollectionRunExecutor(
         }
 
         List<Competitor> competitors;
+        Dictionary<Guid, int> previousSizes = [];
         await using (var db = await dbContextFactory.CreateDbContextAsync(ct))
         {
             var run = await db.CollectionRuns.FirstAsync(r => r.Id == runId, ct);
@@ -91,7 +109,22 @@ public class CollectionRunExecutor(
             {
                 competitors = await db.Competitors.Where(c => c.Enabled).ToListAsync(ct);
             }
+
+            try
+            {
+                previousSizes = await db.CompetitorRuns
+                    .Where(cr => cr.Status == CompetitorRunStatus.Completed)
+                    .GroupBy(cr => cr.CompetitorId)
+                    .Select(g => new { CompetitorId = g.Key, Products = g.OrderByDescending(x => x.CreatedAt).Select(x => x.Products).FirstOrDefault() })
+                    .ToDictionaryAsync(x => x.CompetitorId, x => x.Products, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to load previous competitor catalog sizes for progress weighting.");
+            }
         }
+
+        progressTracker?.InitializeRun(runId, competitors, previousSizes);
 
         try
         {
@@ -109,10 +142,12 @@ public class CollectionRunExecutor(
                 run.FinishedAt = DateTimeOffset.UtcNow;
                 await db.SaveChangesAsync(CancellationToken.None);
             }
+            progressTracker?.SetCompleted(runId, CollectionRunStatus.Cancelled.ToString());
             await cache.RemoveByTagAsync("runs", CancellationToken.None);
             return;
         }
 
+        CollectionRunStatus finalStatus;
         await using (var db = await dbContextFactory.CreateDbContextAsync(CancellationToken.None))
         {
             var run = await db.CollectionRuns.FirstAsync(r => r.Id == runId, CancellationToken.None);
@@ -133,12 +168,20 @@ public class CollectionRunExecutor(
                 run.Status = CollectionRunStatus.Completed;
             }
 
+            finalStatus = run.Status;
             run.FinishedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(CancellationToken.None);
         }
 
         await cache.RemoveByTagAsync("runs", CancellationToken.None);
         await cache.RemoveByTagAsync("products", CancellationToken.None);
+
+        if (finalStatus != CollectionRunStatus.Failed && serviceScopeFactory != null)
+        {
+            await RunPostProcessingPipelineAsync(runId, ct);
+        }
+
+        progressTracker?.SetCompleted(runId, finalStatus.ToString());
 
         if (googleAdsSyncService != null)
         {
@@ -150,6 +193,149 @@ public class CollectionRunExecutor(
             {
                 logger.LogError(ex, "Failed to run weekly Google Ads sync check after CollectionRun {RunId}.", runId);
             }
+        }
+    }
+
+    private async Task RunPostProcessingPipelineAsync(Guid runId, CancellationToken ct)
+    {
+        var phases = new List<object>();
+        int? totalMatches = null;
+
+        using var scope = serviceScopeFactory!.CreateScope();
+        var sp = scope.ServiceProvider;
+
+        // Phase 1: Classification
+        var swClass = Stopwatch.StartNew();
+        progressTracker?.UpdatePhase(runId, "classification", "Running", "Ensuring active catalog is classified...");
+        try
+        {
+            var classifierService = sp.GetService<IProductClassifier>() ?? classifier;
+            await using (var db = await dbContextFactory.CreateDbContextAsync(ct))
+            {
+                var unclassified = await db.Products
+                    .Where(p => p.Status == ProductStatus.Active && (int)p.CanonicalCategory == 0)
+                    .Take(1000)
+                    .ToListAsync(ct);
+
+                foreach (var prod in unclassified)
+                {
+                    var res = classifierService.Classify(prod.Title, prod.ProductType, prod.Vendor, prod.Tags, prod.Category);
+                    prod.CanonicalCategory = res.Category;
+                }
+
+                if (unclassified.Count > 0)
+                {
+                    await db.SaveChangesAsync(ct);
+                }
+
+                swClass.Stop();
+                var msg = $"{unclassified.Count} unclassified products processed";
+                phases.Add(new { name = "classification", status = "completed", durationMs = (int)swClass.ElapsedMilliseconds, message = msg });
+                progressTracker?.UpdatePhase(runId, "classification", "completed", msg, (int)swClass.ElapsedMilliseconds);
+            }
+        }
+        catch (Exception ex)
+        {
+            swClass.Stop();
+            logger.LogError(ex, "Post-collection classification phase failed.");
+            phases.Add(new { name = "classification", status = "failed", durationMs = (int)swClass.ElapsedMilliseconds, message = ex.Message });
+            progressTracker?.UpdatePhase(runId, "classification", "failed", ex.Message, (int)swClass.ElapsedMilliseconds);
+        }
+
+        // Phase 2: Matching
+        var swMatch = Stopwatch.StartNew();
+        progressTracker?.UpdatePhase(runId, "matching", "Running", "Running strict category-by-category product matching...");
+        try
+        {
+            var matcher = sp.GetRequiredService<IProductMatcher>();
+            var matchResult = await matcher.MatchAllAsync(ct);
+            swMatch.Stop();
+            totalMatches = matchResult.AutoAcceptedCount;
+            var msg = $"{matchResult.AutoAcceptedCount} auto-accepted, {matchResult.ReviewItemCount} reviews";
+            phases.Add(new { name = "matching", status = "completed", durationMs = (int)swMatch.ElapsedMilliseconds, message = msg });
+            progressTracker?.UpdatePhase(runId, "matching", "completed", msg, (int)swMatch.ElapsedMilliseconds);
+        }
+        catch (Exception ex)
+        {
+            swMatch.Stop();
+            logger.LogError(ex, "Post-collection matching phase failed.");
+            phases.Add(new { name = "matching", status = "failed", durationMs = (int)swMatch.ElapsedMilliseconds, message = ex.Message });
+            progressTracker?.UpdatePhase(runId, "matching", "failed", ex.Message, (int)swMatch.ElapsedMilliseconds);
+        }
+
+        // Phase 3: AI Review Triage (if configured)
+        var swAi = Stopwatch.StartNew();
+        progressTracker?.UpdatePhase(runId, "ai_triage", "Running", "Evaluating pending review candidates with AI...");
+        try
+        {
+            var triageService = sp.GetService<IAiTriageService>();
+            if (triageService != null)
+            {
+                var triageRes = await triageService.TriagePendingReviewsAsync(100, ct);
+                swAi.Stop();
+                var msg = $"{triageRes.TotalEvaluated} evaluated ({triageRes.SameCount} same, {triageRes.DifferentCount} different, {triageRes.UnsureCount} unsure)";
+                phases.Add(new { name = "ai_triage", status = "completed", durationMs = (int)swAi.ElapsedMilliseconds, message = msg });
+                progressTracker?.UpdatePhase(runId, "ai_triage", "completed", msg, (int)swAi.ElapsedMilliseconds);
+            }
+            else
+            {
+                swAi.Stop();
+                phases.Add(new { name = "ai_triage", status = "skipped", durationMs = 0, message = "AI triage not registered" });
+                progressTracker?.UpdatePhase(runId, "ai_triage", "skipped", "AI triage not registered", 0);
+            }
+        }
+        catch (Exception ex)
+        {
+            swAi.Stop();
+            logger.LogWarning(ex, "Post-collection AI triage phase skipped or failed: {Message}", ex.Message);
+            phases.Add(new { name = "ai_triage", status = "completed", durationMs = (int)swAi.ElapsedMilliseconds, message = $"Skipped: {ex.Message}" });
+            progressTracker?.UpdatePhase(runId, "ai_triage", "completed", $"Skipped: {ex.Message}", (int)swAi.ElapsedMilliseconds);
+        }
+
+        // Phase 4: Action Alerts Generation
+        var swAlerts = Stopwatch.StartNew();
+        progressTracker?.UpdatePhase(runId, "alerts", "Running", "Synchronizing manager action center alerts...");
+        try
+        {
+            var alertService = sp.GetService<IAlertService>();
+            if (alertService != null)
+            {
+                var alerts = await alertService.SyncAlertsAsync(ct);
+                swAlerts.Stop();
+                var msg = $"{alerts.Count} alerts generated";
+                phases.Add(new { name = "alerts", status = "completed", durationMs = (int)swAlerts.ElapsedMilliseconds, message = msg });
+                progressTracker?.UpdatePhase(runId, "alerts", "completed", msg, (int)swAlerts.ElapsedMilliseconds);
+            }
+            else
+            {
+                swAlerts.Stop();
+                phases.Add(new { name = "alerts", status = "skipped", durationMs = 0, message = "AlertService not registered" });
+                progressTracker?.UpdatePhase(runId, "alerts", "skipped", "AlertService not registered", 0);
+            }
+        }
+        catch (Exception ex)
+        {
+            swAlerts.Stop();
+            logger.LogError(ex, "Post-collection alerts sync phase failed.");
+            phases.Add(new { name = "alerts", status = "failed", durationMs = (int)swAlerts.ElapsedMilliseconds, message = ex.Message });
+            progressTracker?.UpdatePhase(runId, "alerts", "failed", ex.Message, (int)swAlerts.ElapsedMilliseconds);
+        }
+
+        // Save phase metadata and match counts onto CollectionRun
+        try
+        {
+            await using var db = await dbContextFactory.CreateDbContextAsync(CancellationToken.None);
+            var run = await db.CollectionRuns.FirstAsync(r => r.Id == runId, CancellationToken.None);
+            run.PhasesJson = JsonSerializer.Serialize(phases);
+            if (totalMatches.HasValue)
+            {
+                run.MatchesCount = totalMatches.Value;
+            }
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to persist PhasesJson and MatchesCount to CollectionRun {RunId}.", runId);
         }
     }
 
@@ -467,6 +653,15 @@ public class CollectionRunExecutor(
                     await PersistPageBatchAsync(pageBatch, lastPage);
                     pageBatch.Clear();
 
+                    progressTracker?.UpdateCompetitorProgress(
+                        runId,
+                        competitor.Id,
+                        "Running",
+                        currentPage,
+                        CollectionRunContext.TotalPages,
+                        seenExternalIds.Count,
+                        CollectionRunContext.StatusMessage ?? $"Page {currentPage} saved");
+
                     lastPage = currentPage;
                     pageStopwatch.Restart();
                 }
@@ -486,6 +681,15 @@ public class CollectionRunExecutor(
                 await PersistPageBatchAsync(pageBatch, lastPage);
                 pageBatch.Clear();
             }
+
+            progressTracker?.UpdateCompetitorProgress(
+                runId,
+                competitor.Id,
+                "Running",
+                CollectionRunContext.CurrentPageCount,
+                CollectionRunContext.TotalPages,
+                seenExternalIds.Count,
+                CollectionRunContext.StatusMessage ?? $"Processed {seenExternalIds.Count} items");
 
             competitorRun.Pages = CollectionRunContext.CurrentPageCount;
             competitorRun.Products = seenExternalIds.Count;
@@ -533,6 +737,15 @@ public class CollectionRunExecutor(
             logger.LogInformation(
                 "[{Competitor}] Competitor run completed in {DurationMs}ms ({Products} products, {Pages} pages). Peak working set: {WorkingSet} MB, managed heap: {ManagedHeap} MB.",
                 competitor.Key, competitorStopwatch.ElapsedMilliseconds, seenExternalIds.Count, competitorRun.Pages, compWsMb, compHeapMb);
+
+            progressTracker?.UpdateCompetitorProgress(
+                runId,
+                competitor.Id,
+                competitorRun.Status.ToString(),
+                competitorRun.Pages,
+                CollectionRunContext.TotalPages,
+                seenExternalIds.Count,
+                $"Finished with {seenExternalIds.Count} products");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -543,6 +756,14 @@ public class CollectionRunExecutor(
             competitorRun.Status = CompetitorRunStatus.Cancelled;
             competitorRun.Coverage = RunCoverage.Partial;
             logger.LogWarning("CompetitorRun for {Competitor} cancelled.", competitor.Key);
+            progressTracker?.UpdateCompetitorProgress(
+                runId,
+                competitor.Id,
+                "Cancelled",
+                competitorRun.Pages,
+                CollectionRunContext.TotalPages,
+                seenExternalIds.Count,
+                "Cancelled");
             try
             {
                 db.CompetitorRuns.Attach(competitorRun);
@@ -564,6 +785,14 @@ public class CollectionRunExecutor(
             competitorRun.Status = CompetitorRunStatus.Degraded;
             competitorRun.Coverage = RunCoverage.Partial;
             logger.LogWarning("CompetitorRun for {Competitor} timed out - marked Degraded.", competitor.Key);
+            progressTracker?.UpdateCompetitorProgress(
+                runId,
+                competitor.Id,
+                "Degraded",
+                competitorRun.Pages,
+                CollectionRunContext.TotalPages,
+                seenExternalIds.Count,
+                "Timed out");
         }
         catch (Exception ex)
         {
@@ -572,6 +801,14 @@ public class CollectionRunExecutor(
             competitorRun.Coverage = RunCoverage.Partial;
             competitorRun.Errors = errors + 1;
             logger.LogError(ex, "CompetitorRun failed for {Competitor}.", competitor.Key);
+            progressTracker?.UpdateCompetitorProgress(
+                runId,
+                competitor.Id,
+                "Failed",
+                competitorRun.Pages,
+                CollectionRunContext.TotalPages,
+                seenExternalIds.Count,
+                ex.Message);
         }
 
         try

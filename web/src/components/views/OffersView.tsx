@@ -200,7 +200,13 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
         >
           New (Last 7 Days)
           <span className="tab-count" style={{ background: '#e7f3ec', color: '#1b5238' }}>
-            {sourceType === 'competitor' ? competitorCounts.new : referenceCounts.new}
+            {isLoading ? (
+              <span className="skeleton" style={{ width: '16px', height: '12px', display: 'inline-block' }} />
+            ) : sourceType === 'competitor' ? (
+              competitorCounts.new
+            ) : (
+              referenceCounts.new
+            )}
           </span>
         </button>
         <button
@@ -210,7 +216,13 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
         >
           Ongoing
           <span className="tab-count">
-            {sourceType === 'competitor' ? competitorCounts.ongoing : referenceCounts.ongoing}
+            {isLoading ? (
+              <span className="skeleton" style={{ width: '16px', height: '12px', display: 'inline-block' }} />
+            ) : sourceType === 'competitor' ? (
+              competitorCounts.ongoing
+            ) : (
+              referenceCounts.ongoing
+            )}
           </span>
         </button>
         <button
@@ -220,7 +232,13 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
         >
           Ended
           <span className="tab-count">
-            {sourceType === 'competitor' ? competitorCounts.ended : referenceCounts.ended}
+            {isLoading ? (
+              <span className="skeleton" style={{ width: '16px', height: '12px', display: 'inline-block' }} />
+            ) : sourceType === 'competitor' ? (
+              competitorCounts.ended
+            ) : (
+              referenceCounts.ended
+            )}
           </span>
         </button>
         <button
@@ -230,7 +248,13 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
         >
           All Offers (Opt-in)
           <span className="tab-count">
-            {sourceType === 'competitor' ? competitorCounts.all : referenceCounts.all}
+            {isLoading ? (
+              <span className="skeleton" style={{ width: '16px', height: '12px', display: 'inline-block' }} />
+            ) : sourceType === 'competitor' ? (
+              competitorCounts.all
+            ) : (
+              referenceCounts.all
+            )}
           </span>
         </button>
       </div>
@@ -267,8 +291,22 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
 
       {/* Offers List */}
       {isLoading ? (
-        <div className="panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--muted)' }}>
-          Loading promotional offers...
+        <div className="offers-list">
+          <div className="skeleton-card" style={{ marginBottom: '12px' }}>
+            <div className="skeleton skeleton-row" style={{ width: '40%', height: '20px' }} />
+            <div className="skeleton skeleton-row" style={{ width: '80%', height: '16px' }} />
+            <div className="skeleton skeleton-row" style={{ width: '30%', height: '14px' }} />
+          </div>
+          <div className="skeleton-card" style={{ marginBottom: '12px' }}>
+            <div className="skeleton skeleton-row" style={{ width: '40%', height: '20px' }} />
+            <div className="skeleton skeleton-row" style={{ width: '80%', height: '16px' }} />
+            <div className="skeleton skeleton-row" style={{ width: '30%', height: '14px' }} />
+          </div>
+          <div className="skeleton-card" style={{ marginBottom: '12px' }}>
+            <div className="skeleton skeleton-row" style={{ width: '40%', height: '20px' }} />
+            <div className="skeleton skeleton-row" style={{ width: '80%', height: '16px' }} />
+            <div className="skeleton skeleton-row" style={{ width: '30%', height: '14px' }} />
+          </div>
         </div>
       ) : error ? (
         <div className="callout" style={{ borderLeftColor: '#962f32', color: '#962f32' }}>

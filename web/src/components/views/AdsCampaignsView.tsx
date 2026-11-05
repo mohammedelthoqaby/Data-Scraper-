@@ -141,22 +141,30 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       {/* KPI Cards */}
       <div className="stats-grid-4">
         <div className="stat-card">
-          <div className="stat-number">{stats.totalCampaigns}</div>
+          <div className="stat-number">
+            {isLoading ? <span className="skeleton skeleton-number" /> : stats.totalCampaigns}
+          </div>
           <div className="stat-label">Active campaigns</div>
           <div className="stat-sub">Grouped promotional creative sets</div>
         </div>
         <div className="stat-card">
-          <div className="stat-number">{stats.totalAds}</div>
+          <div className="stat-number">
+            {isLoading ? <span className="skeleton skeleton-number" /> : stats.totalAds}
+          </div>
           <div className="stat-label">Observed ad creatives</div>
           <div className="stat-sub">Individual product ad variations</div>
         </div>
         <div className="stat-card">
-          <div className="stat-number">{stats.linkedProducts}</div>
+          <div className="stat-number">
+            {isLoading ? <span className="skeleton skeleton-number" /> : stats.linkedProducts}
+          </div>
           <div className="stat-label">Linked to catalog products</div>
           <div className="stat-sub">Mapped ad links to verified SKUs</div>
         </div>
         <div className="stat-card">
-          <div className="stat-number">{stats.competitorCount}</div>
+          <div className="stat-number">
+            {isLoading ? <span className="skeleton skeleton-number" /> : stats.competitorCount}
+          </div>
           <div className="stat-label">Monitored advertisers</div>
           <div className="stat-sub">Active advertising competitor stores</div>
         </div>
@@ -212,8 +220,17 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
 
       {/* Content */}
       {isLoading ? (
-        <div className="panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--muted)' }}>
-          Loading ad campaigns...
+        <div className="campaigns-list">
+          <div className="skeleton-card" style={{ marginBottom: '12px' }}>
+            <div className="skeleton skeleton-row" style={{ width: '35%', height: '22px' }} />
+            <div className="skeleton skeleton-row" style={{ width: '70%', height: '16px' }} />
+            <div className="skeleton skeleton-row" style={{ width: '90%', height: '14px' }} />
+          </div>
+          <div className="skeleton-card" style={{ marginBottom: '12px' }}>
+            <div className="skeleton skeleton-row" style={{ width: '35%', height: '22px' }} />
+            <div className="skeleton skeleton-row" style={{ width: '70%', height: '16px' }} />
+            <div className="skeleton skeleton-row" style={{ width: '90%', height: '14px' }} />
+          </div>
         </div>
       ) : error ? (
         <div className="callout" style={{ borderLeftColor: '#962f32', color: '#962f32' }}>

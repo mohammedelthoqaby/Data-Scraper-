@@ -15,6 +15,8 @@ public static class CollectionRunContext
     // per sub-request, e.g. WooCommerce variation detail lookups don't count) so the
     // executor can record CompetitorRun.Pages without the adapter contract exposing it.
     public static int CurrentPageCount => Pages.Value?.Count ?? 0;
+    public static int? TotalPages => Pages.Value?.Total;
+    public static string? StatusMessage => Pages.Value?.Message;
 
     public static bool IsDegraded => Degraded.Value?.IsDegraded ?? false;
     public static string? DegradedReason => Degraded.Value?.Reason;
@@ -24,6 +26,22 @@ public static class CollectionRunContext
         if (Pages.Value is { } counter)
         {
             counter.Count++;
+        }
+    }
+
+    public static void SetTotalPages(int total)
+    {
+        if (Pages.Value is { } counter)
+        {
+            counter.Total = total;
+        }
+    }
+
+    public static void SetStatusMessage(string message)
+    {
+        if (Pages.Value is { } counter)
+        {
+            counter.Message = message;
         }
     }
 
@@ -52,6 +70,8 @@ public static class CollectionRunContext
     private sealed class PageCounter
     {
         public int Count;
+        public int? Total;
+        public string? Message;
     }
 
     private sealed class DegradedState

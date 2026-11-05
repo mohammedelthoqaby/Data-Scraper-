@@ -202,11 +202,17 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
         {/* Count Bar */}
         <div className="matrix-pager" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            Showing <strong>{filteredRows.length}</strong> {filteredRows.length === 1 ? 'product' : 'products'}
-            {filteredRows.length < rows.length && (
-              <span style={{ color: 'var(--muted)', marginLeft: '6px' }}>
-                (filtered from {rows.length} total)
-              </span>
+            {isLoading ? (
+              <span className="skeleton skeleton-text" style={{ width: '120px', display: 'inline-block' }} />
+            ) : (
+              <>
+                Showing <strong>{filteredRows.length}</strong> {filteredRows.length === 1 ? 'product' : 'products'}
+                {filteredRows.length < rows.length && (
+                  <span style={{ color: 'var(--muted)', marginLeft: '6px' }}>
+                    (filtered from {rows.length} total)
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -214,8 +220,12 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
         {/* Matrix Table */}
         <div className="matrix-table-wrap">
           {isLoading ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--muted)' }}>
-              Loading price matrix...
+            <div style={{ padding: '24px' }}>
+              <div className="skeleton skeleton-row" style={{ height: '42px', marginBottom: '12px' }} />
+              <div className="skeleton skeleton-row" style={{ height: '42px', marginBottom: '12px' }} />
+              <div className="skeleton skeleton-row" style={{ height: '42px', marginBottom: '12px' }} />
+              <div className="skeleton skeleton-row" style={{ height: '42px', marginBottom: '12px' }} />
+              <div className="skeleton skeleton-row" style={{ height: '42px', marginBottom: '12px' }} />
             </div>
           ) : (
             <table className="matrix-table">

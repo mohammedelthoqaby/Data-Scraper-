@@ -2115,3 +2115,48 @@ footer.workspace-footer {
   border-color: var(--brand);
   font-weight: 700;
 }
+
+/* Skeletons & Shimmer Loaders */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #ececf0 25%, #dedee4 50%, #ececf0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.skeleton-text {
+  height: 14px;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.skeleton-number {
+  height: 28px;
+  width: 60px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+}
+
+.skeleton-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.skeleton-row {
+  height: 36px;
+  width: 100%;
+  margin-bottom: 8px;
+  border-radius: 4px;
+}

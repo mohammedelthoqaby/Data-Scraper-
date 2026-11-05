@@ -6,7 +6,7 @@ namespace LazyBean.Application.Matching.Commands.RunMatching;
 
 public record RunMatchingCommand : IRequest<MatchingResult>;
 
-public class RunMatchingCommandHandler(IProductMatcher matcher, IAiTriageService triageService) : IRequestHandler<RunMatchingCommand, MatchingResult>
+public class RunMatchingCommandHandler(IProductMatcher matcher, IAiTriageService triageService, IAlertService? alertService = null) : IRequestHandler<RunMatchingCommand, MatchingResult>
 {
     public async Task<MatchingResult> Handle(RunMatchingCommand request, CancellationToken ct)
     {
@@ -20,6 +20,18 @@ public class RunMatchingCommandHandler(IProductMatcher matcher, IAiTriageService
         catch
         {
             // AI triage failure should not fail matching
+        }
+
+        if (alertService != null)
+        {
+            try
+            {
+                await alertService.SyncAlertsAsync(ct);
+            }
+            catch
+            {
+                // Alert sync failure should not fail matching
+            }
         }
 
         return result;

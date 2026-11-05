@@ -25,13 +25,26 @@ public class GetRunByIdQueryHandler(IReadDbContext readContext, ICacheService ca
                     join c in readContext.Query<Competitor>() on cr.CompetitorId equals c.Id
                     where cr.RunId == request.Id
                     select new CompetitorRunDto(
-                        cr.CompetitorId, c.Key, cr.Status.ToString(), cr.Coverage.ToString(),
-                        cr.Pages, cr.Products, cr.Errors))
+                        cr.CompetitorId,
+                        c.Key,
+                        c.Name,
+                        c.IsReference,
+                        cr.Status.ToString(),
+                        cr.Coverage.ToString(),
+                        cr.Pages,
+                        cr.Products,
+                        cr.Errors))
                     .ToListAsync(token);
 
                 return new RunDto(
-                    run.Id, run.Trigger.ToString(), run.Status.ToString(), run.StartedAt, run.FinishedAt,
-                    competitorRuns);
+                    run.Id,
+                    run.Trigger.ToString(),
+                    run.Status.ToString(),
+                    run.StartedAt,
+                    run.FinishedAt,
+                    competitorRuns,
+                    run.MatchesCount,
+                    run.PhasesJson);
             },
             TimeSpan.FromMinutes(1),
             tags: ["runs"],

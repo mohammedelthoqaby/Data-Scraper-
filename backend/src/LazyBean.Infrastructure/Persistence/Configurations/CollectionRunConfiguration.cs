@@ -13,5 +13,7 @@ public class CollectionRunConfiguration : IEntityTypeConfiguration<CollectionRun
         builder.Property(r => r.Trigger).HasConversion<string>().HasMaxLength(20);
         builder.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(r => r.TargetCompetitorIdsJson).HasMaxLength(2000);
+        builder.Property(r => r.PhasesJson).HasColumnType("text");
+        builder.Property(r => r.MatchesCount);
     }
 }
