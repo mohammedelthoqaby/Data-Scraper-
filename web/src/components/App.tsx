@@ -13,7 +13,12 @@ import { AdsCampaignsView } from './views/AdsCampaignsView';
 import { ReviewQueueView } from './views/ReviewQueueView';
 import { RunsView } from './views/RunsView';
 import { SourcesIdentitiesView } from './views/SourcesIdentitiesView';
+import { SettingsAiView } from './views/SettingsAiView';
+import { ActionCenterView } from './views/ActionCenterView';
+import { SettingsAlertsView } from './views/SettingsAlertsView';
+import { DataQualityView } from './views/DataQualityView';
 import { ProductDetailModal } from './views/ProductDetailModal';
+import { fetchAlertSummary } from '../api/alerts';
 
 export const App: React.FC = () => {
   // Navigation State
@@ -31,6 +36,7 @@ export const App: React.FC = () => {
   const [matrix, setMatrix] = useState<PriceMatrixResponse | null>(null);
   const [offers, setOffers] = useState<CompetitorOffersResponse | null>(null);
   const [reviewCount, setReviewCount] = useState<number>(0);
+  const [alertCount, setAlertCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Product Detail Modal State
@@ -61,6 +67,7 @@ export const App: React.FC = () => {
         hash &&
         [
           'overview',
+          'attention',
           'offers',
           'weekly-actions',
           'price-comparisons',
@@ -69,6 +76,9 @@ export const App: React.FC = () => {
           'sources',
           'runs',
           'history',
+          'settings-ai',
+          'settings-alerts',
+          'data-quality',
           'improve-recommendations',
         ].includes(hash)
       ) {
@@ -138,6 +148,15 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  const fetchAlertCount = useCallback(async () => {
+    try {
+      const summary = await fetchAlertSummary();
+      setAlertCount(summary.urgentCount > 0 ? summary.urgentCount : summary.totalActive);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // Fetch price matrix
   const fetchMatrix = useCallback(async (runId?: string | null) => {
     setIsLoading(true);
@@ -189,6 +208,7 @@ export const App: React.FC = () => {
       if (authenticatedUser) {
         fetchRuns();
         fetchReviewCount();
+        fetchAlertCount();
         fetchMatrix();
       } else {
         clearData();
@@ -232,7 +252,8 @@ export const App: React.FC = () => {
     fetchMatrix(selectedRunId);
     if (selectedRunId) fetchOffers(selectedRunId);
     fetchReviewCount();
-  }, [fetchRuns, fetchMatrix, fetchOffers, fetchReviewCount, selectedRunId]);
+    fetchAlertCount();
+  }, [fetchRuns, fetchMatrix, fetchOffers, fetchReviewCount, fetchAlertCount, selectedRunId]);
 
   const handleStartRun = async () => {
     if (!user) {
@@ -263,6 +284,7 @@ export const App: React.FC = () => {
         activeView={activeView}
         onNavigate={navigateTo}
         reviewCount={reviewCount}
+        alertCount={alertCount}
         user={user}
         onOpenLogin={() => setIsLoginOpen(true)}
         onLogout={handleLogout}
@@ -355,10 +377,21 @@ export const App: React.FC = () => {
                 />
               )}
 
-              {activeView === 'review-queue' && (
-                <ReviewQueueView
-                  onRefreshReviewsCount={fetchReviewCount}
+              {activeView === 'attention' && (
+                <ActionCenterView
                   onOpenProductDetail={openProductDetail}
+                  onRefreshAlertCount={fetchAlertCount}
+                />
+              )}
+
+              {activeView === 'settings-alerts' && (
+                <SettingsAlertsView />
+              )}
+
+              {(activeView === 'data-quality' || activeView === 'review-queue') && (
+                <DataQualityView
+                  onOpenProductDetail={openProductDetail}
+                  onRefreshReviewCount={fetchReviewCount}
                 />
               )}
 
@@ -376,6 +409,10 @@ export const App: React.FC = () => {
 
               {activeView === 'sources' && (
                 <SourcesIdentitiesView />
+              )}
+
+              {activeView === 'settings-ai' && (
+                <SettingsAiView />
               )}
 
               {activeView === 'improve-recommendations' && (

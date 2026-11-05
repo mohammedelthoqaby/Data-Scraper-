@@ -5,10 +5,11 @@ using LazyBean.Domain.Enums;
 using LazyBean.Domain.Exceptions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace LazyBean.Application.Runs.Queries.GetPriceMatrix;
 
-public class GetPriceMatrixQueryHandler(IReadDbContext readContext)
+public class GetPriceMatrixQueryHandler(IReadDbContext readContext, IConfiguration? configuration = null)
     : IRequestHandler<GetPriceMatrixQuery, PriceMatrixResponseDto>
 {
     public async Task<PriceMatrixResponseDto> Handle(GetPriceMatrixQuery request, CancellationToken ct)
@@ -45,6 +46,7 @@ public class GetPriceMatrixQueryHandler(IReadDbContext readContext)
             {
                 MatchId = m.Id,
                 MatchStatus = m.Status.ToString(),
+                MatchMethod = m.Method.ToString(),
                 Score = m.Score,
                 CompetitorKey = c.Key,
                 CompetitorName = c.Name,
@@ -234,7 +236,9 @@ public class GetPriceMatrixQueryHandler(IReadDbContext readContext)
                     compObservedAt,
                     isStale,
                     match.CompetitorBrand,
-                    match.CompetitorVendor);
+                    match.CompetitorVendor,
+                    match.MatchId,
+                    match.MatchMethod);
 
                 // If multiple variants match for same competitor, pick lowest price
                 if (!compCells.TryGetValue(match.CompetitorKey, out var existingCell) || compPrice < existingCell.Price)
@@ -286,6 +290,21 @@ public class GetPriceMatrixQueryHandler(IReadDbContext readContext)
                 position = "cheapest";
             }
 
+            var storefrontBase = (configuration?["Reference:StorefrontBaseUrl"] ?? "https://lazybean.co").TrimEnd('/');
+            string refUrl;
+            if (!string.IsNullOrWhiteSpace(first.ReferenceExternalId))
+            {
+                refUrl = $"{storefrontBase}/single-product/{first.ReferenceExternalId}";
+            }
+            else if (!string.IsNullOrWhiteSpace(first.ReferenceUrl))
+            {
+                refUrl = first.ReferenceUrl.Replace("https://lazzybean.com", storefrontBase, StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                refUrl = string.Empty;
+            }
+
             var row = new PriceMatrixRowDto(
                 first.ReferenceProductId,
                 first.ReferenceVariantId,
@@ -297,7 +316,7 @@ public class GetPriceMatrixQueryHandler(IReadDbContext readContext)
                 first.ReferenceWeightGrams,
                 first.ReferenceUnitCount,
                 first.ReferenceVolumeMl,
-                first.ReferenceUrl,
+                refUrl,
                 refPrice,
                 refVendor,
                 vendorCount,

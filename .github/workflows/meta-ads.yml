@@ -10,32 +10,54 @@ jobs:
     runs-on: [self-hosted, lazybean-collector]
     defaults:
       run:
-        shell: pwsh
+        shell: powershell
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Setup Python Virtual Environment
         run: |
-          if (-not (Test-Path ".venv")) {
-            try {
-              python -m venv .venv
-            } catch {
-              python3 -m venv .venv
+          $setupPy = "${{ steps.setup-python.outputs.python-path }}"
+          if (-not $setupPy -or -not (Test-Path $setupPy)) {
+            if ($env:pythonLocation -and (Test-Path (Join-Path $env:pythonLocation "python.exe"))) {
+              $setupPy = Join-Path $env:pythonLocation "python.exe"
+            } elseif ($env:pythonLocation -and (Test-Path (Join-Path $env:pythonLocation "bin/python.exe"))) {
+              $setupPy = Join-Path $env:pythonLocation "bin/python.exe"
+            } else {
+              Write-Error "Could not find Python executable from actions/setup-python at '${setupPy}' or in pythonLocation '${env:pythonLocation}'."
+              exit 1
             }
           }
-          
-          if (Test-Path "./.venv/Scripts/python.exe") {
-            $py = "./.venv/Scripts/python.exe"
-            $pip = "./.venv/Scripts/pip.exe"
-          } else {
-            $py = "./.venv/bin/python"
-            $pip = "./.venv/bin/pip"
+
+          if (Test-Path ".venv") {
+            $existingPy = if (Test-Path "./.venv/Scripts/python.exe") { "./.venv/Scripts/python.exe" } else { "./.venv/bin/python" }
+            if (-not (Test-Path $existingPy)) {
+              Write-Host "Existing .venv is incomplete. Recreating..."
+              Remove-Item ".venv" -Recurse -Force -ErrorAction SilentlyContinue
+            }
           }
-          
-          & $pip install --upgrade pip
-          & $pip install -r tools/meta-ads/requirements.txt
+
+          if (-not (Test-Path ".venv")) {
+            & $setupPy -m venv .venv
+          }
+
+          if (Test-Path "./.venv/Scripts/python.exe") {
+            $venvPy = "./.venv/Scripts/python.exe"
+            $venvPip = "./.venv/Scripts/pip.exe"
+          } else {
+            $venvPy = "./.venv/bin/python"
+            $venvPip = "./.venv/bin/pip"
+          }
+
+          & $venvPip install --upgrade pip
+          & $venvPip install -r tools/meta-ads/requirements.txt
 
       - name: Run Meta Ads Sync Pass
         env:
@@ -49,11 +71,11 @@ jobs:
             Write-Error "API_BASE_URL and INTERNAL_TOKEN secrets must be configured in GitHub repository secrets."
             exit 1
           }
-          
+
           if (Test-Path "./.venv/Scripts/python.exe") {
-            $py = "./.venv/Scripts/python.exe"
+            $venvPy = "./.venv/Scripts/python.exe"
           } else {
-            $py = "./.venv/bin/python"
+            $venvPy = "./.venv/bin/python"
           }
-          
-          & $py tools/meta-ads/sync.py
+
+          & $venvPy tools/meta-ads/sync.py

@@ -127,7 +127,8 @@ public class GetPriceHistoryQueryHandler(IReadDbContext readContext)
                 x.Observation.Price,
                 x.Observation.CompareAtPrice,
                 x.Observation.InStock,
-                x.Observation.Currency))
+                x.Observation.Currency,
+                x.Product.CanonicalUrl))
             .ToListAsync(ct);
 
         return new PriceHistoryResponseDto(

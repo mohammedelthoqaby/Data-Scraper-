@@ -12,8 +12,16 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var wwwroot = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
+if (Directory.Exists(wwwroot))
+{
+    builder.Environment.WebRootPath = wwwroot;
+    builder.Environment.WebRootFileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(wwwroot);
+}
+
 builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration)
+    .MinimumLevel.Override("Microsoft.AspNetCore.StaticFiles", Serilog.Events.LogEventLevel.Debug)
     .Enrich.FromLogContext()
     .WriteTo.Console());
 
@@ -43,7 +51,7 @@ builder.Services
     .AddCookie(options =>
     {
         options.Cookie.HttpOnly = true;
-        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.Cookie.SameSite = SameSiteMode.Strict;
         options.Cookie.Name = "lazybean.auth";
         // Dev runs plain HTTP on localhost; everywhere else, never send the auth cookie over HTTP.
         options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
@@ -142,6 +150,14 @@ app.Logger.LogInformation(
     "Cache mode: {Mode}",
     redisConfigured ? "hybrid (in-process L1 + Redis L2)" : "memory-only (no Redis connection string configured)");
 
+app.Logger.LogInformation(
+    "WebRootPath: {WebRootPath}, WebRootExists: {Exists}",
+    app.Environment.WebRootPath,
+    Directory.Exists(app.Environment.WebRootPath ?? ""));
+
+var testFile = app.Environment.WebRootFileProvider.GetFileInfo("logo.svg");
+app.Logger.LogInformation("Test logo.svg Exists: {Exists}, PhysicalPath: {PhysicalPath}", testFile.Exists, testFile.PhysicalPath);
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<LazyBeanDbContext>();
@@ -191,6 +207,33 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", "LazyBean API v1"));
 }
 
+var staticFileOptions = new StaticFileOptions
+{
+    FileProvider = app.Environment.WebRootFileProvider,
+    OnPrepareResponse = ctx =>
+    {
+        var path = ctx.Context.Request.Path.Value ?? string.Empty;
+        if (path.StartsWith("/_astro/", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        }
+        else if (path.EndsWith("index.html", StringComparison.OrdinalIgnoreCase) || path == "/" || string.IsNullOrEmpty(path))
+        {
+            ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+            ctx.Context.Response.Headers.Pragma = "no-cache";
+            ctx.Context.Response.Headers.Expires = "0";
+        }
+    }
+};
+
+app.UseDefaultFiles(new DefaultFilesOptions
+{
+    FileProvider = app.Environment.WebRootFileProvider
+});
+app.UseStaticFiles(staticFileOptions);
+
+app.UseRouting();
+
 app.UseSerilogRequestLogging();
 
 // Off by default behind a reverse proxy that already terminates TLS (e.g. the nginx
@@ -212,6 +255,8 @@ app.MapControllers();
 // Anonymous by design (not an MVC action, so the global AuthorizeFilter never applies) and
 // unrated (no [EnableRateLimiting] attached) - monitoring/orchestrators must always reach it.
 app.MapHealthChecks("/health");
+
+app.MapFallbackToFile("{*path:regex(^(?!api|health|swagger).*$)}", "index.html", staticFileOptions);
 
 app.Run();
 

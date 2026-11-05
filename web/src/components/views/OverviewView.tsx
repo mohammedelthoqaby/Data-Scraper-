@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { PriceMatrixResponse, CompetitorOffersResponse } from '../../api/client';
+import { aiApi, type RankedAttentionItem } from '../../api/ai';
+import { fetchAlerts, type AlertItem } from '../../api/alerts';
 
 interface OverviewViewProps {
   matrix: PriceMatrixResponse | null;
@@ -19,10 +21,45 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   const totalComparisons = matrix?.totalRows ?? 0;
   const suggestedActionsCount = matrix?.rows?.filter(r => r.position === 'more expensive' || r.position === 'lazyBeanOutOfStock').length ?? 0;
 
-  // Sample items needing attention from price matrix
-  const attentionItems = matrix?.rows
+  // Urgent Alerts from Action Center
+  const [urgentAlerts, setUrgentAlerts] = useState<AlertItem[]>([]);
+  const [totalUrgentCount, setTotalUrgentCount] = useState<number>(0);
+  const [rankedAttention, setRankedAttention] = useState<RankedAttentionItem[]>([]);
+  const [lang, setLang] = useState<'en' | 'ar'>('en');
+  const [isLoadingAttention, setIsLoadingAttention] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchAlerts({ severity: 'Urgent', status: 'Active' })
+      .then(items => {
+        if (isMounted) {
+          setTotalUrgentCount(items.length);
+          setUrgentAlerts(items.slice(0, 5));
+        }
+      })
+      .catch(err => console.warn('Failed to load urgent alerts on overview:', err));
+
+    const fetchAttention = async () => {
+      setIsLoadingAttention(true);
+      try {
+        const items = await aiApi.getAttentionItems();
+        if (isMounted) {
+          setRankedAttention(items);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch AI ranked attention items, falling back to local matrix:', err);
+      } finally {
+        if (isMounted) setIsLoadingAttention(false);
+      }
+    };
+    fetchAttention();
+    return () => { isMounted = false; };
+  }, [matrix]);
+
+  // Fallback items from matrix if API items not loaded
+  const fallbackAttentionItems = matrix?.rows
     ?.filter(r => r.position === 'more expensive' || r.position === 'lazyBeanOutOfStock')
-    .slice(0, 3) ?? [];
+    .slice(0, 5) ?? [];
 
   // Sample competitor changes from offers
   const recentChanges = offers?.offers?.slice(0, 3) ?? [];
@@ -41,13 +78,6 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         </button>
       </div>
 
-      {/* Warning Banner */}
-      <div className="warning-banner">
-        <span>⚠️</span>
-        <span>
-          <strong>Notice:</strong> Some competitor information is incomplete or may be older. Check the source date before acting on price differences.
-        </span>
-      </div>
 
       {/* 3 KPI Summary Cards */}
       <div className="stats-grid-3">
@@ -63,10 +93,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           <div className="stat-sub">Verified matching products</div>
         </div>
 
-        <div className="stat-card" onClick={() => onNavigate('review-queue')}>
-          <div className="stat-number">{reviewCount}</div>
-          <div className="stat-label">Product matches to review</div>
-          <div className="stat-sub">Candidate matches awaiting approval</div>
+        <div className="stat-card" onClick={() => onNavigate('attention')}>
+          <div className="stat-number">{totalUrgentCount > 0 ? totalUrgentCount : reviewCount}</div>
+          <div className="stat-label">Urgent action alerts</div>
+          <div className="stat-sub">Action Center items requiring decision</div>
         </div>
       </div>
 
@@ -118,20 +148,200 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
       {/* What Needs Attention? */}
       <div className="panel">
-        <div className="panel-header">
-          <h2 className="panel-title">What needs attention?</h2>
-          <button
-            type="button"
-            className="btn-secondary"
-            style={{ fontSize: '12px', padding: '4px 10px' }}
-            onClick={() => onNavigate('price-comparisons')}
-          >
-            Compare prices
-          </button>
+        <div className="panel-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2 className="panel-title">Top Urgent Alerts (Action Center)</h2>
+            <span className="badge bad" style={{ fontSize: '11px', textTransform: 'uppercase' }}>
+              {totalUrgentCount > 0 ? `${totalUrgentCount} Urgent Issues` : 'Real-time AI'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Arabic / English language toggle */}
+            <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: '6px', overflow: 'hidden' }}>
+              <button
+                type="button"
+                onClick={() => setLang('en')}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '12px',
+                  fontWeight: lang === 'en' ? 700 : 400,
+                  background: lang === 'en' ? 'var(--action)' : '#fff',
+                  color: lang === 'en' ? '#fff' : 'var(--text)',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                onClick={() => setLang('ar')}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '12px',
+                  fontWeight: lang === 'ar' ? 700 : 400,
+                  background: lang === 'ar' ? 'var(--action)' : '#fff',
+                  color: lang === 'ar' ? '#fff' : 'var(--text)',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                عربي
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ fontSize: '12px', padding: '4px 10px' }}
+              onClick={() => onNavigate('price-comparisons')}
+            >
+              Compare prices
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ fontSize: '12px', padding: '4px 12px' }}
+              onClick={() => onNavigate('attention')}
+            >
+              View all ({totalUrgentCount}) →
+            </button>
+          </div>
         </div>
 
-        {attentionItems.length > 0 ? (
-          attentionItems.map((item) => (
+        {urgentAlerts.length > 0 ? (
+          urgentAlerts.map((item) => {
+            const headline = lang === 'ar' && item.titleAr ? item.titleAr : item.title;
+            const explanation = lang === 'ar' && item.reasonAr ? item.reasonAr : item.reason;
+            const isRtl = lang === 'ar';
+
+            return (
+              <div
+                key={item.id}
+                className="decision-row"
+                style={{
+                  direction: isRtl ? 'rtl' : 'ltr',
+                  textAlign: isRtl ? 'right' : 'left',
+                  alignItems: 'flex-start',
+                  padding: '14px 0',
+                }}
+              >
+                <div className="decision-content" style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span
+                      className="badge bad"
+                      style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: 700 }}
+                    >
+                      {item.severity}
+                    </span>
+                    {item.isBestseller && (
+                      <span className="badge-bestseller" style={{ fontSize: '10px' }}>
+                        ★ Bestseller
+                      </span>
+                    )}
+                    <strong style={{ fontSize: '14px', color: 'var(--text)' }}>
+                      {headline}
+                    </strong>
+                  </div>
+
+                  <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '4px 0 8px 0', lineHeight: 1.4 }}>
+                    {explanation}
+                  </p>
+
+                  <div className="decision-meta" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '12px' }}>
+                    {item.competitorName && (
+                      <span className="badge neutral">
+                        {isRtl ? `المنافس: ${item.competitorName}` : `Competitor: ${item.competitorName}`}
+                      </span>
+                    )}
+                    <span className="badge bad" style={{ fontWeight: 600 }}>
+                      {item.egpImpact.toFixed(2)} EGP gap
+                    </span>
+                    <span style={{ color: 'var(--action)', fontWeight: 500 }}>
+                      {isRtl ? 'الإجراء:' : 'Action:'} {lang === 'ar' && item.suggestedActionAr ? item.suggestedActionAr : item.suggestedAction}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ fontSize: '12px', padding: '4px 10px' }}
+                    onClick={() => onNavigate('attention')}
+                  >
+                    Act Now →
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        ) : isLoadingAttention ? (
+          <p style={{ color: 'var(--muted)', fontSize: '13px', padding: '16px 0' }}>
+            Analyzing market facts and price positions...
+          </p>
+        ) : rankedAttention.length > 0 ? (
+          rankedAttention.map((item) => {
+            const headline = lang === 'ar' && item.headlineAr ? item.headlineAr : item.headline;
+            const explanation = lang === 'ar' && item.explanationAr ? item.explanationAr : item.explanation;
+            const isRtl = lang === 'ar';
+
+            return (
+              <div
+                key={item.id}
+                className="decision-row"
+                style={{
+                  direction: isRtl ? 'rtl' : 'ltr',
+                  textAlign: isRtl ? 'right' : 'left',
+                  alignItems: 'flex-start',
+                  padding: '14px 0',
+                }}
+              >
+                <div className="decision-content" style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span
+                      className={`badge ${item.priority === 'high' ? 'bad' : item.priority === 'low' ? 'good' : 'warn'}`}
+                      style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: 700 }}
+                    >
+                      {item.priority}
+                    </span>
+                    <strong style={{ fontSize: '14px', color: 'var(--text)' }}>
+                      {headline}
+                    </strong>
+                  </div>
+
+                  <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '4px 0 8px 0', lineHeight: 1.4 }}>
+                    {explanation}
+                  </p>
+
+                  <div className="decision-meta" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '12px' }}>
+                    {item.brand && <span className="badge neutral">{item.brand}</span>}
+                    <span className="badge neutral">
+                      {isRtl ? `المنافس: ${item.competitorName}` : `Competitor: ${item.competitorName}`}
+                    </span>
+                    <span>
+                      {isRtl ? 'ليزي بين:' : 'Lazy Bean:'} <strong>{item.lazyBeanPrice.toFixed(2)} EGP</strong>
+                    </span>
+                    <span>
+                      {isRtl ? 'المنافس:' : `${item.competitorName}:`} <strong>{item.competitorPrice.toFixed(2)} EGP</strong>
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ marginLeft: isRtl ? '0' : '16px', marginRight: isRtl ? '16px' : '0' }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ fontSize: '12px', padding: '4px 10px', whiteSpace: 'nowrap' }}
+                    onClick={() => onNavigate('price-comparisons')}
+                  >
+                    {isRtl ? 'عرض في المقارنة ←' : 'View in matrix →'}
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        ) : fallbackAttentionItems.length > 0 ? (
+          fallbackAttentionItems.map((item) => (
             <div key={item.lazyBeanProductId} className="decision-row">
               <div className="decision-content">
                 <div className="decision-title">{item.lazyBeanTitle}</div>
@@ -211,7 +421,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
           <div style={{ padding: '12px', background: '#fafbfc', border: '1px solid var(--line)', borderRadius: '6px' }}>
             <div style={{ fontWeight: 600, fontSize: '14px' }}>Strong Coffee</div>
-            <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>strongcoffee-eg.com (Woo)</div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>strongcoffee.net (WooCommerce)</div>
             <div style={{ marginTop: '8px' }}><span className="badge good">Active</span></div>
           </div>
         </div>

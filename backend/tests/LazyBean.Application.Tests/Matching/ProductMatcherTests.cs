@@ -251,4 +251,21 @@ public class ProductMatcherTests
 
         Assert.NotEqual(MatchDecision.Auto, eval.Decision);
     }
+
+    [Fact]
+    public void DistinguishingTokensEntirelyDifferent_Brasile_vs_Selection_MustBeNoMatch_AndNotEnterReviewQueue()
+    {
+        var comp = CreateCandidate(
+            "Lavazza La Reserva de Tierra Brasile 100 % Arabica Espresso Whole Beans Coffee - 1 Kg",
+            "Lavazza",
+            CanonicalCategory.CoffeeBeans);
+        var reference = CreateCandidate(
+            "Lavazza La Reserva de Tierra Selection Espresso Whole Beans Coffee - 1 Kg",
+            "Lavazza",
+            CanonicalCategory.CoffeeBeans);
+
+        var eval = ProductMatcher.EvaluateMatch(comp, reference);
+
+        Assert.Equal(MatchDecision.None, eval.Decision);
+    }
 }

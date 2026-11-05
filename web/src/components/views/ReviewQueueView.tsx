@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api, type ReviewMatchItem } from '../../api/client';
+import { aiApi } from '../../api/ai';
 
 interface ReviewQueueViewProps {
   onRefreshReviewsCount?: () => void;
@@ -17,10 +18,12 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isTriaging, setIsTriaging] = useState(false);
 
   // Filters
   const [search, setSearch] = useState('');
   const [selectedCompetitor, setSelectedCompetitor] = useState('all');
+  const [verdictFilter, setVerdictFilter] = useState<'all' | 'same' | 'different' | 'unsure' | 'unanalyzed'>('all');
 
   const fetchReviews = async () => {
     setIsLoading(true);
@@ -65,9 +68,20 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
           return false;
         }
       }
+
+      if (verdictFilter === 'same') {
+        if (r.aiVerdict !== 'same') return false;
+      } else if (verdictFilter === 'different') {
+        if (r.aiVerdict !== 'different') return false;
+      } else if (verdictFilter === 'unsure') {
+        if (r.aiVerdict !== 'unsure') return false;
+      } else if (verdictFilter === 'unanalyzed') {
+        if (r.aiVerdict) return false;
+      }
+
       return true;
     });
-  }, [reviews, search]);
+  }, [reviews, search, verdictFilter]);
 
   // Selection handlers
   const handleToggleSelect = (id: string) => {
@@ -153,10 +167,75 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
     }
   };
 
+  // Reject all AI-different on this page (still goes through existing confirm dialog, max 50)
+  const handleRejectAllAiDifferentOnPage = async () => {
+    const aiDifferentIds = filteredReviews
+      .slice(0, 50)
+      .filter((r) => r.aiVerdict === 'different')
+      .map((r) => r.id!)
+      .filter(Boolean);
+
+    if (aiDifferentIds.length === 0) {
+      alert('No candidate matches on this visible page are flagged by AI as "Different".');
+      return;
+    }
+
+    const count = aiDifferentIds.length;
+    const confirmed = window.confirm(
+      `Reject all ${count} AI-flagged 'Different' candidate match(es) on this visible page?`
+    );
+    if (!confirmed) return;
+
+    setIsSubmitting(true);
+    setActionMessage(null);
+    try {
+      const decisions = aiDifferentIds.map((id) => ({
+        id,
+        decision: 'reject' as const,
+        notes: notesMap[id] || 'Bulk rejected based on AI suggestion (Different product)',
+      }));
+
+      await api.POST('/api/matches/decisions', {
+        body: { decisions },
+      });
+
+      const selectedSet = new Set(aiDifferentIds);
+      setReviews((prev) => prev.filter((r) => !selectedSet.has(r.id!)));
+      setTotalCount((prev) => Math.max(0, prev - selectedSet.size));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        aiDifferentIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      setActionMessage(`Successfully rejected ${count} AI-different matches on this visible page.`);
+      if (onRefreshReviewsCount) onRefreshReviewsCount();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to submit bulk rejection');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRunTriage = async () => {
+    setIsTriaging(true);
+    setActionMessage(null);
+    try {
+      const stats = await aiApi.runTriage(100);
+      setActionMessage(
+        `AI Triage completed: ${stats.totalEvaluated} pairs evaluated (${stats.sameCount} same, ${stats.differentCount} different, ${stats.unsureCount} unsure, ${stats.cacheHits} cache hits).`
+      );
+      await fetchReviews();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to run AI triage');
+    } finally {
+      setIsTriaging(false);
+    }
+  };
+
   return (
     <div className="review-queue-view">
       {/* Page Heading */}
-      <div className="page-heading">
+      <div className="page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div className="eyebrow">OPERATOR VERIFICATION</div>
           <h1 className="view-title">Reviews Needing Attention</h1>
@@ -164,6 +243,15 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
             Confirm product matches and equivalent coffee items across monitored stores. Compare pack size, weight, and capsule format.
           </p>
         </div>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={handleRunTriage}
+          disabled={isTriaging || isLoading}
+          style={{ whiteSpace: 'nowrap', padding: '8px 14px', fontSize: '13px' }}
+        >
+          {isTriaging ? '⚡ Triaging with Gemini...' : '⚡ Run AI Triage (Batch 100)'}
+        </button>
       </div>
 
       {actionMessage && (
@@ -211,19 +299,40 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
           >
             ✕ Bulk Reject ({Math.min(selectedIds.size, 50)})
           </button>
+          <button
+            type="button"
+            className="btn-xs reject"
+            style={{ padding: '6px 14px', fontSize: '13px', background: '#fdf2f2', borderColor: '#f8b4b4', color: '#9f1c1c' }}
+            disabled={isSubmitting}
+            onClick={handleRejectAllAiDifferentOnPage}
+            title="Reject all items on this visible page where AI verdict is 'different' (max 50, requires confirmation)"
+          >
+            ⚡ Reject all AI-different on this page
+          </button>
         </div>
       </div>
 
       {/* Filters Bar */}
-      <div className="matrix-filters-bar" style={{ marginBottom: '16px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+      <div className="matrix-filters-bar" style={{ marginBottom: '16px', borderRadius: '8px', border: '1px solid var(--line)', display: 'flex', gap: '12px' }}>
         <input
           type="search"
           placeholder="Filter candidate matches by product title, brand, or keywords..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: '8px 12px', border: '1px solid var(--line)', borderRadius: '6px' }}
+          style={{ flex: 1, padding: '8px 12px', border: '1px solid var(--line)', borderRadius: '6px' }}
         />
-        <div style={{ fontSize: '13px', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        <select
+          value={verdictFilter}
+          onChange={(e) => setVerdictFilter(e.target.value as any)}
+          style={{ padding: '8px 12px', border: '1px solid var(--line)', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
+        >
+          <option value="all">All AI Verdicts</option>
+          <option value="same">AI: Same</option>
+          <option value="different">AI: Different</option>
+          <option value="unsure">AI: Unsure</option>
+          <option value="unanalyzed">Unanalyzed</option>
+        </select>
+        <div style={{ fontSize: '13px', color: 'var(--muted)', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
           Showing <strong>{filteredReviews.length}</strong> of <strong>{totalCount}</strong> pending reviews
         </div>
       </div>
@@ -254,12 +363,54 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
                       onChange={() => handleToggleSelect(item.id!)}
                       style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                     />
-                    <span className="review-score-badge">{scorePct}% Match Confidence</span>
+                    <span className="review-score-badge">{scorePct}% Similarity score</span>
                   </div>
                   <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
                     Candidate ID: {item.id?.substring(0, 8)}...
                   </span>
                 </div>
+
+                {/* AI Triage Verdict Banner */}
+                {item.aiVerdict && (
+                  <div
+                    style={{
+                      margin: '10px 0 6px 0',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      background: item.aiVerdict === 'same' ? '#eef7f2' : item.aiVerdict === 'different' ? '#fdf2f2' : '#fef9ec',
+                      border: `1px solid ${item.aiVerdict === 'same' ? '#b8dfca' : item.aiVerdict === 'different' ? '#f8b4b4' : '#f5dc9e'}`,
+                      color: item.aiVerdict === 'same' ? '#1b5238' : item.aiVerdict === 'different' ? '#9f1c1c' : '#855c0c',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        background: item.aiVerdict === 'same' ? '#1b5238' : item.aiVerdict === 'different' ? '#9f1c1c' : '#855c0c',
+                        color: '#fff',
+                        fontSize: '11px',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      AI: {item.aiVerdict}
+                      {item.aiConfidence !== null && item.aiConfidence !== undefined
+                        ? ` (${Math.round(item.aiConfidence * 100)}%)`
+                        : ''}
+                    </span>
+                    {item.aiReason && (
+                      <span style={{ lineHeight: '1.4' }}>
+                        <strong>Reason:</strong> {item.aiReason}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Match Basis */}
                 <div className="review-basis-box">

@@ -4,9 +4,15 @@ obj/
 publish/
 *.user
 .vs/
+*.zip
+backend/src/LazyBean.Api/wwwroot/
+web/dist/
+web/scripts/ai-triage-*.json
 # Secrets and local configs
 appsettings.*.local.json
 META-API.txt
+*-API.txt
+*API*.txt
 *token*
 *cookie*.txt
 *secret*

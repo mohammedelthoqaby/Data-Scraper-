@@ -64,6 +64,10 @@ public class GetReviewsQueryHandler(IReadDbContext readContext)
                 var compBeverage = root.TryGetProperty("CompetitorBeverageType", out var cbt) && cbt.ValueKind == JsonValueKind.String ? cbt.GetString() : null;
                 var refBeverage = root.TryGetProperty("ReferenceBeverageType", out var rbt) && rbt.ValueKind == JsonValueKind.String ? rbt.GetString() : null;
 
+                var aiVerdict = root.TryGetProperty("AiVerdict", out var aiv) && aiv.ValueKind == JsonValueKind.String ? aiv.GetString() : null;
+                var aiConfidence = root.TryGetProperty("AiConfidence", out var aic) && aic.ValueKind == JsonValueKind.Number && aic.TryGetDecimal(out var aicVal) ? (decimal?)aicVal : null;
+                var aiReason = root.TryGetProperty("AiReason", out var air) && air.ValueKind == JsonValueKind.String ? air.GetString() : null;
+
                 var compProduct = new ReviewProductDetailsDto(
                     compProductId, compVariantId, compTitle, compVendor, compCategory,
                     compPrice, "EGP", canonicalUrl, compWeight, compUnit, compExtId, compCapsule, compBeverage, compBrand);
@@ -80,7 +84,10 @@ public class GetReviewsQueryHandler(IReadDbContext readContext)
                     item.Status.ToString().ToLowerInvariant(),
                     refProduct,
                     compProduct,
-                    item.CreatedAt);
+                    item.CreatedAt,
+                    aiVerdict,
+                    aiConfidence,
+                    aiReason);
 
                 parsedList.Add((item, GetCategoryPriority(canonicalCategory), score, dto));
             }
@@ -101,7 +108,8 @@ public class GetReviewsQueryHandler(IReadDbContext readContext)
         }
 
         var sortedMatches = parsedList
-            .OrderBy(p => p.CategoryPriority)
+            .OrderBy(p => p.Dto.AiVerdict != null ? 0 : 1)
+            .ThenBy(p => p.CategoryPriority)
             .ThenByDescending(p => p.Score)
             .ThenByDescending(p => p.Item.CreatedAt)
             .Skip((request.Page - 1) * request.PageSize)

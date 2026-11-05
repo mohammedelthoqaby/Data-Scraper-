@@ -681,6 +681,21 @@ public class ProductMatcher : IProductMatcher
             categoryMatches &&
             beverageMatches)
         {
+            // Tightened rule: pairs whose distinguishing tokens are entirely different (e.g. Brasile vs Selection)
+            // are NoMatch and must NOT enter the queue.
+            var unsharedComp = comp.DistinguishingTokens
+                .Where(t => !reference.DistinguishingTokens.Any(r => AreTokensSimilar(t, r)) && !IsSubstantiveModifier(t))
+                .ToList();
+            var unsharedRef = reference.DistinguishingTokens
+                .Where(t => !comp.DistinguishingTokens.Any(c => AreTokensSimilar(c, t)) && !IsSubstantiveModifier(t))
+                .ToList();
+
+            if (unsharedComp.Count > 0 && unsharedRef.Count > 0)
+            {
+                return new MatchEvaluation(MatchDecision.None, 0m,
+                    $"Conflicting variant tokens: '{string.Join(", ", unsharedComp)}' vs '{string.Join(", ", unsharedRef)}'");
+            }
+
             var distDice = TitleSimilarity.TokenDiceSimilarity(comp.DistinguishingTokens, reference.DistinguishingTokens);
             var distOverlap = comp.DistinguishingTokens.Intersect(reference.DistinguishingTokens).Any();
             var similarTokens = HaveSimilarVariantTokens(comp.DistinguishingTokens, reference.DistinguishingTokens);
@@ -719,6 +734,23 @@ public class ProductMatcher : IProductMatcher
         }
 
         return false;
+    }
+
+    private static bool AreTokensSimilar(string t1, string t2)
+    {
+        if (string.Equals(t1, t2, StringComparison.OrdinalIgnoreCase)) return true;
+        if (t1.Length >= 4 && t2.Length >= 4)
+        {
+            if (t1.StartsWith(t2, StringComparison.OrdinalIgnoreCase) || t2.StartsWith(t1, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return TitleSimilarity.NormalizedLevenshtein(t1, t2) >= 0.75;
+    }
+
+    private static bool IsSubstantiveModifier(string token)
+    {
+        var t = token.ToLowerInvariant();
+        return t is "100%" or "100" or "arabica" or "robusta" or "blend" or "premium" or "specialty" or "quality";
     }
 
     public static HashSet<string> ExtractDistinguishingTokens(
@@ -997,6 +1029,7 @@ public class ProductMatcher : IProductMatcher
         "cup", "cups", "mug", "mugs", "original", "vertuo", "vertuoline", "dolce", "gusto",
         "dolcegusto", "nespresso", "caffitaly", "filter", "drip", "machine", "machines",
         "maker", "makers", "system", "by", "for", "with", "in", "of", "and", "the", "a", "an",
+        "de", "la", "del", "della", "di", "le", "el", "los", "las", "e", "ed",
         "at", "to", "from", "gram", "grams", "kg", "g", "gm", "ml", "l", "liter", "liters",
         "قهوة", "قهوه", "بن", "اسبريسو", "كبسولات", "كبسولة", "كبسوله", "حبوب", "حب",
         "مطحون", "مطحونة", "مطحونه", "شاي", "شاى", "اعشاب", "أعشاب",

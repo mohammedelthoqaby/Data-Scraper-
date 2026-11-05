@@ -11,6 +11,7 @@ using LazyBean.Domain.Entities;
 using LazyBean.Domain.Enums;
 using LazyBean.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace LazyBean.Infrastructure.Collection.Orchestration;
@@ -26,6 +27,8 @@ public class CollectionRunExecutor(
     ICompetitorAdapterResolver adapters,
     ICacheService cache,
     IProductClassifier classifier,
+    ICollectorHttpClient? http,
+    IConfiguration? configuration,
     ILogger<CollectionRunExecutor> logger) : ICollectionRunExecutor
 {
     public CollectionRunExecutor(
@@ -33,7 +36,17 @@ public class CollectionRunExecutor(
         ICompetitorAdapterResolver adapters,
         ICacheService cache,
         ILogger<CollectionRunExecutor> logger)
-        : this(dbContextFactory, adapters, cache, new ProductClassifier(), logger)
+        : this(dbContextFactory, adapters, cache, new ProductClassifier(), null, null, logger)
+    {
+    }
+
+    public CollectionRunExecutor(
+        IDbContextFactory<LazyBeanDbContext> dbContextFactory,
+        ICompetitorAdapterResolver adapters,
+        ICacheService cache,
+        IProductClassifier classifier,
+        ILogger<CollectionRunExecutor> logger)
+        : this(dbContextFactory, adapters, cache, classifier, null, null, logger)
     {
     }
 
@@ -485,6 +498,11 @@ public class CollectionRunExecutor(
                     competitor.Key, seenExternalIds.Count);
             }
 
+            if (competitor.IsReference && http != null)
+            {
+                await CheckReferenceLinksSampleAsync(db, competitor, runId, competitorRun, ct);
+            }
+
             var compWsMb = Process.GetCurrentProcess().WorkingSet64 / (1024 * 1024);
             var compHeapMb = GC.GetTotalMemory(forceFullCollection: false) / (1024 * 1024);
             logger.LogInformation(
@@ -625,5 +643,82 @@ public class CollectionRunExecutor(
 
         await db.SaveChangesAsync(ct);
         db.ChangeTracker.Clear();
+    }
+
+    private async Task CheckReferenceLinksSampleAsync(
+        LazyBeanDbContext db, Competitor competitor, Guid runId, CompetitorRun competitorRun, CancellationToken ct)
+    {
+        if (http == null) return;
+
+        var apiBase = competitor.BaseUrl.TrimEnd('/');
+        if (!apiBase.EndsWith("/api", StringComparison.OrdinalIgnoreCase))
+        {
+            apiBase += "/api";
+        }
+
+        var sampleSize = int.TryParse(configuration?["Collection:ReferenceLinkCheckSampleSize"], out var sz) && sz > 0 ? sz : 50;
+
+        var sampleProducts = await db.Products
+            .Where(p => p.CompetitorId == competitor.Id && p.Status == ProductStatus.Active && !string.IsNullOrWhiteSpace(p.ExternalId))
+            .OrderBy(p => p.Id)
+            .Take(sampleSize)
+            .Select(p => new { p.Id, p.ExternalId, p.Title, p.CanonicalUrl })
+            .ToListAsync(ct);
+
+        if (sampleProducts.Count == 0) return;
+
+        logger.LogInformation("[{Competitor}] Verifying active reference links on sample of {Count} products...", competitor.Key, sampleProducts.Count);
+
+        var brokenLinks = new List<(Guid ProductId, string Title, string Url, string Reason)>();
+
+        foreach (var p in sampleProducts)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            var checkUrl = $"{apiBase}/products/{p.ExternalId}?lang=en-US";
+            try
+            {
+                var resp = await http.GetAsync(competitor, checkUrl, ct);
+                if (!resp.Success || resp.StatusCode >= 400)
+                {
+                    brokenLinks.Add((p.Id, p.Title, p.CanonicalUrl, $"HTTP {resp.StatusCode}"));
+                }
+            }
+            catch (Exception ex)
+            {
+                brokenLinks.Add((p.Id, p.Title, p.CanonicalUrl, ex.Message));
+            }
+        }
+
+        if (brokenLinks.Count > 0)
+        {
+            logger.LogWarning("[{Competitor}] Reference link check flagged {BrokenCount}/{Total} broken links.", competitor.Key, brokenLinks.Count, sampleProducts.Count);
+            competitorRun.Errors += brokenLinks.Count;
+
+            foreach (var broken in brokenLinks)
+            {
+                db.ReviewItems.Add(new ReviewItem
+                {
+                    Kind = ReviewItemKind.BrokenReferenceLink,
+                    Reason = $"Broken reference link: {broken.Reason}",
+                    PayloadJson = JsonSerializer.Serialize(new
+                    {
+                        competitorKey = competitor.Key,
+                        productId = broken.ProductId,
+                        productTitle = broken.Title,
+                        url = broken.Url,
+                        reason = broken.Reason,
+                        checkedAt = DateTimeOffset.UtcNow
+                    })
+                });
+            }
+
+            await db.SaveChangesAsync(ct);
+            db.ChangeTracker.Clear();
+        }
+        else
+        {
+            logger.LogInformation("[{Competitor}] Reference link check passed: {Count}/{Total} (100%) active and valid.", competitor.Key, sampleProducts.Count, sampleProducts.Count);
+        }
     }
 }

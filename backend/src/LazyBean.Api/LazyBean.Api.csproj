@@ -36,4 +36,18 @@
     </None>
   </ItemGroup>
 
+  <Target Name="BuildWebAndCopyWwwroot" BeforeTargets="BeforePublish">
+    <Message Text="Building web frontend and copying to wwwroot..." Importance="high" />
+    <Exec Command="npm run build --prefix ../../../web" ContinueOnError="false" />
+    <ItemGroup>
+      <DistFiles Include="..\..\..\web\dist\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(DistFiles)" DestinationFolder="wwwroot\%(RecursiveDir)" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <ResolvedFileToPublish Include="wwwroot\**\*.*">
+        <RelativePath>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
 </Project>

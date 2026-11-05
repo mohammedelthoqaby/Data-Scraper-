@@ -224,7 +224,10 @@ public class LazzyBeanAdapter : ICompetitorAdapter
                     if (!seenProductIds.Add(item.Id))
                         continue;
 
-                    var canonicalUrl = $"https://lazzybean.com/single-product/{item.Id}";
+                    var storefrontBase = (_configuration?["Reference:StorefrontBaseUrl"] ?? "https://lazybean.co").TrimEnd('/');
+                    var canonicalUrl = !string.IsNullOrWhiteSpace(item.Id)
+                        ? $"{storefrontBase}/single-product/{item.Id}"
+                        : string.Empty;
                     var vendorName = !string.IsNullOrWhiteSpace(item.Vendor?.Name)
                         ? item.Vendor.Name
                         : item.Vendor?.CompanyName;

@@ -1,8 +1,12 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using LazyBean.Application.Ads.Common;
 using LazyBean.Application.Common.Interfaces;
 using LazyBean.Application.Runs.Commands.StartRun;
+using LazyBean.Application.Runs.Dtos;
+using LazyBean.Application.Runs.Queries.GetRuns;
 using LazyBean.Domain.Entities;
 using LazyBean.Domain.Enums;
 using LazyBean.Domain.Interfaces;
@@ -70,6 +74,23 @@ public record MetaAdsIngestRequest(
     string? Error,
     List<MetaAdItemRequest>? Ads);
 
+public record DiagnosticProbeResult(
+    string Target,
+    string Url,
+    int HttpStatus,
+    bool HasAdsData,
+    string Signal,
+    string? ErrorMessage,
+    string? Snippet,
+    IReadOnlyDictionary<string, string>? ResponseHeaders);
+
+public record AdDiagnosticsResponse(
+    DateTimeOffset Timestamp,
+    DiagnosticProbeResult MetaAdLibraryGraphql,
+    DiagnosticProbeResult MetaAdLibraryPage,
+    DiagnosticProbeResult GoogleAdsTransparencySuggestions,
+    DiagnosticProbeResult GoogleAdsTransparencyCreatives);
+
 [ApiController]
 [Route("api/internal")]
 [AllowAnonymous]
@@ -125,6 +146,333 @@ public class InternalApiController(
         }
 
         return Accepted(result);
+    }
+
+    [HttpGet("runs/latest")]
+    [ProducesResponseType(typeof(RunDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetLatestRun(CancellationToken ct)
+    {
+        if (!IsAuthorized())
+        {
+            return Unauthorized(new { error = "Invalid or missing Internal:Token header." });
+        }
+
+        var runs = await sender.Send(new GetRunsQuery(), ct);
+        var latest = runs.OrderByDescending(r => r.StartedAt).FirstOrDefault();
+        if (latest == null)
+        {
+            return NotFound(new { error = "No runs found." });
+        }
+
+        return Ok(latest);
+    }
+
+    [HttpPost("diagnostics/meta-ad-library")]
+    [HttpPost("diagnostics/google-ads-transparency")]
+    [HttpPost("diagnostics/ads")]
+    [ProducesResponseType(typeof(AdDiagnosticsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> RunAdDiagnostics(CancellationToken ct)
+    {
+        if (!IsAuthorized())
+        {
+            return Unauthorized(new { error = "Invalid or missing Internal:Token header." });
+        }
+
+        using var handler = new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            UseProxy = false,
+            UseCookies = false
+        };
+        using var client = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromSeconds(15)
+        };
+
+        // 1. Meta Ad Library GraphQL probe (as in meta-ads-collector)
+        DiagnosticProbeResult metaGraphql;
+        try
+        {
+            var metaUrl = "https://www.facebook.com/api/graphql/";
+            var sessionUuid = Guid.NewGuid().ToString();
+            var collationUuid = Guid.NewGuid().ToString();
+            var variables = new
+            {
+                activeStatus = "ALL",
+                adType = "ALL",
+                bylines = Array.Empty<string>(),
+                collationToken = collationUuid,
+                contentLanguages = Array.Empty<string>(),
+                countries = new[] { "EG" },
+                excludedIDs = Array.Empty<string>(),
+                first = 10,
+                isTargetedCountry = false,
+                location = (string?)null,
+                mediaType = "ALL",
+                multiCountryFilterMode = (string?)null,
+                pageIDs = new[] { "100456846237420" },
+                potentialReachInput = Array.Empty<string>(),
+                publisherPlatforms = Array.Empty<string>(),
+                queryString = "",
+                regions = Array.Empty<string>(),
+                searchType = "PAGE",
+                sessionID = sessionUuid,
+                source = (string?)null,
+                startDate = (string?)null,
+                v = "fbece7",
+                viewAllPageID = "0"
+            };
+
+            var formData = new Dictionary<string, string>
+            {
+                ["av"] = "0",
+                ["__user"] = "0",
+                ["__a"] = "1",
+                ["__req"] = "1",
+                ["__hs"] = "20476.HYP:comet_plat_default_pkg.2.1...0",
+                ["dpr"] = "1",
+                ["__ccg"] = "GOOD",
+                ["__rev"] = "1033837939",
+                ["__hsi"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(),
+                ["__comet_req"] = "94",
+                ["lsd"] = "AVrZ",
+                ["jazoest"] = "2957",
+                ["__spin_r"] = "1033837939",
+                ["__spin_b"] = "trunk",
+                ["__spin_t"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
+                ["fb_api_caller_class"] = "RelayModern",
+                ["fb_api_req_friendly_name"] = "AdLibrarySearchPaginationQuery",
+                ["variables"] = JsonSerializer.Serialize(variables),
+                ["doc_id"] = "25464068859919530"
+            };
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, metaUrl)
+            {
+                Content = new FormUrlEncodedContent(formData),
+                Version = HttpVersion.Version11,
+                VersionPolicy = HttpVersionPolicy.RequestVersionExact
+            };
+            req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36");
+            req.Headers.TryAddWithoutValidation("Accept", "*/*");
+            req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
+            req.Headers.TryAddWithoutValidation("Origin", "https://www.facebook.com");
+            req.Headers.TryAddWithoutValidation("Referer", "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=EG&view_all_page_id=100456846237420");
+            req.Headers.TryAddWithoutValidation("x-asbd-id", "359341");
+            req.Headers.TryAddWithoutValidation("x-fb-friendly-name", "AdLibrarySearchPaginationQuery");
+            req.Headers.TryAddWithoutValidation("x-fb-lsd", "AVrZ");
+            req.Headers.TryAddWithoutValidation("sec-ch-ua", "\"Google Chrome\";v=\"145\", \"Chromium\";v=\"145\", \"Not_A Brand\";v=\"24\"");
+            req.Headers.TryAddWithoutValidation("sec-ch-ua-mobile", "?0");
+            req.Headers.TryAddWithoutValidation("sec-ch-ua-platform", "\"Windows\"");
+            req.Headers.TryAddWithoutValidation("sec-fetch-dest", "empty");
+            req.Headers.TryAddWithoutValidation("sec-fetch-mode", "cors");
+            req.Headers.TryAddWithoutValidation("sec-fetch-site", "same-origin");
+
+            using var resp = await client.SendAsync(req, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            var hasAds = body.Contains("ad_archive_id") || body.Contains("collated_results") || body.Contains("total_count");
+            var signal = ClassifyMetaSignal((int)resp.StatusCode, body);
+            var respHeaders = resp.Headers.ToDictionary(h => h.Key, h => string.Join(", ", h.Value));
+
+            metaGraphql = new DiagnosticProbeResult(
+                "Meta Ad Library GraphQL",
+                metaUrl,
+                (int)resp.StatusCode,
+                hasAds,
+                signal,
+                null,
+                body.Length > 600 ? body[..600] : body,
+                respHeaders);
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.InnerException != null ? $"{ex.Message} -> {ex.InnerException.Message}" : ex.Message;
+            metaGraphql = new DiagnosticProbeResult("Meta Ad Library GraphQL", "https://www.facebook.com/api/graphql/", 0, false, "ConnectionError", msg, null, null);
+        }
+
+        // 2. Meta Ad Library public page probe
+        DiagnosticProbeResult metaPage;
+        try
+        {
+            var pageUrl = "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=EG&view_all_page_id=100456846237420";
+            using var req = new HttpRequestMessage(HttpMethod.Get, pageUrl)
+            {
+                Version = HttpVersion.Version11,
+                VersionPolicy = HttpVersionPolicy.RequestVersionExact
+            };
+            req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36");
+            req.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+            req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
+
+            using var resp = await client.SendAsync(req, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            var hasAds = body.Contains("ad_archive_id") || body.Contains("search_results");
+            var signal = ClassifyMetaSignal((int)resp.StatusCode, body);
+            var respHeaders = resp.Headers.ToDictionary(h => h.Key, h => string.Join(", ", h.Value));
+
+            metaPage = new DiagnosticProbeResult(
+                "Meta Ad Library Page Probe",
+                pageUrl,
+                (int)resp.StatusCode,
+                hasAds,
+                signal,
+                null,
+                body.Length > 600 ? body[..600] : body,
+                respHeaders);
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.InnerException != null ? $"{ex.Message} -> {ex.InnerException.Message}" : ex.Message;
+            metaPage = new DiagnosticProbeResult("Meta Ad Library Page Probe", "https://www.facebook.com/ads/library/...", 0, false, "ConnectionError", msg, null, null);
+        }
+
+        // 3. Google Ads Transparency SearchSuggestions probe (as in google-ads-transparency-mcp)
+        DiagnosticProbeResult googleSuggestions;
+        try
+        {
+            var gUrl = "https://adstransparency.google.com/anji/_/rpc/SearchService/SearchSuggestions";
+            var suggestionPayload = new Dictionary<string, object>
+            {
+                ["1"] = "cafelax",
+                ["2"] = 10,
+                ["3"] = 10
+            };
+            var gFormData = new Dictionary<string, string>
+            {
+                ["f.req"] = JsonSerializer.Serialize(suggestionPayload)
+            };
+            using var req = new HttpRequestMessage(HttpMethod.Post, gUrl)
+            {
+                Content = new FormUrlEncodedContent(gFormData)
+            };
+            req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+            req.Headers.TryAddWithoutValidation("Accept", "*/*");
+            req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
+            req.Headers.TryAddWithoutValidation("Origin", "https://adstransparency.google.com");
+            req.Headers.TryAddWithoutValidation("Referer", "https://adstransparency.google.com/?region=EG");
+            req.Headers.TryAddWithoutValidation("sec-fetch-dest", "empty");
+            req.Headers.TryAddWithoutValidation("sec-fetch-mode", "cors");
+            req.Headers.TryAddWithoutValidation("sec-fetch-site", "same-origin");
+
+            using var resp = await client.SendAsync(req, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            var hasAds = body.Contains("CAFELAX") || body.Contains("AR01064852753525768193");
+            var signal = ClassifyGoogleSignal((int)resp.StatusCode, body, resp.Headers.Location?.ToString());
+            var respHeaders = resp.Headers.ToDictionary(h => h.Key, h => string.Join(", ", h.Value));
+
+            googleSuggestions = new DiagnosticProbeResult(
+                "Google Ads Transparency SearchSuggestions",
+                gUrl,
+                (int)resp.StatusCode,
+                hasAds,
+                signal,
+                null,
+                body.Length > 600 ? body[..600] : body,
+                respHeaders);
+        }
+        catch (Exception ex)
+        {
+            googleSuggestions = new DiagnosticProbeResult("Google Ads Transparency SearchSuggestions", "https://adstransparency.google.com/...", 0, false, "ConnectionError", ex.Message, null, null);
+        }
+
+        // 4. Google Ads Transparency SearchCreatives probe
+        DiagnosticProbeResult googleCreatives;
+        try
+        {
+            var gUrl = "https://adstransparency.google.com/anji/_/rpc/SearchService/SearchCreatives";
+            var creativesPayload = new Dictionary<string, object>
+            {
+                ["2"] = 10,
+                ["3"] = new Dictionary<string, object>
+                {
+                    ["12"] = new Dictionary<string, object> { ["1"] = "", ["2"] = true },
+                    ["13"] = new Dictionary<string, object> { ["1"] = new[] { "AR01064852753525768193" } }
+                },
+                ["7"] = new Dictionary<string, object> { ["1"] = 1 }
+            };
+            var gFormData = new Dictionary<string, string>
+            {
+                ["f.req"] = JsonSerializer.Serialize(creativesPayload)
+            };
+            using var req = new HttpRequestMessage(HttpMethod.Post, gUrl)
+            {
+                Content = new FormUrlEncodedContent(gFormData)
+            };
+            req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+            req.Headers.TryAddWithoutValidation("Accept", "*/*");
+            req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
+            req.Headers.TryAddWithoutValidation("Origin", "https://adstransparency.google.com");
+            req.Headers.TryAddWithoutValidation("Referer", "https://adstransparency.google.com/?region=EG");
+            req.Headers.TryAddWithoutValidation("sec-fetch-dest", "empty");
+            req.Headers.TryAddWithoutValidation("sec-fetch-mode", "cors");
+            req.Headers.TryAddWithoutValidation("sec-fetch-site", "same-origin");
+
+            using var resp = await client.SendAsync(req, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            var hasAds = body.Contains("CR") || body.Contains("AR01064852753525768193");
+            var signal = ClassifyGoogleSignal((int)resp.StatusCode, body, resp.Headers.Location?.ToString());
+            var respHeaders = resp.Headers.ToDictionary(h => h.Key, h => string.Join(", ", h.Value));
+
+            googleCreatives = new DiagnosticProbeResult(
+                "Google Ads Transparency SearchCreatives",
+                gUrl,
+                (int)resp.StatusCode,
+                hasAds,
+                signal,
+                null,
+                body.Length > 600 ? body[..600] : body,
+                respHeaders);
+        }
+        catch (Exception ex)
+        {
+            googleCreatives = new DiagnosticProbeResult("Google Ads Transparency SearchCreatives", "https://adstransparency.google.com/...", 0, false, "ConnectionError", ex.Message, null, null);
+        }
+
+        return Ok(new AdDiagnosticsResponse(
+            DateTimeOffset.UtcNow,
+            metaGraphql,
+            metaPage,
+            googleSuggestions,
+            googleCreatives));
+    }
+
+    private static string ClassifyMetaSignal(int statusCode, string body)
+    {
+        if (statusCode == 429) return "RateLimited (HTTP 429)";
+        if (statusCode == 403)
+        {
+            if (body.Contains("/__rd_verify_") || body.Contains("rd_challenge"))
+                return "Blocked / JavaScript Challenge (HTTP 403 with /__rd_verify_)";
+            return "Blocked / Forbidden (HTTP 403)";
+        }
+        if (body.Contains("1675004") || body.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
+            return "RateLimited (Error Code 1675004)";
+        if (body.Contains("1357004") || body.Contains("1357001") || body.Contains("session", StringComparison.OrdinalIgnoreCase))
+            return "SessionExpired / LoginRequired (Code 1357004)";
+        if (body.Contains("1357054"))
+            return "SessionBootstrapRequired / TokenMismatch (Code 1357054)";
+        if (body.Contains("ad_archive_id") || body.Contains("collated_results") || body.Contains("search_results"))
+            return "SuccessWithAds";
+        if (statusCode == 200)
+            return "Http200Success";
+        return $"HttpStatus_{statusCode}";
+    }
+
+    private static string ClassifyGoogleSignal(int statusCode, string body, string? location)
+    {
+        if (statusCode == 429) return "RateLimited (HTTP 429)";
+        if (statusCode == 403) return "Forbidden (HTTP 403)";
+        if ((location != null && location.Contains("/sorry/")) || body.Contains("/sorry/"))
+            return "BlockedByGoogle (/sorry/ redirect)";
+        if (body.Contains("recaptcha", StringComparison.OrdinalIgnoreCase))
+            return "CaptchaChallenge (recaptcha)";
+        if (body.Contains("CAFELAX") || body.Contains("AR01064852753525768193") || body.Contains("CR"))
+            return "SuccessWithAds";
+        if (statusCode == 200)
+            return "Http200Success";
+        return $"HttpStatus_{statusCode}";
     }
 
     [HttpGet("ads/google/identities")]

@@ -18,6 +18,27 @@ services:
       timeout: 5s
       retries: 10
 
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    environment:
+      DB_USER: lazybean
+      DB_PASSWORD: changeme
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: "*"
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      ADMIN_USERS: lazybean
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+    ports:
+      - "16432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lazybean
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped

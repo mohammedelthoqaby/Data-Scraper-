@@ -17,6 +17,11 @@ public class UnitOfWork : IUnitOfWork
     private IRepository<Ad>? _ads;
     private IRepository<ChangeEvent>? _changeEvents;
     private IRepository<Product>? _products;
+    private IRepository<AiSetting>? _aiSettings;
+    private IRepository<AiReviewTriageCache>? _aiReviewTriageCaches;
+    private IRepository<Alert>? _alerts;
+    private IRepository<AlertHistory>? _alertHistories;
+    private IRepository<AlertSetting>? _alertSettings;
 
     public UnitOfWork(LazyBeanDbContext context)
     {
@@ -33,6 +38,11 @@ public class UnitOfWork : IUnitOfWork
     public IRepository<Ad> Ads => _ads ??= new Repository<Ad>(_context);
     public IRepository<ChangeEvent> ChangeEvents => _changeEvents ??= new Repository<ChangeEvent>(_context);
     public IRepository<Product> Products => _products ??= new Repository<Product>(_context);
+    public IRepository<AiSetting> AiSettings => _aiSettings ??= new Repository<AiSetting>(_context);
+    public IRepository<AiReviewTriageCache> AiReviewTriageCaches => _aiReviewTriageCaches ??= new Repository<AiReviewTriageCache>(_context);
+    public IRepository<Alert> Alerts => _alerts ??= new Repository<Alert>(_context);
+    public IRepository<AlertHistory> AlertHistories => _alertHistories ??= new Repository<AlertHistory>(_context);
+    public IRepository<AlertSetting> AlertSettings => _alertSettings ??= new Repository<AlertSetting>(_context);
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => _context.SaveChangesAsync(ct);
 

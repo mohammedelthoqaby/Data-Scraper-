@@ -34,4 +34,5 @@ public sealed record PriceHistoryPointDto(
     decimal Price,
     decimal? CompareAtPrice,
     bool? InStock,
-    string Currency);
+    string Currency,
+    string? ProductUrl = null);

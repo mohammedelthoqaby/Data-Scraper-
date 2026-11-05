@@ -50,4 +50,6 @@ public sealed record CompetitorPriceCellDto(
     DateTimeOffset ObservedAt,
     bool IsStale,
     string? Brand = null,
-    string? Vendor = null);
+    string? Vendor = null,
+    Guid? MatchId = null,
+    string? MatchMethod = null);

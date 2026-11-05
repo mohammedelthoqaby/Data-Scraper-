@@ -391,6 +391,108 @@ public class CollectionRunIntegrationTests(TestDatabaseFixture testDb)
         }
     }
 
+    [Fact]
+    public async Task ExecuteAsync_ReferenceCompetitor_RunsLinkCheckSampleAndFlagsBrokenLinks()
+    {
+        var dbContextFactory = new ServiceCollection()
+            .AddDbContextFactory<LazyBeanDbContext>(o => o.UseNpgsql(testDb.ConnectionString))
+            .BuildServiceProvider()
+            .GetRequiredService<IDbContextFactory<LazyBeanDbContext>>();
+
+        await using var db = await dbContextFactory.CreateDbContextAsync();
+
+        await db.Database.ExecuteSqlRawAsync(
+            "TRUNCATE competitors, products, variants, price_observations, collection_runs, " +
+            "competitor_runs, change_events, review_items, fetched_resources");
+
+        var competitor = new Competitor
+        {
+            Key = $"it-ref-{Guid.NewGuid():N}",
+            Name = "Lazy Bean Reference",
+            BaseUrl = "https://api.example.com/api",
+            Platform = CompetitorPlatform.LazzyBeanApi,
+            IsReference = true,
+            Enabled = true,
+            MinDelayMs = 0
+        };
+        db.Competitors.Add(competitor);
+
+        var run = new CollectionRun { Trigger = RunTrigger.Manual, Status = CollectionRunStatus.Queued };
+        db.CollectionRuns.Add(run);
+        await db.SaveChangesAsync();
+
+        var products = new List<RawProduct>
+        {
+            new(
+                "prod-ok-1",
+                "Colombian Supremo Coffee Beans 1kg",
+                "https://lazybean.co/single-product/prod-ok-1",
+                "Coffee",
+                [new("var-1", "Default", 350m, null, "EGP", true, "SKU-1")],
+                WeightGrams: 1000),
+            new(
+                "prod-broken-2",
+                "Discontinued Blend Coffee Beans 1kg",
+                "https://lazybean.co/single-product/prod-broken-2",
+                "Coffee",
+                [new("var-2", "Default", 400m, null, "EGP", true, "SKU-2")],
+                WeightGrams: 1000)
+        };
+
+        var handler = new FixtureHttpMessageHandler()
+            .When("products/prod-ok-1?lang=en-US", 200, "{\"data\":{\"id\":\"prod-ok-1\"}}")
+            .When("products/prod-broken-2?lang=en-US", 404, "{\"message\":\"Product not found\"}");
+
+        var evidenceDir = Path.Combine(Path.GetTempPath(), "lazybean-it-evidence-" + Guid.NewGuid());
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection([
+                new("EvidenceStorage:Path", evidenceDir),
+                new("Reference:StorefrontBaseUrl", "https://lazybean.co")
+            ])
+            .Build();
+
+        var httpClientFactory = new FakeHttpClientFactory(handler);
+        var robotsCache = new RobotsTxtCache(httpClientFactory);
+        var evidenceStore = new GzipEvidenceStore(dbContextFactory, configuration);
+        var collectorHttp = new CollectorHttpClient(
+            httpClientFactory, robotsCache, evidenceStore, NullLogger<CollectorHttpClient>.Instance);
+        var adapterResolver = new SingleAdapterResolver(new FakeReferenceAdapter(products));
+        var cache = new NoOpCacheService();
+
+        var executor = new CollectionRunExecutor(
+            dbContextFactory, adapterResolver, cache, new LazyBean.Application.Collection.Classification.ProductClassifier(), collectorHttp, configuration, NullLogger<CollectionRunExecutor>.Instance);
+
+        await executor.ExecuteAsync(run.Id, CancellationToken.None);
+
+        var compRun = await db.CompetitorRuns.AsNoTracking().SingleAsync(cr => cr.RunId == run.Id);
+        Assert.Equal(2, compRun.Products);
+        Assert.Equal(1, compRun.Errors);
+
+        var reviewItems = await db.ReviewItems.AsNoTracking().ToListAsync();
+        var brokenItem = Assert.Single(reviewItems, r => r.Kind == ReviewItemKind.BrokenReferenceLink);
+        Assert.Contains("prod-broken-2", brokenItem.PayloadJson);
+
+        if (Directory.Exists(evidenceDir))
+        {
+            Directory.Delete(evidenceDir, recursive: true);
+        }
+    }
+
+    private sealed class FakeReferenceAdapter(IReadOnlyList<RawProduct> products) : Application.Collection.Contracts.ICompetitorAdapter
+    {
+        public CompetitorPlatform Platform => CompetitorPlatform.LazzyBeanApi;
+
+        public async IAsyncEnumerable<RawProduct> FetchAsync(
+            Competitor competitor,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            foreach (var p in products)
+            {
+                yield return p;
+            }
+        }
+    }
+
     private sealed class SingleAdapterResolver(Application.Collection.Contracts.ICompetitorAdapter adapter)
         : ICompetitorAdapterResolver
     {

@@ -2355,6 +2355,9 @@ export interface components {
             status?: string | null;
             brand?: string | null;
             vendor?: string | null;
+            /** Format: uuid */
+            matchId?: string | null;
+            matchMethod?: string | null;
         };
         CompetitorOffersResponseDto: {
             /** Format: uuid */
@@ -2399,6 +2402,9 @@ export interface components {
             isStale?: boolean;
             brand?: string | null;
             vendor?: string | null;
+            /** Format: uuid */
+            matchId?: string | null;
+            matchMethod?: string | null;
         };
         CompetitorRunDto: {
             /** Format: uuid */
@@ -2625,6 +2631,7 @@ export interface components {
             compareAtPrice?: number | null;
             inStock?: boolean | null;
             currency?: string | null;
+            productUrl?: string | null;
         };
         PriceHistoryResponseDto: {
             /** Format: int32 */
@@ -2712,6 +2719,9 @@ export interface components {
             status?: string | null;
             brand?: string | null;
             vendor?: string | null;
+            /** Format: uuid */
+            matchId?: string | null;
+            matchMethod?: string | null;
         };
         ReferenceOffersResponseDto: {
             /** Format: uuid */

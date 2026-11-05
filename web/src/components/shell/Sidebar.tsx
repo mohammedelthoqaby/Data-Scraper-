@@ -5,6 +5,7 @@ interface SidebarProps {
   activeView: string;
   onNavigate: (view: string) => void;
   reviewCount: number;
+  alertCount?: number;
   user: AuthenticatedUser | null;
   onOpenLogin: () => void;
   onLogout: () => void;
@@ -14,6 +15,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeView,
   onNavigate,
   reviewCount,
+  alertCount,
   user,
   onOpenLogin,
   onLogout,
@@ -67,12 +69,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <button
           type="button"
-          aria-current={activeView === 'review-queue' ? 'page' : undefined}
-          onClick={() => onNavigate('review-queue')}
+          aria-current={activeView === 'attention' ? 'page' : undefined}
+          onClick={() => onNavigate('attention')}
         >
-          <span>Reviews needing attention</span>
-          {reviewCount > 0 && (
-            <span className="nav-badge warn">{reviewCount}</span>
+          <span>Needs attention</span>
+          {(alertCount ?? 0) > 0 && (
+            <span className="nav-badge warn">{alertCount}</span>
           )}
         </button>
 
@@ -92,6 +94,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <span>Manage sources & identities</span>
           </button>
+          {(user?.username?.toLowerCase() === 'admin' || Boolean(user)) && (
+            <>
+              <button
+                type="button"
+                aria-current={activeView === 'settings-alerts' ? 'page' : undefined}
+                onClick={() => onNavigate('settings-alerts')}
+              >
+                <span>Alert thresholds</span>
+              </button>
+              <button
+                type="button"
+                aria-current={activeView === 'data-quality' || activeView === 'review-queue' ? 'page' : undefined}
+                onClick={() => onNavigate('data-quality')}
+              >
+                <span>Data quality & reviews</span>
+                {reviewCount > 0 && (
+                  <span className="nav-badge" style={{ background: '#f1f5f9', color: '#475569' }}>
+                    {reviewCount}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                aria-current={activeView === 'settings-ai' ? 'page' : undefined}
+                onClick={() => onNavigate('settings-ai')}
+              >
+                <span>AI Configuration (Gemini)</span>
+              </button>
+            </>
+          )}
         </details>
       </nav>
 

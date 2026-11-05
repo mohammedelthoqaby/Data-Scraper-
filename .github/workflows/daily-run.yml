@@ -22,7 +22,8 @@ jobs:
           echo "Triggering daily collection run on $API_BASE_URL..."
           RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "$API_BASE_URL/api/internal/runs" \
             -H "X-Internal-Token: $INTERNAL_TOKEN" \
-            -H "Content-Type: application/json")
+            -H "Content-Type: application/json" \
+            -d "{}")
 
           HTTP_BODY=$(echo "$RESPONSE" | sed -e '$d')
           HTTP_STATUS=$(echo "$RESPONSE" | tail -n 1 | cut -d':' -f2)

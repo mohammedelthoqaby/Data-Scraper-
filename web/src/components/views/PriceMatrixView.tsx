@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { PriceMatrixResponse, PriceMatrixRow } from '../../api/client';
+import { undoMatch } from '../../api/alerts';
 
 interface PriceMatrixViewProps {
   matrix: PriceMatrixResponse | null;
@@ -12,7 +13,7 @@ const COMPETITOR_COLUMNS = [
   { key: 'cafelax', name: 'CAFELAX' },
   { key: 'coffee-and-cream', name: 'Coffee & Cream' },
   { key: 'fengany', name: 'Fengany' },
-  { key: 'coffee-zone-misr', name: 'Coffee Zone Misr' },
+  { key: 'coffee-zone', name: 'Coffee Zone Misr' },
   { key: 'strong-coffee', name: 'Strong Coffee' },
 ];
 
@@ -26,8 +27,6 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
   const [selectedPosition, setSelectedPosition] = useState('ALL');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
 
   const rows = matrix?.rows ?? [];
 
@@ -81,12 +80,8 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
     });
   }, [rows, search, selectedCategory, selectedBrand, selectedPosition]);
 
-  // Pagination
-  const totalFiltered = filteredRows.length;
-  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const startIndex = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(startIndex, startIndex + pageSize);
+  // All filtered rows displayed on a single page
+  const pageRows = filteredRows;
 
   // CSV download URL
   const csvUrl = selectedRunId
@@ -168,10 +163,7 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
           <select
             className="filter-select"
             value={selectedCategory}
-            onChange={(e) => {
-              setSelectedCategory(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setSelectedCategory(e.target.value)}
           >
             <option value="ALL">All Categories</option>
             {categories.map((c) => (
@@ -184,10 +176,7 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
           <select
             className="filter-select"
             value={selectedBrand}
-            onChange={(e) => {
-              setSelectedBrand(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setSelectedBrand(e.target.value)}
           >
             <option value="ALL">All Brands</option>
             {brands.map((b) => (
@@ -200,10 +189,7 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
           <select
             className="filter-select"
             value={selectedPosition}
-            onChange={(e) => {
-              setSelectedPosition(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setSelectedPosition(e.target.value)}
           >
             <option value="ALL">All Positions</option>
             <option value="cheapest">Cheapest (Best Price)</option>
@@ -211,48 +197,17 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
             <option value="more expensive">More Expensive</option>
             <option value="lazyBeanOutOfStock">Lazy Bean Out of Stock</option>
           </select>
-
-          <select
-            className="filter-select"
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setPage(1);
-            }}
-          >
-            <option value="25">Show 25 / page</option>
-            <option value="50">Show 50 / page</option>
-            <option value="100">Show 100 / page</option>
-          </select>
         </div>
 
-        {/* Pager Bar */}
-        <div className="matrix-pager">
+        {/* Count Bar */}
+        <div className="matrix-pager" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            Showing <strong>{totalFiltered > 0 ? startIndex + 1 : 0}</strong>–
-            <strong>{Math.min(startIndex + pageSize, totalFiltered)}</strong> of{' '}
-            <strong>{totalFiltered}</strong> products
-          </div>
-          <div className="pager-buttons">
-            <button
-              type="button"
-              className="pager-btn"
-              disabled={currentPage <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              ‹ Previous
-            </button>
-            <span>
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              type="button"
-              className="pager-btn"
-              disabled={currentPage >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            >
-              Next ›
-            </button>
+            Showing <strong>{filteredRows.length}</strong> {filteredRows.length === 1 ? 'product' : 'products'}
+            {filteredRows.length < rows.length && (
+              <span style={{ color: 'var(--muted)', marginLeft: '6px' }}>
+                (filtered from {rows.length} total)
+              </span>
+            )}
           </div>
         </div>
 
@@ -287,15 +242,25 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
                     {/* Sticky Product Cell */}
                     <td className="sticky-col">
                       <div className="product-cell">
-                        <a
-                          href={row.lazyBeanUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="product-title-link"
-                          title={row.lazyBeanTitle}
-                        >
-                          {row.lazyBeanTitle} ↗
-                        </a>
+                        {row.lazyBeanUrl ? (
+                          <a
+                            href={row.lazyBeanUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="product-title-link"
+                            title={row.lazyBeanTitle}
+                          >
+                            {row.lazyBeanTitle} ↗
+                          </a>
+                        ) : (
+                          <span
+                            className="product-title-link"
+                            style={{ textDecoration: 'none', cursor: 'default' }}
+                            title={row.lazyBeanTitle}
+                          >
+                            {row.lazyBeanTitle}
+                          </span>
+                        )}
                         <div className="product-meta-row">
                           {row.brand && <span className="badge neutral">{row.brand}</span>}
                           {row.lazyBeanVendor && row.lazyBeanVendor !== row.brand && (
@@ -334,7 +299,7 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
 
                     {/* Competitor Columns */}
                     {COMPETITOR_COLUMNS.map((col) => {
-                      const cell = row.competitorPrices?.[col.key];
+                      const cell = row.competitorPrices?.[col.key] || (col.key === 'coffee-zone' ? row.competitorPrices?.['coffee-zone-misr'] : undefined);
                       if (!cell) {
                         return (
                           <td key={col.key} style={{ color: 'var(--muted)', fontSize: '11px' }}>
@@ -371,25 +336,71 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
                                 </span>
                               )}
                             </div>
-                            <a
-                              href={cell.competitorUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{
-                                fontSize: '11px',
-                                color: 'var(--muted)',
-                                textDecoration: 'none',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                display: 'block',
-                                maxWidth: '130px',
-                              }}
-                              title={cell.competitorTitle}
-                            >
-                              {cell.competitorTitle} ↗
-                            </a>
+                            {cell.competitorUrl ? (
+                              <a
+                                href={cell.competitorUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  fontSize: '11px',
+                                  color: 'var(--muted)',
+                                  textDecoration: 'none',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  display: 'block',
+                                  maxWidth: '130px',
+                                }}
+                                title={cell.competitorTitle}
+                              >
+                                {cell.competitorTitle} ↗
+                              </a>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  color: 'var(--muted)',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  display: 'block',
+                                  maxWidth: '130px',
+                                }}
+                                title={cell.competitorTitle}
+                              >
+                                {cell.competitorTitle}
+                              </span>
+                            )}
                             <div className="obs-date">{formatObsDate(cell.observedAt)}</div>
+                            {cell.matchMethod === 'AI' && cell.matchId && (
+                              <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                <span style={{ fontSize: '9px', background: '#ecfdf5', color: '#047857', padding: '1px 4px', borderRadius: '3px', fontWeight: 600 }}>
+                                  AI
+                                </span>
+                                <button
+                                  type="button"
+                                  style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: '#dc2626',
+                                    fontSize: '10px',
+                                    cursor: 'pointer',
+                                    padding: '0',
+                                    textDecoration: 'underline'
+                                  }}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (confirm(`Undo AI match for "${cell.competitorTitle}"?`)) {
+                                      await undoMatch(cell.matchId!);
+                                      window.location.reload();
+                                    }
+                                  }}
+                                  title="Undo AI match and unlink from matrix"
+                                >
+                                  Undo match
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </td>
                       );

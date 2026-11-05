@@ -9,7 +9,7 @@ public static class PriceMatrixCsvExporter
         "cafelax",
         "coffee-and-cream",
         "fengany",
-        "coffee-zone-misr",
+        "coffee-zone",
         "strong-coffee"
     ];
 
@@ -80,7 +80,10 @@ public static class PriceMatrixCsvExporter
 
             foreach (var key in CompetitorKeys)
             {
-                if (row.CompetitorPrices.TryGetValue(key, out var cell))
+                var hasCell = row.CompetitorPrices.TryGetValue(key, out var cell)
+                    || (key == "coffee-zone" && row.CompetitorPrices.TryGetValue("coffee-zone-misr", out cell));
+
+                if (hasCell && cell != null)
                 {
                     cols.Add(cell.Price.ToString("F2"));
                     cols.Add(cell.CompareAtPrice?.ToString("F2") ?? "");

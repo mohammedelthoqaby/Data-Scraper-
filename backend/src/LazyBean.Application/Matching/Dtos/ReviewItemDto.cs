@@ -13,7 +13,10 @@ public record ReviewMatchItemDto(
     string Status,
     ReviewProductDetailsDto? ReferenceProduct,
     ReviewProductDetailsDto? CompetitorProduct,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string? AiVerdict = null,
+    decimal? AiConfidence = null,
+    string? AiReason = null);
 
 public record ReviewProductDetailsDto(
     Guid ProductId,

@@ -3,6 +3,7 @@ using LazyBean.Application.Matching.Commands.CreateMatch;
 using LazyBean.Application.Matching.Commands.RunMatching;
 using LazyBean.Application.Matching.Commands.SubmitMatchDecision;
 using LazyBean.Application.Matching.Commands.SubmitMatchDecisions;
+using LazyBean.Application.Matching.Queries.GetMatchAudit;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -16,6 +17,13 @@ public record MatchDecisionRequest(string Decision, string? Notes = null);
 [EnableRateLimiting("api")]
 public class MatchesController(ISender sender) : ControllerBase
 {
+    [HttpGet("audit")]
+    [ProducesResponseType(typeof(IReadOnlyList<MatchAuditItemDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<MatchAuditItemDto>>> GetAuditMatches(CancellationToken ct)
+    {
+        var result = await sender.Send(new GetMatchAuditQuery(), ct);
+        return Ok(result);
+    }
     [HttpPost("decisions")]
     [ProducesResponseType(typeof(BulkDecisionResultDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<BulkDecisionResultDto>> SubmitDecisions(

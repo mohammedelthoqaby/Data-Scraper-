@@ -18,7 +18,7 @@ public class TestDatabaseFixture : IAsyncLifetime
     private const string TestDatabaseName = "lazybean_test";
 
     public string ConnectionString { get; } =
-        $"Host=localhost;Port=15432;Database={TestDatabaseName};Username=lazybean;Password=changeme";
+        $"Host=localhost;Port=16432;Database={TestDatabaseName};Username=lazybean;Password=changeme;No Reset On Close=true";
 
     public async Task InitializeAsync()
     {

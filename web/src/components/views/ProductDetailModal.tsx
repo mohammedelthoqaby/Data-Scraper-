@@ -61,6 +61,17 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     };
   }, [isOpen, productId]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   // Group history points by competitor
   const seriesByStore = useMemo(() => {
     const map = new Map<string, PriceHistoryPoint[]>();
@@ -93,8 +104,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     }
 
     const svgWidth = 760;
-    const svgHeight = 220;
-    const padding = { top: 20, right: 30, bottom: 35, left: 65 };
+    const svgHeight = 120;
+    const padding = { top: 12, right: 25, bottom: 22, left: 60 };
 
     const plotWidth = svgWidth - padding.left - padding.right;
     const plotHeight = svgHeight - padding.top - padding.bottom;
@@ -117,11 +128,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       lines.push({ store, color, pathD, points: pts });
     });
 
-    // Y-axis ticks (4 ticks)
+    // Y-axis ticks (3 ticks: min, mid, max)
     const yTicks = [
       minPrice,
-      minPrice + (maxPrice - minPrice) * 0.33,
-      minPrice + (maxPrice - minPrice) * 0.66,
+      minPrice + (maxPrice - minPrice) * 0.5,
       maxPrice,
     ].map((val) => ({
       val: Math.round(val),
@@ -135,28 +145,75 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   const displayTitle = matrixRow?.lazyBeanTitle || productTitle || 'Product Price History';
 
+  const getPointProductUrl = (pt: PriceHistoryPoint): string | null => {
+    let url: string | null = null;
+    if (pt.productUrl) url = pt.productUrl;
+    else if (pt.competitorKey && matrixRow?.competitorPrices?.[pt.competitorKey]?.competitorUrl) {
+      url = matrixRow.competitorPrices[pt.competitorKey].competitorUrl;
+    } else if (pt.competitorKey === 'coffee-zone' && matrixRow?.competitorPrices?.['coffee-zone-misr']?.competitorUrl) {
+      url = matrixRow.competitorPrices['coffee-zone-misr'].competitorUrl;
+    } else if (matrixRow?.competitorPrices) {
+      for (const cell of Object.values(matrixRow.competitorPrices)) {
+        if (cell && (cell.competitorName === pt.competitorName || cell.competitorKey === pt.competitorKey)) {
+          if (cell.competitorUrl) {
+            url = cell.competitorUrl;
+            break;
+          }
+        }
+      }
+    }
+    if (!url && pt.competitorName?.toLowerCase().includes('lazy') && matrixRow?.lazyBeanUrl) {
+      url = matrixRow.lazyBeanUrl;
+    }
+    if (url && url.includes('lazzybean.com')) {
+      url = url.replace('https://lazzybean.com', 'https://lazybean.co');
+    }
+    return url;
+  };
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose}>
       <div
-        className="modal-container product-detail-modal"
+        className="modal-dialog product-detail-modal"
         onClick={(e) => e.stopPropagation()}
         style={{ maxHeight: '90vh', overflowY: 'auto' }}
       >
         {/* Modal Header */}
-        <div className="modal-header">
-          <div>
+        <div
+          className="modal-header"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            width: '100%',
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0, paddingRight: '16px' }}>
             <div className="eyebrow">PRODUCT DETAIL & EVIDENCE</div>
-            <h2 className="modal-title" style={{ fontSize: '18px', marginTop: '2px' }}>
+            <h2 className="modal-title" style={{ fontSize: '18px', marginTop: '2px', wordBreak: 'break-word' }}>
               {displayTitle}
             </h2>
           </div>
           <button
             type="button"
-            className="btn-xs ghost"
+            className="modal-close-btn"
             onClick={onClose}
-            style={{ fontSize: '16px', padding: '4px 8px' }}
+            title="Close (Esc)"
+            aria-label="Close dialog"
           >
-            ✕
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
 
@@ -205,11 +262,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             </div>
 
             {isLoading ? (
-              <div style={{ height: '220px', display: 'grid', placeItems: 'center', color: 'var(--muted)' }}>
+              <div style={{ height: '120px', display: 'grid', placeItems: 'center', color: 'var(--muted)', fontSize: '13px' }}>
                 Loading historical observations...
               </div>
             ) : error ? (
-              <div style={{ height: '220px', display: 'grid', placeItems: 'center', color: '#962f32' }}>
+              <div style={{ height: '120px', display: 'grid', placeItems: 'center', color: '#962f32', fontSize: '13px' }}>
                 {error}
               </div>
             ) : chartData && chartData.lines.length > 0 ? (
@@ -296,7 +353,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 )}
               </div>
             ) : (
-              <div style={{ height: '220px', display: 'grid', placeItems: 'center', color: 'var(--muted)' }}>
+              <div style={{ height: '120px', display: 'grid', placeItems: 'center', color: 'var(--muted)', fontSize: '13px' }}>
                 No historical price points recorded for this product yet.
               </div>
             )}
@@ -304,36 +361,101 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           {/* Competitor Price Observations Table */}
           <div>
-            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 10px' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 10px', color: 'var(--ink)' }}>
               Historical Price Observations Log ({historyPoints.length})
             </h3>
-            <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '6px' }}>
+            <div style={{ maxHeight: '420px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '6px', background: '#ffffff' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                <thead style={{ background: '#fafbfc', position: 'sticky', top: 0, borderBottom: '1px solid var(--line)' }}>
+                <thead style={{ background: '#fafbfc', position: 'sticky', top: 0, zIndex: 2, borderBottom: '1px solid var(--line)' }}>
                   <tr>
-                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>Store</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>Observed Date</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Price</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>Stock</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--muted)', fontSize: '12px' }}>Store & Product</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--muted)', fontSize: '12px' }}>Observed Date</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--muted)', fontSize: '12px' }}>Price</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600, color: 'var(--muted)', fontSize: '12px' }}>Stock</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {historyPoints.map((pt) => (
-                    <tr key={pt.observationId} style={{ borderBottom: '1px solid #edf0f2' }}>
-                      <td style={{ padding: '8px 12px', fontWeight: 600 }}>{pt.competitorName}</td>
-                      <td style={{ padding: '8px 12px', color: 'var(--muted)' }}>
-                        {pt.observedAt ? new Date(pt.observedAt).toLocaleString('en-GB') : '—'}
-                      </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700 }}>
-                        {pt.price?.toFixed(2)} {pt.currency || 'EGP'}
-                      </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                        <span className={`badge ${pt.inStock ? 'good' : 'bad'}`} style={{ fontSize: '10px' }}>
-                          {pt.inStock ? 'Available' : 'Out of Stock'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {historyPoints.map((pt) => {
+                    const prodUrl = getPointProductUrl(pt);
+                    const prodTitle = pt.productTitle || displayTitle;
+
+                    return (
+                      <tr key={pt.observationId} style={{ borderBottom: '1px solid #edf0f2' }}>
+                        <td style={{ padding: '10px 12px' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{pt.competitorName}</div>
+                          {prodUrl ? (
+                            <a
+                              href={prodUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                fontSize: '12px',
+                                color: 'var(--action)',
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                marginTop: '3px',
+                                maxWidth: '340px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={prodTitle}
+                            >
+                              <span>{prodTitle}</span>
+                              <span style={{ fontSize: '11px' }}>↗</span>
+                            </a>
+                          ) : (
+                            <div
+                              style={{
+                                fontSize: '12px',
+                                color: 'var(--muted)',
+                                marginTop: '3px',
+                                maxWidth: '340px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={prodTitle}
+                            >
+                              {prodTitle}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: '12px' }}>
+                          {pt.observedAt ? new Date(pt.observedAt).toLocaleString('en-GB') : '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                          <div style={{ fontWeight: 700, fontSize: '13px' }}>
+                            {pt.price?.toFixed(2)} {pt.currency || 'EGP'}
+                          </div>
+                          {prodUrl && (
+                            <a
+                              href={prodUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                fontSize: '11px',
+                                color: 'var(--action)',
+                                textDecoration: 'none',
+                                display: 'inline-block',
+                                marginTop: '2px',
+                              }}
+                              title={`Open ${pt.competitorName} product page`}
+                            >
+                              View page ↗
+                            </a>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                          <span className={`badge ${pt.inStock ? 'good' : 'bad'}`} style={{ fontSize: '10px' }}>
+                            {pt.inStock ? 'Available' : 'Out of Stock'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {historyPoints.length === 0 && (
                     <tr>
                       <td colSpan={4} style={{ padding: '20px', textAlign: 'center', color: 'var(--muted)' }}>

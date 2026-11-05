@@ -12,6 +12,11 @@ public interface IUnitOfWork : IDisposable
     IRepository<Entities.Ad> Ads { get; }
     IRepository<Entities.ChangeEvent> ChangeEvents { get; }
     IRepository<Entities.Product> Products { get; }
+    IRepository<Entities.AiSetting> AiSettings { get; }
+    IRepository<Entities.AiReviewTriageCache> AiReviewTriageCaches { get; }
+    IRepository<Entities.Alert> Alerts { get; }
+    IRepository<Entities.AlertHistory> AlertHistories { get; }
+    IRepository<Entities.AlertSetting> AlertSettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

@@ -123,7 +123,7 @@ public class LazzyBeanAdapterTests
         var p1 = products[0];
         Assert.Equal("prod-uuid-1", p1.ExternalId);
         Assert.Equal("Bristot Espresso Whole Beans - 1 kg", p1.Title);
-        Assert.Equal("https://lazzybean.com/single-product/prod-uuid-1", p1.CanonicalUrl);
+        Assert.Equal("https://lazybean.co/single-product/prod-uuid-1", p1.CanonicalUrl);
         Assert.Equal("Coffee", p1.Category);
         Assert.Equal("Whole Beans", p1.ProductType);
         Assert.Equal("Bristot", p1.Vendor);

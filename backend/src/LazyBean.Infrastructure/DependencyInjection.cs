@@ -12,6 +12,9 @@ using LazyBean.Infrastructure.Collection.Scheduling;
 using LazyBean.Infrastructure.HealthChecks;
 using LazyBean.Infrastructure.Persistence;
 using LazyBean.Infrastructure.Security;
+using LazyBean.Infrastructure.Ai;
+using LazyBean.Infrastructure.Alerts;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,6 +38,10 @@ public static class DependencyInjection
             options.UseNpgsql(configuration.GetConnectionString("Default")));
         services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<LazyBeanDbContext>>().CreateDbContext());
         services.AddScoped<IReadDbContext>(sp => sp.GetRequiredService<LazyBeanDbContext>());
+
+        services.AddDataProtection()
+            .PersistKeysToDbContext<LazyBeanDbContext>()
+            .SetApplicationName("LazyBean");
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddSingleton<IPasswordHasher, PasswordHasherAdapter>();
@@ -83,6 +90,16 @@ public static class DependencyInjection
         {
             client.Timeout = TimeSpan.FromSeconds(60);
         });
+
+        // Google AI Studio (Gemini) integration
+        services.AddHttpClient("GeminiClient", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddScoped<IAiKeyProtector, AiKeyProtector>();
+        services.AddScoped<IAiClient, GeminiAiClient>();
+        services.AddScoped<IAiTriageService, AiReviewTriageService>();
+        services.AddScoped<IAlertService, AlertService>();
         services.AddSingleton<IRunQueue, ChannelRunQueue>();
         services.AddSingleton<IRunCancellationTokenRegistry, RunCancellationTokenRegistry>();
         services.AddHostedService<CollectionRunBackgroundService>();
