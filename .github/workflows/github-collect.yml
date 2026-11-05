@@ -3,7 +3,7 @@ name: GitHub Actions Collector
 on:
   workflow_call:
     inputs:
-      run_id: '906b135a-ffb3-4e78-ad22-1e223ad659bb'
+      run_id: 
         description: 'Collection run GUID'
         required: true
         type: string
