@@ -33,11 +33,13 @@ public class StartRunCommandHandler(IUnitOfWork unitOfWork, IRunQueue runQueue, 
             Status = CollectionRunStatus.Queued,
             TargetCompetitorIdsJson = targetCompetitorIdsJson
         };
-        await unitOfWork.CollectionRuns.AddAsync(run, ct);
-        await unitOfWork.SaveChangesAsync(ct);
+        // Use CancellationToken.None so that once accepted, creating the queued entity
+        // and enqueueing to IRunQueue cannot be aborted mid-flight by an HTTP client disconnect
+        await unitOfWork.CollectionRuns.AddAsync(run, CancellationToken.None);
+        await unitOfWork.SaveChangesAsync(CancellationToken.None);
 
-        await cache.RemoveByTagAsync("runs", ct);
-        await runQueue.EnqueueAsync(run.Id, ct);
+        await cache.RemoveByTagAsync("runs", CancellationToken.None);
+        await runQueue.EnqueueAsync(run.Id, CancellationToken.None);
 
         return new StartRunResultDto(run.Id, run.Status.ToString().ToLowerInvariant(), false);
     }

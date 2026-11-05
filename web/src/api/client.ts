@@ -89,10 +89,14 @@ export async function fetchRunProgress(runId: string): Promise<RunProgress | nul
   return res.json();
 }
 
-export async function fetchActiveRunProgress(): Promise<RunProgress | null> {
-  const res = await fetch(`/api/runs/active/progress`, { credentials: 'include' });
-  if (!res.ok) return null;
+export async function fetchActiveRun(): Promise<RunProgress | null> {
+  const res = await fetch(`/api/runs/active`, { credentials: 'include' });
+  if (res.status === 204 || !res.ok) return null;
   return res.json();
+}
+
+export async function fetchActiveRunProgress(): Promise<RunProgress | null> {
+  return fetchActiveRun();
 }
 
 export async function triggerMatchingNow(): Promise<any> {

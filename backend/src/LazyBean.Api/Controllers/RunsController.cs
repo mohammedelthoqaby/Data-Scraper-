@@ -26,24 +26,45 @@ public record StartRunRequest(IReadOnlyList<Guid>? CompetitorIds = null);
 public class RunsController(ISender sender) : ControllerBase
 {
     [HttpPost]
-    [ProducesResponseType(typeof(StartRunResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(StartRunResultDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(StartRunResultDto), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Start([FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] StartRunRequest? request, CancellationToken ct)
     {
         var result = await sender.Send(new StartRunCommand(RunTrigger.Manual, request?.CompetitorIds), ct);
         if (result.AlreadyActive)
         {
-            return Ok(result);
+            return Conflict(result);
         }
         return AcceptedAtAction(nameof(GetById), new { id = result.RunId }, result);
     }
 
+    [HttpGet("active")]
     [HttpGet("active/progress")]
     [ProducesResponseType(typeof(RunProgressDto), StatusCodes.Status200OK)]
-    public ActionResult<RunProgressDto?> GetActiveProgress([FromServices] ICollectionProgressTracker tracker)
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> GetActive(
+        [FromServices] ICollectionProgressTracker tracker,
+        [FromServices] IReadDbContext db,
+        CancellationToken ct)
     {
-        var progress = tracker.GetActiveProgress();
-        return Ok(progress);
+        var run = await db.Query<CollectionRun>()
+            .Where(r => r.Status == CollectionRunStatus.Running || r.Status == CollectionRunStatus.Queued)
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+
+        if (run == null)
+        {
+            return NoContent();
+        }
+
+        var progress = tracker.GetProgress(run.Id) ?? tracker.GetActiveProgress();
+        if (progress != null && progress.RunId == run.Id)
+        {
+            return Ok(progress);
+        }
+
+        var reconstructed = await ReconstructProgressFromDbAsync(run, db, ct);
+        return Ok(reconstructed);
     }
 
     [HttpGet("{id:guid}/progress")]
@@ -68,10 +89,19 @@ public class RunsController(ISender sender) : ControllerBase
             return NotFound();
         }
 
+        var reconstructed = await ReconstructProgressFromDbAsync(run, db, ct);
+        return Ok(reconstructed);
+    }
+
+    private static async Task<RunProgressDto> ReconstructProgressFromDbAsync(
+        CollectionRun run,
+        IReadDbContext db,
+        CancellationToken ct)
+    {
         var compRuns = await (
             from cr in db.Query<CompetitorRun>()
             join c in db.Query<Competitor>() on cr.CompetitorId equals c.Id
-            where cr.RunId == id
+            where cr.RunId == run.Id
             select new CompetitorProgressDto(
                 cr.CompetitorId,
                 c.Key,
@@ -84,6 +114,27 @@ public class RunsController(ISender sender) : ControllerBase
                 cr.CreatedAt,
                 null)
         ).ToListAsync(ct);
+
+        if (compRuns.Count == 0)
+        {
+            var competitors = await db.Query<Competitor>()
+                .Where(c => c.Enabled)
+                .OrderBy(c => !c.IsReference)
+                .ThenBy(c => c.Name)
+                .ToListAsync(ct);
+
+            compRuns = competitors.Select(c => new CompetitorProgressDto(
+                c.Id,
+                c.Key,
+                c.Name,
+                c.IsReference,
+                run.Status == CollectionRunStatus.Running ? "Running" : "Queued",
+                0,
+                null,
+                0,
+                run.CreatedAt,
+                null)).ToList();
+        }
 
         var phases = new List<PhaseProgressDto>();
         if (!string.IsNullOrWhiteSpace(run.PhasesJson))
@@ -105,16 +156,51 @@ public class RunsController(ISender sender) : ControllerBase
             }
         }
 
-        var percent = run.Status == CollectionRunStatus.Completed ? 100 : (run.Status == CollectionRunStatus.Partial ? 90 : 0);
-        return Ok(new RunProgressDto(
+        if (phases.Count == 0)
+        {
+            var defaultStatus = run.Status == CollectionRunStatus.Completed ? "completed" : "Queued";
+            phases.Add(new PhaseProgressDto("classification", defaultStatus, null, null));
+            phases.Add(new PhaseProgressDto("matching", defaultStatus, null, null));
+            phases.Add(new PhaseProgressDto("ai_triage", defaultStatus, null, null));
+            phases.Add(new PhaseProgressDto("alerts", defaultStatus, null, null));
+        }
+
+        int percent;
+        if (run.Status == CollectionRunStatus.Completed)
+        {
+            percent = 100;
+        }
+        else if (run.Status == CollectionRunStatus.Partial)
+        {
+            percent = 90;
+        }
+        else if (run.Status == CollectionRunStatus.Queued)
+        {
+            percent = 0;
+        }
+        else
+        {
+            var compFinished = compRuns.Count(c => c.Status == "Completed" || c.Status == "Degraded" || c.Status == "Failed");
+            var compWeight = compRuns.Count > 0 ? (double)compFinished / compRuns.Count : 0.0;
+            var phaseFinished = phases.Count(p => p.Status.Equals("completed", StringComparison.OrdinalIgnoreCase));
+            var phaseWeight = phases.Count > 0 ? (double)phaseFinished / phases.Count : 0.0;
+            var calculated = (int)Math.Round((compWeight * 60.0) + (phaseWeight * 40.0));
+            percent = Math.Clamp(calculated, 5, 95);
+        }
+
+        var isStalled = run.Status == CollectionRunStatus.Running &&
+            (DateTimeOffset.UtcNow - (run.StartedAt ?? run.CreatedAt) > TimeSpan.FromMinutes(3));
+
+        return new RunProgressDto(
             run.Id,
             run.Status.ToString(),
             percent,
-            false,
-            null,
+            isStalled,
+            $"Run {run.Id} is {run.Status}.",
             run.FinishedAt ?? run.StartedAt ?? run.CreatedAt,
             compRuns,
-            phases));
+            phases,
+            run.StartedAt ?? run.CreatedAt);
     }
 
     [HttpPost("{id:guid}/cancel")]

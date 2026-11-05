@@ -69,7 +69,7 @@ public class RunEndpointTests(TestDatabaseFixture testDb) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task StartRun_WhenActiveRunExists_Returns200WithAlreadyActiveTrue()
+    public async Task StartRun_WhenActiveRunExists_Returns409WithAlreadyActiveTrue()
     {
         var options = new DbContextOptionsBuilder<LazyBeanDbContext>().UseNpgsql(testDb.ConnectionString).Options;
         await using (var db = new LazyBeanDbContext(options))
@@ -86,7 +86,7 @@ public class RunEndpointTests(TestDatabaseFixture testDb) : IAsyncLifetime
             try
             {
                 var response = await _client.PostAsJsonAsync("/api/runs", new StartRunRequest());
-                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
 
                 var body = await response.Content.ReadFromJsonAsync<StartRunResultDto>();
                 Assert.NotNull(body);
@@ -101,6 +101,91 @@ public class RunEndpointTests(TestDatabaseFixture testDb) : IAsyncLifetime
                 await db.SaveChangesAsync();
             }
         }
+    }
+
+    [Fact]
+    public async Task GetActiveRun_WhenNoRunActive_Returns204NoContent()
+    {
+        var response = await _client.GetAsync("/api/runs/active");
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetActiveRun_WhenRunActive_Returns200WithProgressDto()
+    {
+        var options = new DbContextOptionsBuilder<LazyBeanDbContext>().UseNpgsql(testDb.ConnectionString).Options;
+        await using (var db = new LazyBeanDbContext(options))
+        {
+            var activeRun = new CollectionRun
+            {
+                Trigger = RunTrigger.Manual,
+                Status = CollectionRunStatus.Running,
+                StartedAt = DateTimeOffset.UtcNow
+            };
+            db.CollectionRuns.Add(activeRun);
+            await db.SaveChangesAsync();
+
+            try
+            {
+                var response = await _client.GetAsync("/api/runs/active");
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+                var body = await response.Content.ReadFromJsonAsync<LazyBean.Application.Collection.Orchestration.RunProgressDto>();
+                Assert.NotNull(body);
+                Assert.Equal(activeRun.Id, body.RunId);
+                Assert.Equal("Running", body.Status);
+            }
+            finally
+            {
+                activeRun.Status = CollectionRunStatus.Completed;
+                activeRun.FinishedAt = DateTimeOffset.UtcNow;
+                await db.SaveChangesAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task StartRun_WhenHttpRequestAborted_RunStillCompletesInDatabase()
+    {
+        var targetId = Guid.NewGuid();
+        using var cts = new CancellationTokenSource();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/runs")
+        {
+            Content = JsonContent.Create(new StartRunRequest([targetId]))
+        };
+
+        // Send request and read headers, then immediately cancel client token simulating abort
+        var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<StartRunResultDto>();
+        Assert.NotNull(body);
+        var runId = body.RunId;
+
+        // Abort the client HTTP request
+        cts.Cancel();
+
+        // BackgroundService must not be tied to the HTTP request; verify run reaches completion
+        var options = new DbContextOptionsBuilder<LazyBeanDbContext>().UseNpgsql(testDb.ConnectionString).Options;
+        CollectionRun? run = null;
+
+        for (int i = 0; i < 50; i++)
+        {
+            await Task.Delay(200);
+            await using var db = new LazyBeanDbContext(options);
+            run = await db.CollectionRuns.FindAsync(runId);
+            if (run != null && run.Status != CollectionRunStatus.Queued && run.Status != CollectionRunStatus.Running)
+            {
+                break;
+            }
+        }
+
+        Assert.NotNull(run);
+        Assert.NotEqual(CollectionRunStatus.Cancelled, run.Status);
+        Assert.True(
+            run.Status == CollectionRunStatus.Completed || run.Status == CollectionRunStatus.Partial,
+            $"Expected run to finish in background despite client abort, but status was {run.Status}");
     }
 
     [Fact]

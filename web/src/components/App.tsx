@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { api, onUnauthorized, type AuthenticatedUser, type CollectionRun, type PriceMatrixResponse, type CompetitorOffersResponse, type PriceMatrixRow } from '../api/client';
+import {
+  api,
+  onUnauthorized,
+  fetchActiveRun,
+  type AuthenticatedUser,
+  type CollectionRun,
+  type PriceMatrixResponse,
+  type CompetitorOffersResponse,
+  type PriceMatrixRow,
+  type RunProgress,
+} from '../api/client';
 import { Sidebar } from './shell/Sidebar';
 import { Header } from './shell/Header';
 import { Toolbar } from './shell/Toolbar';
@@ -28,6 +38,30 @@ export const App: React.FC = () => {
   // Auth State
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
+
+  // Global Active Collection Run State
+  const [activeRunProgress, setActiveRunProgress] = useState<RunProgress | null>(null);
+
+  // Poll for active collection run across all pages every 10s
+  useEffect(() => {
+    let timer: any = null;
+    const pollGlobalActiveRun = async () => {
+      try {
+        const active = await fetchActiveRun();
+        if (active && (active.status === 'Running' || active.status === 'Queued')) {
+          setActiveRunProgress(active);
+        } else {
+          setActiveRunProgress(null);
+        }
+      } catch (err) {
+        // Silent poll error
+      }
+    };
+
+    pollGlobalActiveRun();
+    timer = setInterval(pollGlobalActiveRun, 10000);
+    return () => clearInterval(timer);
+  }, []);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
 
   // Data State
@@ -288,6 +322,7 @@ export const App: React.FC = () => {
         user={user}
         onOpenLogin={() => setIsLoginOpen(true)}
         onLogout={handleLogout}
+        activeRunProgress={activeRunProgress}
       />
 
       {/* Main Workspace */}
@@ -296,6 +331,8 @@ export const App: React.FC = () => {
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
           user={user}
           onOpenLogin={() => setIsLoginOpen(true)}
+          activeRunProgress={activeRunProgress}
+          onNavigateToRuns={() => navigateTo('runs')}
         />
 
         <main className="main-content">
@@ -404,6 +441,7 @@ export const App: React.FC = () => {
                     navigateTo('price-comparisons');
                   }}
                   onRefreshRuns={handleReloadAll}
+                  onActiveProgressChange={setActiveRunProgress}
                 />
               )}
 

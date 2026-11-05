@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   api,
   fetchRunProgress,
-  fetchActiveRunProgress,
+  fetchActiveRun,
   triggerMatchingNow,
   type RunDto,
   type AuthenticatedUser,
@@ -14,6 +14,7 @@ interface RunsViewProps {
   onOpenLogin: () => void;
   onNavigateToMatrix: (runId: string) => void;
   onRefreshRuns: () => void;
+  onActiveProgressChange?: (progress: RunProgress | null) => void;
 }
 
 export const RunsView: React.FC<RunsViewProps> = ({
@@ -21,6 +22,7 @@ export const RunsView: React.FC<RunsViewProps> = ({
   onOpenLogin,
   onNavigateToMatrix,
   onRefreshRuns,
+  onActiveProgressChange,
 }) => {
   const [runs, setRuns] = useState<RunDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,7 +30,6 @@ export const RunsView: React.FC<RunsViewProps> = ({
   const [isCancelling, setIsCancelling] = useState(false);
   const [isMatching, setIsMatching] = useState(false);
   const [matchNotice, setMatchNotice] = useState<string | null>(null);
-  const [activeRun, setActiveRun] = useState<RunDto | null>(null);
   const [activeProgress, setActiveProgress] = useState<RunProgress | null>(null);
   const [expandedRunIds, setExpandedRunIds] = useState<Set<string>>(new Set());
 
@@ -38,8 +39,6 @@ export const RunsView: React.FC<RunsViewProps> = ({
       const res = await api.GET('/api/runs');
       if (res.data) {
         setRuns(res.data);
-        const running = res.data.find((r) => r.status === 'Running');
-        setActiveRun(running || null);
       }
     } catch (err: any) {
       console.error('Failed to fetch runs:', err);
@@ -52,40 +51,44 @@ export const RunsView: React.FC<RunsViewProps> = ({
     fetchRunsList();
   }, []);
 
-  // Poll real-time progress every 3s
+  // Poll real-time active run progress every 3s
+  // Source of truth is always the server's /api/runs/active endpoint (DB + ProgressTracker)
   useEffect(() => {
     let timer: any = null;
-    const pollProgress = async () => {
+    let isMounted = true;
+
+    const pollActiveProgress = async () => {
       try {
-        if (activeRun?.id) {
-          const prog = await fetchRunProgress(activeRun.id);
-          if (prog) {
-            setActiveProgress(prog);
-            if (prog.status !== 'Running') {
+        const prog = await fetchActiveRun();
+        if (!isMounted) return;
+
+        if (prog && (prog.status === 'Running' || prog.status === 'Queued')) {
+          setActiveProgress(prog);
+          onActiveProgressChange?.(prog);
+        } else {
+          setActiveProgress((prev) => {
+            if (prev) {
+              // Run finished or stopped! Reload historical runs
               fetchRunsList();
               onRefreshRuns();
+              onActiveProgressChange?.(null);
             }
-          }
-        } else {
-          const active = await fetchActiveRunProgress();
-          if (active && active.status === 'Running') {
-            setActiveProgress(active);
-            if (!activeRun) {
-              fetchRunsList();
-            }
-          } else {
-            setActiveProgress(null);
-          }
+            return null;
+          });
         }
       } catch (err) {
-        console.warn('Progress poll error:', err);
+        console.warn('Active run poll error:', err);
       }
     };
 
-    pollProgress();
-    timer = setInterval(pollProgress, 3000);
-    return () => clearInterval(timer);
-  }, [activeRun?.id]);
+    pollActiveProgress();
+    timer = setInterval(pollActiveProgress, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   const handleStartRun = async () => {
     if (!user) {
@@ -94,7 +97,34 @@ export const RunsView: React.FC<RunsViewProps> = ({
     }
     setIsStarting(true);
     try {
-      await api.POST('/api/runs', { body: {} });
+      const res = await fetch('/api/runs', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      if (res.status === 409) {
+        alert('A collection run is already in progress.');
+        const active = await fetchActiveRun();
+        if (active) {
+          setActiveProgress(active);
+          onActiveProgressChange?.(active);
+        }
+        return;
+      }
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.detail || errJson?.error || `Failed to start run (${res.status})`);
+      }
+
+      // Rehydrate immediately from server
+      const active = await fetchActiveRun();
+      if (active) {
+        setActiveProgress(active);
+        onActiveProgressChange?.(active);
+      }
       await fetchRunsList();
       onRefreshRuns();
     } catch (err: any) {
@@ -135,9 +165,16 @@ export const RunsView: React.FC<RunsViewProps> = ({
 
     setIsCancelling(true);
     try {
-      await api.POST('/api/runs/{id}/cancel', {
-        params: { path: { id: runId } },
+      const res = await fetch(`/api/runs/${runId}/cancel`, {
+        method: 'POST',
+        credentials: 'include',
       });
+      if (!res.ok) {
+        throw new Error(`Failed to cancel collection run (${res.status})`);
+      }
+      const active = await fetchActiveRun();
+      setActiveProgress(active);
+      onActiveProgressChange?.(active);
       await fetchRunsList();
       onRefreshRuns();
     } catch (err: any) {
@@ -169,6 +206,8 @@ export const RunsView: React.FC<RunsViewProps> = ({
     return `${mins}m ${remSec}s`;
   };
 
+  const isAnyRunActive = activeProgress != null || runs.some((r) => r.status === 'Running' || r.status === 'Queued');
+
   return (
     <div className="runs-view">
       {/* Page Heading */}
@@ -193,8 +232,9 @@ export const RunsView: React.FC<RunsViewProps> = ({
           <button
             type="button"
             className="btn-primary"
-            disabled={isStarting || activeRun != null}
+            disabled={isStarting || isAnyRunActive}
             onClick={handleStartRun}
+            title={isAnyRunActive ? 'A collection run is currently in progress' : undefined}
           >
             {isStarting ? 'Initiating Run...' : '▶ Start Collection Run'}
           </button>
@@ -212,30 +252,28 @@ export const RunsView: React.FC<RunsViewProps> = ({
       )}
 
       {/* Active Run Real-Time Progress Banner */}
-      {activeRun || activeProgress ? (
+      {activeProgress ? (
         <div className="run-live-banner" style={{ marginBottom: '24px' }}>
           <div className="run-live-header">
             <div>
               <span className="badge good" style={{ marginRight: '8px' }}>
                 ● Active Pipeline in Progress
               </span>
-              <strong>Run ID:</strong> {activeRun?.id || activeProgress?.runId}
+              <strong>Run ID:</strong> {activeProgress.runId}
             </div>
-            {activeRun && (
-              <button
-                type="button"
-                className="btn-xs reject"
-                style={{ padding: '6px 14px', fontSize: '13px' }}
-                disabled={isCancelling}
-                onClick={() => handleCancelRun(activeRun.id!)}
-              >
-                {isCancelling ? 'Stopping...' : '⏹ Cancel Run'}
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn-xs reject"
+              style={{ padding: '6px 14px', fontSize: '13px' }}
+              disabled={isCancelling}
+              onClick={() => handleCancelRun(activeProgress.runId)}
+            >
+              {isCancelling ? 'Stopping...' : '⏹ Cancel Run'}
+            </button>
           </div>
 
           {/* Stalled Alert if no progress for > 3 minutes */}
-          {activeProgress?.isStalled && (
+          {activeProgress.isStalled && (
             <div
               className="warning-banner"
               style={{
@@ -261,24 +299,25 @@ export const RunsView: React.FC<RunsViewProps> = ({
           {/* Real Weighted Progress Bar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>
             <span>Overall Progress</span>
-            <span>{activeProgress ? activeProgress.overallPercent : 5}%</span>
+            <span>{activeProgress.overallPercent}%</span>
           </div>
           <div className="run-progress-track">
             <div
               className="run-progress-bar"
               style={{
-                width: `${Math.max(activeProgress?.overallPercent ?? 5, 5)}%`,
+                width: `${Math.max(activeProgress.overallPercent, 5)}%`,
                 transition: 'width 0.4s ease',
               }}
             />
           </div>
 
           {(() => {
-            const runStartedAt = activeRun?.startedAt || activeProgress?.startedAt;
+            const runStartedAt = activeProgress.startedAt;
+            const matchingRun = runs.find((r) => r.id === activeProgress.runId);
             return (
               <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', gap: '20px', marginTop: '10px' }}>
                 <span>Started: {runStartedAt ? new Date(runStartedAt).toLocaleTimeString('en-GB') : '—'}</span>
-                <span>Trigger: {activeRun?.trigger || 'Manual'}</span>
+                <span>Trigger: {matchingRun?.trigger || 'Manual'}</span>
                 <span>Elapsed: {formatDuration(runStartedAt, null)}</span>
               </div>
             );

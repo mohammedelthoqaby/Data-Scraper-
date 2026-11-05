@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AuthenticatedUser } from '../../api/client';
+import type { AuthenticatedUser, RunProgress } from '../../api/client';
 
 interface SidebarProps {
   activeView: string;
@@ -9,6 +9,7 @@ interface SidebarProps {
   user: AuthenticatedUser | null;
   onOpenLogin: () => void;
   onLogout: () => void;
+  activeRunProgress?: RunProgress | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -19,6 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   user,
   onOpenLogin,
   onLogout,
+  activeRunProgress,
 }) => {
   return (
     <aside className="sidebar">
@@ -86,6 +88,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onClick={() => onNavigate('runs')}
           >
             <span>Collection runs</span>
+            {activeRunProgress && (
+              <span
+                className="nav-badge good"
+                style={{
+                  fontSize: '10px',
+                  padding: '2px 6px',
+                  backgroundColor: '#dbeafe',
+                  color: '#1e40af',
+                }}
+              >
+                {activeRunProgress.overallPercent}%
+              </span>
+            )}
           </button>
           <button
             type="button"
