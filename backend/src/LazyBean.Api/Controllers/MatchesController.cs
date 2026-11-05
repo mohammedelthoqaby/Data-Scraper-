@@ -59,9 +59,23 @@ public class MatchesController(ISender sender) : ControllerBase
 
     [HttpPost("run")]
     [ProducesResponseType(typeof(MatchingResult), StatusCodes.Status200OK)]
-    public async Task<ActionResult<MatchingResult>> RunMatching(CancellationToken ct)
+    public async Task<ActionResult<MatchingResult>> RunMatching(
+        [FromServices] IMatchingQueue matchingQueue,
+        CancellationToken ct)
     {
-        var result = await sender.Send(new RunMatchingCommand(), ct);
-        return Ok(result);
+        var tcs = new TaskCompletionSource<MatchingResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var job = new MatchingJob(null, tcs);
+        await matchingQueue.EnqueueAsync(job, ct);
+
+        using var reg = ct.Register(() => tcs.TrySetCanceled(ct));
+        try
+        {
+            var result = await tcs.Task;
+            return Ok(result);
+        }
+        catch (OperationCanceledException)
+        {
+            return StatusCode(StatusCodes.Status499ClientClosedRequest);
+        }
     }
 }

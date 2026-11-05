@@ -204,18 +204,21 @@ public class CollectionRunExecutor(
         using var scope = serviceScopeFactory!.CreateScope();
         var sp = scope.ServiceProvider;
 
-        // Phase 1: Classification
+        // Phase 1: Classification (10 min timeout)
         var swClass = Stopwatch.StartNew();
         progressTracker?.UpdatePhase(runId, "classification", "Running", "Ensuring active catalog is classified...");
         try
         {
+            using var classCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            classCts.CancelAfter(TimeSpan.FromMinutes(10));
+
             var classifierService = sp.GetService<IProductClassifier>() ?? classifier;
-            await using (var db = await dbContextFactory.CreateDbContextAsync(ct))
+            await using (var db = await dbContextFactory.CreateDbContextAsync(classCts.Token))
             {
                 var unclassified = await db.Products
                     .Where(p => p.Status == ProductStatus.Active && (int)p.CanonicalCategory == 0)
                     .Take(1000)
-                    .ToListAsync(ct);
+                    .ToListAsync(classCts.Token);
 
                 foreach (var prod in unclassified)
                 {
@@ -225,7 +228,7 @@ public class CollectionRunExecutor(
 
                 if (unclassified.Count > 0)
                 {
-                    await db.SaveChangesAsync(ct);
+                    await db.SaveChangesAsync(classCts.Token);
                 }
 
                 swClass.Stop();
@@ -233,6 +236,14 @@ public class CollectionRunExecutor(
                 phases.Add(new { name = "classification", status = "completed", durationMs = (int)swClass.ElapsedMilliseconds, message = msg });
                 progressTracker?.UpdatePhase(runId, "classification", "completed", msg, (int)swClass.ElapsedMilliseconds);
             }
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            swClass.Stop();
+            var errMsg = "Phase timed out after 10 minutes.";
+            logger.LogError(ex, "Post-collection classification phase timed out after 10 minutes.");
+            phases.Add(new { name = "classification", status = "failed", durationMs = (int)swClass.ElapsedMilliseconds, message = errMsg });
+            progressTracker?.UpdatePhase(runId, "classification", "failed", errMsg, (int)swClass.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
@@ -242,18 +253,29 @@ public class CollectionRunExecutor(
             progressTracker?.UpdatePhase(runId, "classification", "failed", ex.Message, (int)swClass.ElapsedMilliseconds);
         }
 
-        // Phase 2: Matching
+        // Phase 2: Matching (10 min timeout)
         var swMatch = Stopwatch.StartNew();
         progressTracker?.UpdatePhase(runId, "matching", "Running", "Running strict category-by-category product matching...");
         try
         {
+            using var matchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            matchCts.CancelAfter(TimeSpan.FromMinutes(10));
+
             var matcher = sp.GetRequiredService<IProductMatcher>();
-            var matchResult = await matcher.MatchAllAsync(ct);
+            var matchResult = await matcher.MatchAllAsync(runId, matchCts.Token);
             swMatch.Stop();
             totalMatches = matchResult.AutoAcceptedCount;
             var msg = $"{matchResult.AutoAcceptedCount} auto-accepted, {matchResult.ReviewItemCount} reviews";
             phases.Add(new { name = "matching", status = "completed", durationMs = (int)swMatch.ElapsedMilliseconds, message = msg });
             progressTracker?.UpdatePhase(runId, "matching", "completed", msg, (int)swMatch.ElapsedMilliseconds);
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            swMatch.Stop();
+            var errMsg = "Phase timed out after 10 minutes.";
+            logger.LogError(ex, "Post-collection matching phase timed out after 10 minutes.");
+            phases.Add(new { name = "matching", status = "failed", durationMs = (int)swMatch.ElapsedMilliseconds, message = errMsg });
+            progressTracker?.UpdatePhase(runId, "matching", "failed", errMsg, (int)swMatch.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
@@ -263,15 +285,18 @@ public class CollectionRunExecutor(
             progressTracker?.UpdatePhase(runId, "matching", "failed", ex.Message, (int)swMatch.ElapsedMilliseconds);
         }
 
-        // Phase 3: AI Review Triage (if configured)
+        // Phase 3: AI Review Triage (10 min timeout)
         var swAi = Stopwatch.StartNew();
         progressTracker?.UpdatePhase(runId, "ai_triage", "Running", "Evaluating pending review candidates with AI...");
         try
         {
+            using var aiCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            aiCts.CancelAfter(TimeSpan.FromMinutes(10));
+
             var triageService = sp.GetService<IAiTriageService>();
             if (triageService != null)
             {
-                var triageRes = await triageService.TriagePendingReviewsAsync(100, ct);
+                var triageRes = await triageService.TriagePendingReviewsAsync(100, aiCts.Token);
                 swAi.Stop();
                 var msg = $"{triageRes.TotalEvaluated} evaluated ({triageRes.SameCount} same, {triageRes.DifferentCount} different, {triageRes.UnsureCount} unsure)";
                 phases.Add(new { name = "ai_triage", status = "completed", durationMs = (int)swAi.ElapsedMilliseconds, message = msg });
@@ -284,6 +309,14 @@ public class CollectionRunExecutor(
                 progressTracker?.UpdatePhase(runId, "ai_triage", "skipped", "AI triage not registered", 0);
             }
         }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            swAi.Stop();
+            var errMsg = "Phase timed out after 10 minutes.";
+            logger.LogError(ex, "Post-collection AI triage phase timed out after 10 minutes.");
+            phases.Add(new { name = "ai_triage", status = "failed", durationMs = (int)swAi.ElapsedMilliseconds, message = errMsg });
+            progressTracker?.UpdatePhase(runId, "ai_triage", "failed", errMsg, (int)swAi.ElapsedMilliseconds);
+        }
         catch (Exception ex)
         {
             swAi.Stop();
@@ -292,15 +325,18 @@ public class CollectionRunExecutor(
             progressTracker?.UpdatePhase(runId, "ai_triage", "completed", $"Skipped: {ex.Message}", (int)swAi.ElapsedMilliseconds);
         }
 
-        // Phase 4: Action Alerts Generation
+        // Phase 4: Action Alerts Generation (10 min timeout)
         var swAlerts = Stopwatch.StartNew();
         progressTracker?.UpdatePhase(runId, "alerts", "Running", "Synchronizing manager action center alerts...");
         try
         {
+            using var alertsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            alertsCts.CancelAfter(TimeSpan.FromMinutes(10));
+
             var alertService = sp.GetService<IAlertService>();
             if (alertService != null)
             {
-                var alerts = await alertService.SyncAlertsAsync(ct);
+                var alerts = await alertService.SyncAlertsAsync(alertsCts.Token);
                 swAlerts.Stop();
                 var msg = $"{alerts.Count} alerts generated";
                 phases.Add(new { name = "alerts", status = "completed", durationMs = (int)swAlerts.ElapsedMilliseconds, message = msg });
@@ -312,6 +348,14 @@ public class CollectionRunExecutor(
                 phases.Add(new { name = "alerts", status = "skipped", durationMs = 0, message = "AlertService not registered" });
                 progressTracker?.UpdatePhase(runId, "alerts", "skipped", "AlertService not registered", 0);
             }
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            swAlerts.Stop();
+            var errMsg = "Phase timed out after 10 minutes.";
+            logger.LogError(ex, "Post-collection alerts sync phase timed out after 10 minutes.");
+            phases.Add(new { name = "alerts", status = "failed", durationMs = (int)swAlerts.ElapsedMilliseconds, message = errMsg });
+            progressTracker?.UpdatePhase(runId, "alerts", "failed", errMsg, (int)swAlerts.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
@@ -704,27 +748,90 @@ public class CollectionRunExecutor(
                 .Select(cr => cr.Products)
                 .ToListAsync(ct);
 
-            if (CollectionRunContext.IsDegraded)
+            var previousCount = recentCounts.FirstOrDefault();
+
+            if (seenExternalIds.Count == 0)
+            {
+                var errorReason = CollectionRunContext.DegradedReason ?? "Zero products collected from source";
+                competitorRun.Status = CompetitorRunStatus.Failed;
+                competitorRun.Coverage = RunCoverage.Partial;
+                competitorRun.Errors = errors + 1;
+                logger.LogWarning(
+                    "{Competitor}: 0 products collected. Marked Failed: {Reason} - no removals applied.",
+                    competitor.Key, errorReason);
+                progressTracker?.UpdateCompetitorProgress(
+                    runId,
+                    competitor.Id,
+                    "Failed",
+                    competitorRun.Pages,
+                    CollectionRunContext.TotalPages,
+                    0,
+                    errorReason);
+            }
+            else if (previousCount > 0 && seenExternalIds.Count < 0.20 * previousCount)
+            {
+                var dropReason = $"Product count ({seenExternalIds.Count}) dropped below 20% of previous run ({previousCount}) - suspicious run";
+                competitorRun.Status = CompetitorRunStatus.Failed;
+                competitorRun.Coverage = RunCoverage.Partial;
+                competitorRun.Errors = errors + 1;
+                logger.LogWarning(
+                    "{Competitor}: {Reason} - no removals applied.",
+                    competitor.Key, dropReason);
+                progressTracker?.UpdateCompetitorProgress(
+                    runId,
+                    competitor.Id,
+                    "Suspicious",
+                    competitorRun.Pages,
+                    CollectionRunContext.TotalPages,
+                    seenExternalIds.Count,
+                    dropReason);
+            }
+            else if (CollectionRunContext.IsDegraded)
             {
                 competitorRun.Status = CompetitorRunStatus.Degraded;
                 competitorRun.Coverage = RunCoverage.Partial;
                 logger.LogWarning(
                     "{Competitor}: run marked Degraded because {Reason} - no removals applied.",
                     competitor.Key, CollectionRunContext.DegradedReason ?? "guard triggered");
+                progressTracker?.UpdateCompetitorProgress(
+                    runId,
+                    competitor.Id,
+                    "Degraded",
+                    competitorRun.Pages,
+                    CollectionRunContext.TotalPages,
+                    seenExternalIds.Count,
+                    CollectionRunContext.DegradedReason ?? "guard triggered");
             }
             else if (ProductRemovalPolicy.IsHealthy(seenExternalIds.Count, recentCounts))
             {
                 competitorRun.Status = CompetitorRunStatus.Completed;
                 competitorRun.Coverage = RunCoverage.Complete;
                 await MarkMissingProductsRemovedAsync(db, runId, competitor.Id, seenExternalIds, ct);
+                progressTracker?.UpdateCompetitorProgress(
+                    runId,
+                    competitor.Id,
+                    competitorRun.Status.ToString(),
+                    competitorRun.Pages,
+                    CollectionRunContext.TotalPages,
+                    seenExternalIds.Count,
+                    $"Finished with {seenExternalIds.Count} products");
             }
             else
             {
                 competitorRun.Status = CompetitorRunStatus.Degraded;
                 competitorRun.Coverage = RunCoverage.Partial;
+                var reason = $"Product count {seenExternalIds.Count} dropped sharply vs. recent runs";
                 logger.LogWarning(
-                    "{Competitor}: product count {Count} dropped sharply vs. recent runs - marked Degraded, no removals applied.",
-                    competitor.Key, seenExternalIds.Count);
+                    "{Competitor}: {Reason} - marked Degraded, no removals applied.",
+                    competitor.Key, reason);
+                progressTracker?.UpdateCompetitorProgress(
+                    runId,
+                    competitor.Id,
+                    "Degraded",
+                    competitorRun.Pages,
+                    CollectionRunContext.TotalPages,
+                    seenExternalIds.Count,
+                    reason);
             }
 
             if (competitor.IsReference && http != null)
@@ -737,15 +844,6 @@ public class CollectionRunExecutor(
             logger.LogInformation(
                 "[{Competitor}] Competitor run completed in {DurationMs}ms ({Products} products, {Pages} pages). Peak working set: {WorkingSet} MB, managed heap: {ManagedHeap} MB.",
                 competitor.Key, competitorStopwatch.ElapsedMilliseconds, seenExternalIds.Count, competitorRun.Pages, compWsMb, compHeapMb);
-
-            progressTracker?.UpdateCompetitorProgress(
-                runId,
-                competitor.Id,
-                competitorRun.Status.ToString(),
-                competitorRun.Pages,
-                CollectionRunContext.TotalPages,
-                seenExternalIds.Count,
-                $"Finished with {seenExternalIds.Count} products");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

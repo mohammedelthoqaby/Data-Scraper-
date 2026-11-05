@@ -100,6 +100,7 @@ public class CollectionProgressTracker : ICollectionProgressTracker
     {
         public Guid RunId { get; }
         public string Status { get; set; } = "Running";
+        public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
         public DateTimeOffset LastProgressAt { get; set; } = DateTimeOffset.UtcNow;
         public string? LastLogMessage { get; set; }
 
@@ -241,7 +242,8 @@ public class CollectionProgressTracker : ICollectionProgressTracker
                 LastLogMessage,
                 LastProgressAt,
                 compDtos,
-                phaseList);
+                phaseList,
+                StartedAt);
         }
 
         private double CalculatePhaseContribution(string phaseName, double phaseWeight)

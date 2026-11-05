@@ -150,6 +150,8 @@ public class LazzyBeanAdapter : ICompetitorAdapter
             _logger?.LogWarning(ex, "Failed to load brand map from filters probe for {Competitor}", competitor.Key);
         }
 
+        var categoryLastPages = new Dictionary<string, int>();
+
         foreach (var cat in categories)
         {
             var catId = cat.Id;
@@ -205,7 +207,11 @@ public class LazzyBeanAdapter : ICompetitorAdapter
                     prodData = JsonSerializer.Deserialize<LazzyBeanProductsResponse>(prodResponse.Body, JsonOpts);
                     if (prodData?.Data?.Pagination is { } pag)
                     {
-                        CollectionRunContext.SetTotalPages(pag.LastPage);
+                        categoryLastPages[catId] = pag.LastPage;
+                        var knownPages = categoryLastPages.Values.Sum();
+                        var remainingCategories = Math.Max(0, categories.Count - categoryLastPages.Count);
+                        var totalEstimated = knownPages + remainingCategories;
+                        CollectionRunContext.SetTotalPages(totalEstimated);
                         CollectionRunContext.SetStatusMessage($"{catName}: page {page} of {pag.LastPage} ({seenProductIds.Count} items)");
                     }
                 }

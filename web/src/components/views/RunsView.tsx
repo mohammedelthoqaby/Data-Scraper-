@@ -273,11 +273,16 @@ export const RunsView: React.FC<RunsViewProps> = ({
             />
           </div>
 
-          <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', gap: '20px', marginTop: '10px' }}>
-            <span>Started: {activeRun?.startedAt ? new Date(activeRun.startedAt).toLocaleTimeString('en-GB') : '—'}</span>
-            <span>Trigger: {activeRun?.trigger || 'Manual'}</span>
-            <span>Elapsed: {formatDuration(activeRun?.startedAt, null)}</span>
-          </div>
+          {(() => {
+            const runStartedAt = activeRun?.startedAt || activeProgress?.startedAt;
+            return (
+              <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', gap: '20px', marginTop: '10px' }}>
+                <span>Started: {runStartedAt ? new Date(runStartedAt).toLocaleTimeString('en-GB') : '—'}</span>
+                <span>Trigger: {activeRun?.trigger || 'Manual'}</span>
+                <span>Elapsed: {formatDuration(runStartedAt, null)}</span>
+              </div>
+            );
+          })()}
 
           {/* Real Per-Competitor Scraper Table */}
           {activeProgress?.competitors && activeProgress.competitors.length > 0 && (
@@ -298,7 +303,7 @@ export const RunsView: React.FC<RunsViewProps> = ({
                 <tbody>
                   {activeProgress.competitors.map((c) => {
                     const st = (c.status || '').toLowerCase();
-                    const badgeClass = st === 'completed' ? 'good' : st === 'running' ? 'warn' : st === 'degraded' ? 'warn' : 'bad';
+                    const badgeClass = st === 'completed' ? 'good' : st === 'running' ? 'warn' : st === 'degraded' || st === 'suspicious' ? 'warn' : 'bad';
                     return (
                       <tr key={c.competitorId} style={{ borderBottom: '1px solid #f0f0f0' }}>
                         <td style={{ padding: '8px 12px', fontWeight: 600 }}>
@@ -315,7 +320,7 @@ export const RunsView: React.FC<RunsViewProps> = ({
                           </span>
                         </td>
                         <td style={{ padding: '8px 12px' }}>
-                          {c.totalPages ? `${c.currentPage} / ${c.totalPages}` : `${c.currentPage} pages`}
+                          {c.totalPages && c.totalPages >= c.currentPage ? `${c.currentPage} / ${c.totalPages}` : `${c.currentPage} pages`}
                         </td>
                         <td style={{ padding: '8px 12px', fontWeight: 600 }}>
                           {c.productsSaved} items
@@ -555,7 +560,7 @@ export const RunsView: React.FC<RunsViewProps> = ({
                                     <td style={{ padding: '6px 12px' }}>{c.pages ?? 0} pages</td>
                                     <td style={{ padding: '6px 12px' }}>
                                       <span
-                                        className={`badge ${c.status === 'Completed' ? 'good' : 'warn'}`}
+                                        className={`badge ${c.status === 'Completed' ? 'good' : c.status === 'Failed' ? 'bad' : 'warn'}`}
                                         style={{ fontSize: '10px' }}
                                       >
                                         {c.status}

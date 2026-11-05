@@ -78,6 +78,7 @@ export interface RunProgress {
   isStalled: boolean;
   lastLogMessage: string | null;
   lastProgressAt: string;
+  startedAt?: string | null;
   competitors: CompetitorProgress[];
   phases: PhaseProgress[];
 }

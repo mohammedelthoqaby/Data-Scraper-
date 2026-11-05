@@ -102,6 +102,9 @@ public class ShopifyAdapter : ICompetitorAdapter
 
             if (!response.Success)
             {
+                var errorMsg = $"HTTP {response.StatusCode} on {url}: {response.SkippedReason ?? "Request failed"}";
+                _logger?.LogWarning("Shopify adapter for {Competitor} failed: {Message}", competitor.Key, errorMsg);
+                CollectionRunContext.MarkDegraded(errorMsg);
                 yield break;
             }
 

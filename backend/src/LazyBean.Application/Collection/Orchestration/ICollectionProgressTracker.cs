@@ -28,7 +28,8 @@ public record RunProgressDto(
     string? LastLogMessage,
     DateTimeOffset LastProgressAt,
     IReadOnlyList<CompetitorProgressDto> Competitors,
-    IReadOnlyList<PhaseProgressDto> Phases);
+    IReadOnlyList<PhaseProgressDto> Phases,
+    DateTimeOffset? StartedAt = null);
 
 public interface ICollectionProgressTracker
 {

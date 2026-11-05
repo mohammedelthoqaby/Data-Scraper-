@@ -10,4 +10,5 @@ public record MatchingResult(
 public interface IProductMatcher
 {
     Task<MatchingResult> MatchAllAsync(CancellationToken ct = default);
+    Task<MatchingResult> MatchAllAsync(Guid? runId, CancellationToken ct = default);
 }

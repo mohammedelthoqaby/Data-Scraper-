@@ -111,6 +111,8 @@ public static class DependencyInjection
         services.AddSingleton<IRunCancellationTokenRegistry, RunCancellationTokenRegistry>();
         services.AddHostedService<CollectionRunBackgroundService>();
         services.AddHostedService<SelfKeepAliveHostedService>();
+        services.AddSingleton<LazyBean.Application.Matching.IMatchingQueue, LazyBean.Infrastructure.Matching.ChannelMatchingQueue>();
+        services.AddHostedService<LazyBean.Infrastructure.Matching.MatchingBackgroundService>();
 
         services.AddQuartz(q =>
         {

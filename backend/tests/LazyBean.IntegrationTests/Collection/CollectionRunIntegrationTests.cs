@@ -264,9 +264,11 @@ public class CollectionRunIntegrationTests(TestDatabaseFixture testDb)
         db.Variants.Add(variant);
         await db.SaveChangesAsync();
 
-        // Adapter returns empty product list on page 1
+        // Adapter returns a catalog with a different product, so prod-to-disappear is missing on a healthy run
+        var singleProductJson = """{"products":[{"id":9999,"title":"Staying Coffee","handle":"staying","vendor":"Lavazza","variants":[{"id":99991,"price":"100.00","available":true}]}]}""";
         var handler = new FixtureHttpMessageHandler()
-            .When("products.json?limit=250&page=1", 200, Fixtures.Read("shopify_empty_page.json"));
+            .When("products.json?limit=250&page=1", 200, singleProductJson)
+            .When("products.json?limit=250&page=2", 200, Fixtures.Read("shopify_empty_page.json"));
 
         var evidenceDir = Path.Combine(Path.GetTempPath(), "lazybean-it-missing-" + Guid.NewGuid());
         var configuration = new ConfigurationBuilder()
@@ -527,5 +529,73 @@ public class CollectionRunIntegrationTests(TestDatabaseFixture testDb)
                 yield return p;
             }
         }
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ZeroProducts_MarkedFailedAndNoRemovals()
+    {
+        var dbContextFactory = new ServiceCollection()
+            .AddDbContextFactory<LazyBeanDbContext>(o => o.UseNpgsql(testDb.ConnectionString))
+            .BuildServiceProvider()
+            .GetRequiredService<IDbContextFactory<LazyBeanDbContext>>();
+
+        await using var db = await dbContextFactory.CreateDbContextAsync();
+
+        await db.Database.ExecuteSqlRawAsync(
+            "TRUNCATE competitors, products, variants, price_observations, collection_runs, " +
+            "competitor_runs, change_events, review_items, fetched_resources");
+
+        var competitor = new Competitor
+        {
+            Key = $"it-zero-{Guid.NewGuid():N}",
+            Name = "Zero Test Store",
+            BaseUrl = "https://zero-test.example.com",
+            Platform = CompetitorPlatform.Shopify,
+            MinDelayMs = 0,
+            Enabled = true
+        };
+        db.Competitors.Add(competitor);
+
+        var product = new Product
+        {
+            CompetitorId = competitor.Id,
+            ExternalId = "prod-active",
+            Title = "Active Coffee 250g",
+            NormalizedTitle = "active coffee 250g",
+            CanonicalUrl = "https://zero-test.example.com/products/active",
+            Status = ProductStatus.Active
+        };
+        db.Products.Add(product);
+        db.Variants.Add(new Variant
+        {
+            ProductId = product.Id,
+            ExternalId = "var-active",
+            Title = "Default Title"
+        });
+        await db.SaveChangesAsync();
+
+        var handler = new FixtureHttpMessageHandler()
+            .When("products.json?limit=250&page=1", 200, Fixtures.Read("shopify_empty_page.json"));
+
+        var httpClientFactory = new FakeHttpClientFactory(handler);
+        var robotsCache = new RobotsTxtCache(httpClientFactory);
+        var evidenceStore = new GzipEvidenceStore(dbContextFactory, new ConfigurationBuilder().Build());
+        var collectorHttp = new CollectorHttpClient(httpClientFactory, robotsCache, evidenceStore, NullLogger<CollectorHttpClient>.Instance);
+        var adapterResolver = new SingleAdapterResolver(new ShopifyAdapter(collectorHttp));
+        var executor = new CollectionRunExecutor(dbContextFactory, adapterResolver, new NoOpCacheService(), NullLogger<CollectionRunExecutor>.Instance);
+
+        var run = new CollectionRun { Trigger = RunTrigger.Manual, Status = CollectionRunStatus.Queued };
+        db.CollectionRuns.Add(run);
+        await db.SaveChangesAsync();
+
+        await executor.ExecuteAsync(run.Id, CancellationToken.None);
+
+        var compRun = await db.CompetitorRuns.SingleAsync(cr => cr.RunId == run.Id && cr.CompetitorId == competitor.Id);
+        Assert.Equal(CompetitorRunStatus.Failed, compRun.Status);
+        Assert.Equal(0, compRun.Products);
+
+        // Product MUST NOT be marked missing or removed
+        var pAfter = await db.Products.AsNoTracking().SingleAsync(p => p.Id == product.Id);
+        Assert.Equal(ProductStatus.Active, pAfter.Status);
     }
 }

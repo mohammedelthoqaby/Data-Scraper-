@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using LazyBean.Application.Collection.Normalization;
+using LazyBean.Application.Collection.Orchestration;
 using LazyBean.Application.Common.Interfaces;
 using LazyBean.Domain.Entities;
 using LazyBean.Domain.Enums;
@@ -124,22 +125,30 @@ public class ProductMatcher : IProductMatcher
     private static readonly Regex AccentsRegex = new(
         @"[àáâãäå]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    private readonly ICollectionProgressTracker? _progressTracker;
+
     public ProductMatcher(
         IUnitOfWork unitOfWork,
         IReadDbContext readContext,
         ICacheService cache,
         ILogger<ProductMatcher> logger,
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null,
+        ICollectionProgressTracker? progressTracker = null)
     {
         _unitOfWork = unitOfWork;
         _readContext = readContext;
         _cache = cache;
         _logger = logger;
+        _progressTracker = progressTracker;
         _genericTokens = LoadGenericTokens(configuration);
     }
 
-    public async Task<MatchingResult> MatchAllAsync(CancellationToken ct = default)
+    public Task<MatchingResult> MatchAllAsync(CancellationToken ct = default)
+        => MatchAllAsync(null, ct);
+
+    public async Task<MatchingResult> MatchAllAsync(Guid? runId, CancellationToken ct = default)
     {
+        var swTotal = Stopwatch.StartNew();
         var wsStart = Process.GetCurrentProcess().WorkingSet64 / (1024 * 1024);
         _logger.LogInformation("Starting strict product matching across all competitors against reference catalog. Initial working set: {Ws} MB.", wsStart);
 
@@ -202,9 +211,78 @@ public class ProductMatcher : IProductMatcher
         var reviewItemCount = 0;
 
         // Process matching category-by-category to stay strictly within 256 MB RAM
-        var categories = Enum.GetValues<CanonicalCategory>();
-        foreach (var category in categories)
+        var activeRunId = runId ?? CollectionRunContext.CurrentRunId;
+        var completedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (activeRunId.HasValue)
         {
+            var run = await _unitOfWork.CollectionRuns.GetByIdAsync(activeRunId.Value, ct);
+            if (run?.PhasesJson != null)
+            {
+                completedCategories = ParseCompletedCategories(run.PhasesJson);
+                if (completedCategories.Count > 0)
+                {
+                    _logger.LogInformation("Resuming matching for run {RunId} from category next to completed [{Cats}].",
+                        activeRunId.Value, string.Join(", ", completedCategories));
+                }
+            }
+        }
+
+        using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var currentCategoryName = "Initializing";
+        var currentMatchesCount = 0;
+
+        Task? heartbeatTask = null;
+        if (_progressTracker != null && activeRunId.HasValue)
+        {
+            var targetRunId = activeRunId.Value;
+            heartbeatTask = Task.Run(async () =>
+            {
+                using var periodicTimer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+                while (!heartbeatCts.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await periodicTimer.WaitForNextTickAsync(heartbeatCts.Token);
+                        _progressTracker.UpdatePhase(
+                            targetRunId,
+                            "matching",
+                            "Running",
+                            $"Matching {currentCategoryName} ({currentMatchesCount} matches so far, active)");
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch
+                    {
+                    }
+                }
+            }, CancellationToken.None);
+        }
+
+        var categories = Enum.GetValues<CanonicalCategory>();
+        for (var catIdx = 0; catIdx < categories.Length; catIdx++)
+        {
+            var category = categories[catIdx];
+            var catName = category.ToString();
+
+            if (completedCategories.Contains(catName))
+            {
+                _logger.LogInformation("Category {Category} already completed in run {RunId} - skipping.", catName, activeRunId);
+                continue;
+            }
+
+            currentCategoryName = catName;
+            currentMatchesCount = autoAcceptedCount;
+
+            if (_progressTracker != null && activeRunId.HasValue)
+            {
+                _progressTracker.UpdatePhase(
+                    activeRunId.Value,
+                    "matching",
+                    "Running",
+                    $"Category {catIdx + 1}/{categories.Length}: {category} ({autoAcceptedCount} matches so far)");
+            }
             var refQuery = await (
                 from p in _readContext.Query<Product>()
                 join v in _readContext.Query<Variant>() on p.Id equals v.ProductId
@@ -288,18 +366,45 @@ public class ProductMatcher : IProductMatcher
 
             foreach (var comp in compProducts)
             {
-                List<MatchCandidate>? candidates = null;
+                // Strict candidate blocking:
+                // 1. Competitor product must have detected brand (brand is required on both sides)
+                if (string.IsNullOrWhiteSpace(comp.Brand))
+                    continue;
 
-                if (comp.Brand != null && refByBrand.TryGetValue(comp.Brand, out var brandMatches))
-                {
-                    candidates = brandMatches;
-                }
-                else if (comp.Brand == null)
-                {
-                    candidates = refProducts;
-                }
+                // 2. Reference catalog must have brand candidates for this brand in this category
+                if (!refByBrand.TryGetValue(comp.Brand, out var brandCandidates) || brandCandidates.Count == 0)
+                    continue;
 
-                if (candidates is null || candidates.Count == 0)
+                // 3. Competitor product must have detected size (weight, volume, or unit count)
+                var compHasSize = comp.WeightGrams.HasValue || comp.VolumeMl.HasValue || comp.UnitCount.HasValue;
+                if (!compHasSize)
+                    continue;
+
+                var compFormat = ExtractCoffeeFormat(comp);
+
+                // 4. Pre-filter brand candidates by beverage type, capsule system, coffee format, and reference size
+                var candidates = brandCandidates.Where(reference =>
+                {
+                    if (!string.Equals(comp.BeverageType, reference.BeverageType, StringComparison.OrdinalIgnoreCase))
+                        return false;
+
+                    if (comp.CapsuleSystem != null && reference.CapsuleSystem != null &&
+                        !string.Equals(comp.CapsuleSystem, reference.CapsuleSystem, StringComparison.OrdinalIgnoreCase))
+                        return false;
+
+                    var refFormat = ExtractCoffeeFormat(reference);
+                    if (compFormat != null && refFormat != null &&
+                        !string.Equals(compFormat, refFormat, StringComparison.OrdinalIgnoreCase))
+                        return false;
+
+                    var refHasSize = reference.WeightGrams.HasValue || reference.VolumeMl.HasValue || reference.UnitCount.HasValue;
+                    if (!refHasSize)
+                        return false;
+
+                    return true;
+                }).ToList();
+
+                if (candidates.Count == 0)
                     continue;
 
                 MatchCandidate? bestCandidate = null;
@@ -423,6 +528,18 @@ public class ProductMatcher : IProductMatcher
                 }
             }
 
+            completedCategories.Add(catName);
+            if (activeRunId.HasValue)
+            {
+                await PersistCategoryCompletionAsync(
+                    activeRunId.Value,
+                    completedCategories,
+                    "Running",
+                    $"Category {catIdx + 1}/{categories.Length}: {category} ({autoAcceptedCount} matches so far)",
+                    null,
+                    ct);
+            }
+
             // Save and clear EF tracker per category to stay within 256 MB RAM
             await _unitOfWork.SaveChangesAsync(ct);
             _unitOfWork.ClearTracker();
@@ -434,8 +551,39 @@ public class ProductMatcher : IProductMatcher
             GC.Collect(0, GCCollectionMode.Optimized);
         }
 
+        try
+        {
+            heartbeatCts.Cancel();
+            if (heartbeatTask != null)
+            {
+                try { await heartbeatTask; } catch { }
+            }
+        }
+        catch { }
+
         await _unitOfWork.SaveChangesAsync(ct);
         await _cache.RemoveByTagAsync("products", ct);
+
+        if (activeRunId.HasValue)
+        {
+            await PersistCategoryCompletionAsync(
+                activeRunId.Value,
+                completedCategories,
+                "completed",
+                $"{autoAcceptedCount} auto-accepted, {reviewItemCount} reviews",
+                (int)swTotal.ElapsedMilliseconds,
+                ct);
+        }
+
+        if (_progressTracker != null && activeRunId.HasValue)
+        {
+            _progressTracker.UpdatePhase(
+                activeRunId.Value,
+                "matching",
+                "completed",
+                $"{autoAcceptedCount} auto-accepted, {reviewItemCount} reviews",
+                (int)swTotal.ElapsedMilliseconds);
+        }
 
         var wsMb = Process.GetCurrentProcess().WorkingSet64 / (1024 * 1024);
         var heapMb = GC.GetTotalMemory(forceFullCollection: false) / (1024 * 1024);
@@ -1031,6 +1179,101 @@ public class ProductMatcher : IProductMatcher
         "نسبريسو", "كافيتالي", "ماكينة", "ماكينه", "الة", "آلة", "صانعة", "نظام", "من", "في",
         "فى", "على", "و", "جرام", "جم", "غرام", "كجم", "كيلو", "مل", "لتر"
     };
+
+    public static HashSet<string> ParseCompletedCategories(string? phasesJson)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(phasesJson)) return result;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(phasesJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return result;
+
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (el.TryGetProperty("name", out var n) && string.Equals(n.GetString(), "matching", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (el.TryGetProperty("completedCategories", out var cats) && cats.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var c in cats.EnumerateArray())
+                        {
+                            var s = c.GetString();
+                            if (!string.IsNullOrWhiteSpace(s)) result.Add(s);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        catch { }
+
+        return result;
+    }
+
+    private async Task PersistCategoryCompletionAsync(
+        Guid runId,
+        HashSet<string> completed,
+        string status,
+        string message,
+        int? durationMs,
+        CancellationToken ct)
+    {
+        try
+        {
+            var run = await _unitOfWork.CollectionRuns.GetByIdAsync(runId, ct);
+            if (run is null) return;
+
+            var phaseList = new List<Dictionary<string, object?>>();
+            if (!string.IsNullOrWhiteSpace(run.PhasesJson))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(run.PhasesJson);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var el in doc.RootElement.EnumerateArray())
+                        {
+                            var dict = new Dictionary<string, object?>();
+                            foreach (var prop in el.EnumerateObject())
+                            {
+                                dict[prop.Name] = prop.Value.ValueKind switch
+                                {
+                                    JsonValueKind.String => prop.Value.GetString(),
+                                    JsonValueKind.Number => prop.Value.TryGetInt32(out var i) ? i : (object?)prop.Value.GetDouble(),
+                                    JsonValueKind.True => true,
+                                    JsonValueKind.False => false,
+                                    JsonValueKind.Array when prop.Name == "completedCategories" => prop.Value.EnumerateArray().Select(x => x.GetString()).Where(x => x != null).ToList(),
+                                    _ => null
+                                };
+                            }
+                            phaseList.Add(dict);
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            var matchingPhase = phaseList.FirstOrDefault(p => string.Equals(p.GetValueOrDefault("name")?.ToString(), "matching", StringComparison.OrdinalIgnoreCase));
+            if (matchingPhase is null)
+            {
+                matchingPhase = new Dictionary<string, object?> { ["name"] = "matching" };
+                phaseList.Add(matchingPhase);
+            }
+
+            matchingPhase["status"] = status;
+            matchingPhase["completedCategories"] = completed.ToList();
+            matchingPhase["message"] = message;
+            if (durationMs.HasValue) matchingPhase["durationMs"] = durationMs.Value;
+
+            run.PhasesJson = JsonSerializer.Serialize(phaseList);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist category completion for run {RunId}", runId);
+        }
+    }
 
     public sealed class MatchCandidate
     {

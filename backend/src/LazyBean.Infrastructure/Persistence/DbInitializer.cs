@@ -263,19 +263,83 @@ public static class DbInitializer
         using var scope = services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<LazyBeanDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbInitializer");
+        var matchingQueue = scope.ServiceProvider.GetService<LazyBean.Application.Matching.IMatchingQueue>();
 
-        var runningRuns = await context.CollectionRuns
-            .Where(r => r.Status == CollectionRunStatus.Running)
+        var candidateRuns = await context.CollectionRuns
+            .Where(r => r.Status == CollectionRunStatus.Running || (r.PhasesJson != null && r.PhasesJson.Contains("\"Running\"")))
             .ToListAsync(ct);
 
-        if (runningRuns.Count > 0)
+        var runsToResumeMatching = new List<Guid>();
+
+        if (candidateRuns.Count > 0)
         {
             var now = DateTimeOffset.UtcNow;
-            foreach (var run in runningRuns)
+            foreach (var run in candidateRuns)
             {
-                run.Status = CollectionRunStatus.Failed;
-                run.FinishedAt = now;
-                logger.LogWarning("Marked interrupted CollectionRun {RunId} as Failed (reason: interrupted).", run.Id);
+                var matchingWasInterrupted = false;
+
+                if (!string.IsNullOrWhiteSpace(run.PhasesJson))
+                {
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(run.PhasesJson);
+                        if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                        {
+                            var updatedList = new List<Dictionary<string, object?>>();
+                            foreach (var el in doc.RootElement.EnumerateArray())
+                            {
+                                var dict = new Dictionary<string, object?>();
+                                foreach (var prop in el.EnumerateObject())
+                                {
+                                    dict[prop.Name] = prop.Value.ValueKind switch
+                                    {
+                                        JsonValueKind.String => prop.Value.GetString(),
+                                        JsonValueKind.Number => prop.Value.TryGetInt32(out var i) ? i : (object?)prop.Value.GetDouble(),
+                                        JsonValueKind.True => true,
+                                        JsonValueKind.False => false,
+                                        JsonValueKind.Array when prop.Name == "completedCategories" => prop.Value.EnumerateArray().Select(x => x.GetString()).Where(x => x != null).ToList(),
+                                        _ => null
+                                    };
+                                }
+
+                                if (string.Equals(dict.GetValueOrDefault("status")?.ToString(), "Running", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    dict["status"] = "interrupted";
+                                    dict["message"] = "Interrupted by server restart";
+                                    var phaseName = dict.GetValueOrDefault("name")?.ToString();
+                                    if (string.Equals(phaseName, "matching", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        matchingWasInterrupted = true;
+                                    }
+                                }
+
+                                updatedList.Add(dict);
+                            }
+
+                            run.PhasesJson = JsonSerializer.Serialize(updatedList);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Failed to parse/update PhasesJson for run {RunId} during recovery.", run.Id);
+                    }
+                }
+
+                var hasUnfinishedCompetitors = await context.CompetitorRuns
+                    .AnyAsync(cr => cr.RunId == run.Id && (cr.Status == CompetitorRunStatus.Running || cr.Status == CompetitorRunStatus.Queued), ct);
+
+                if (matchingWasInterrupted && !hasUnfinishedCompetitors && matchingQueue != null)
+                {
+                    run.Status = CollectionRunStatus.Running;
+                    runsToResumeMatching.Add(run.Id);
+                    logger.LogInformation("Orphaned matching phase found for CollectionRun {RunId}. Enqueued to resume matching.", run.Id);
+                }
+                else if (run.Status == CollectionRunStatus.Running)
+                {
+                    run.Status = CollectionRunStatus.Failed;
+                    run.FinishedAt = now;
+                    logger.LogWarning("Marked interrupted CollectionRun {RunId} as Failed (reason: interrupted).", run.Id);
+                }
             }
         }
 
@@ -296,9 +360,17 @@ public static class DbInitializer
             }
         }
 
-        if (runningRuns.Count > 0 || runningCompetitorRuns.Count > 0)
+        if (candidateRuns.Count > 0 || runningCompetitorRuns.Count > 0)
         {
             await context.SaveChangesAsync(ct);
+        }
+
+        if (matchingQueue != null)
+        {
+            foreach (var runId in runsToResumeMatching)
+            {
+                await matchingQueue.EnqueueAsync(new LazyBean.Application.Matching.MatchingJob(runId), CancellationToken.None);
+            }
         }
     }
 }
