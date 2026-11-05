@@ -6,6 +6,7 @@
     "platform": "LazzyBeanApi",
     "isReference": true,
     "minDelayMs": 3000,
+    "collectionHost": "server",
     "metaPageIds": []
   },
   {
@@ -15,6 +16,7 @@
     "platform": "Shopify",
     "isReference": false,
     "minDelayMs": 3000,
+    "collectionHost": "server",
     "metaPageIds": [
       "110140451538461"
     ]
@@ -26,6 +28,7 @@
     "platform": "Shopify",
     "isReference": false,
     "minDelayMs": 3000,
+    "collectionHost": "server",
     "metaPageIds": [
       "833564813655781"
     ]
@@ -37,6 +40,7 @@
     "platform": "Shopify",
     "isReference": false,
     "minDelayMs": 3000,
+    "collectionHost": "server",
     "metaPageIds": [
       "109786085108938"
     ]
@@ -48,6 +52,7 @@
     "platform": "Shopify",
     "isReference": false,
     "minDelayMs": 3000,
+    "collectionHost": "server",
     "metaPageIds": [
       "100456846237420"
     ]
@@ -59,6 +64,7 @@
     "platform": "WooCommerce",
     "isReference": false,
     "minDelayMs": 3000,
+    "collectionHost": "github",
     "metaPageIds": [
       "102631558265863"
     ]

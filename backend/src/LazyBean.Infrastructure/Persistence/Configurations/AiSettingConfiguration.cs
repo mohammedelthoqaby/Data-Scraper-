@@ -21,5 +21,8 @@ public class AiSettingConfiguration : IEntityTypeConfiguration<AiSetting>
 
         builder.Property(s => s.LastTestMessage)
             .HasMaxLength(500);
+
+        builder.Property(s => s.LastCallStatus)
+            .HasMaxLength(100);
     }
 }

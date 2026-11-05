@@ -54,7 +54,8 @@ public static class DbInitializer
         string Platform,
         bool IsReference,
         int MinDelayMs,
-        List<string>? MetaPageIds = null);
+        List<string>? MetaPageIds = null,
+        string? CollectionHost = null);
 
     public static async Task SeedCompetitorsAsync(IServiceProvider services, CancellationToken ct = default)
     {
@@ -163,6 +164,8 @@ public static class DbInitializer
                 continue;
             }
 
+            var targetHost = !string.IsNullOrWhiteSpace(item.CollectionHost) ? item.CollectionHost.Trim().ToLowerInvariant() : "server";
+
             if (existingByKey.TryGetValue(item.Key, out var existing))
             {
                 var changed = false;
@@ -171,6 +174,7 @@ public static class DbInitializer
                 if (existing.Platform != platform) { existing.Platform = platform; changed = true; }
                 if (existing.IsReference != item.IsReference) { existing.IsReference = item.IsReference; changed = true; }
                 if (existing.MinDelayMs != item.MinDelayMs) { existing.MinDelayMs = item.MinDelayMs; changed = true; }
+                if (existing.CollectionHost != targetHost) { existing.CollectionHost = targetHost; changed = true; }
 
                 if (changed) updated++;
             }
@@ -185,7 +189,8 @@ public static class DbInitializer
                     IsReference = item.IsReference,
                     Enabled = true,
                     MinDelayMs = item.MinDelayMs > 0 ? item.MinDelayMs : 3000,
-                    MaxConcurrency = 1
+                    MaxConcurrency = 1,
+                    CollectionHost = targetHost
                 });
                 added++;
             }

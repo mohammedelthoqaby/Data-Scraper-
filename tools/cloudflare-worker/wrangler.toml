@@ -1,0 +1,6 @@
+name = "lazybean-meta"
+main = "worker.js"
+compatibility_date = "2024-09-23"
+
+[vars]
+WORKER_SECRET = "lazybean-worker-secret-0000"

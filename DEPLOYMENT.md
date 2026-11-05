@@ -148,17 +148,23 @@ Follow these steps when deploying to MonsterASP:
 ## 5. Automated Jobs & GitHub Actions
 
 ### 5.1 Daily Collection (`.github/workflows/daily-run.yml`)
-- **Schedule**: `0 5 * * *` (05:00 UTC / 07:00 Egypt time).
-- **IIS 411 Fix**: Sends `POST /api/internal/runs` with `-H "Content-Type: application/json" -d "{}"` to satisfy IIS Content-Length requirements and avoid HTTP 411 errors.
-- **Verification Endpoint**: Checks run status via `GET /api/internal/runs/latest`.
+- **Schedule**: `0 5 * * *` (05:00 UTC / 07:00 Egypt time) on GitHub-hosted `ubuntu-latest`.
+- **Workflow**:
+  1. Sends `POST /api/internal/runs` with `-H "Content-Type: application/json" -d "{}"` to initiate the server collection run (Shopify, Cafelax, Coffee & Cream, Coffee Zone, Fengany).
+  2. Extracts the `runId`.
+  3. Executes `LazyBean.CollectorCli` on `ubuntu-latest` for `strong-coffee` (bypassing MonsterASP IP blocks).
+  4. Streams normalized product batches to `POST /api/internal/runs/{runId}/competitors/strong-coffee/products`.
+  5. Completes with `POST /api/internal/runs/{runId}/competitors/strong-coffee/complete`.
+- **Verification Endpoint**: Checks overall run status via `GET /api/internal/runs/latest`.
 
 ### 5.2 Google Ads Sync (In-App Backend Service)
 - **Schedule**: Automatically executed weekly (if >= 7 days elapsed since last sync) following the daily collection run, or triggered on-demand via the Ads dashboard or `POST /api/internal/ads/google/sync`.
 - **Runtime**: Native C# implementation in `GoogleAdsTransparencyClient` & `GoogleAdsSyncService` without external runner or proxies. Caches advertiser AR IDs and backs off for 24h on 429/CAPTCHA.
 
-### 5.3 Meta Ads Sync (`.github/workflows/meta-ads.yml`)
-- **Schedule**: Every Sunday at 07:00 UTC on a self-hosted runner (`lazybean-collector`).
-- Ingests verified ad creatives and links via `POST /api/internal/ads/meta`.
+### 5.3 Meta Ads Sync (Cloudflare Worker Edge)
+- **Architecture**: Runs on Cloudflare Worker (`tools/cloudflare-worker/worker.js`) on Cloudflare's global edge network (Free tier, 100,000 requests/day, zero credit card, zero maintenance).
+- **Diagnostics**: Call `/diagnose?pageId=100456846237420` to verify live Meta Ad Library access for CAFELAX.
+- **Collection**: POSTs verified ads to backend `POST /api/internal/ads/meta`.
 
 ---
 

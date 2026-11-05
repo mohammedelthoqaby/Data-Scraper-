@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using LazyBean.Application.Ads.Common;
+using LazyBean.Application.Collection.Contracts;
 using LazyBean.Application.Common.Interfaces;
 using LazyBean.Application.Runs.Commands.StartRun;
 using LazyBean.Application.Runs.Dtos;
@@ -629,6 +630,127 @@ public class InternalApiController(
 
         await unitOfWork.SaveChangesAsync(ct);
         return Ok(new { status = "Success", ingestedCount, totalProcessed = seenAdIds.Count });
+    }
+
+    [HttpGet("diagnostics/strong-coffee")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> DiagnoseStrongCoffee([FromServices] IHttpClientFactory httpClientFactory, CancellationToken ct)
+    {
+        if (!IsAuthorized())
+        {
+            return Unauthorized(new { error = "Invalid or missing Internal:Token header." });
+        }
+
+        var client = httpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(30);
+        var url = "https://strongcoffee-eg.com/wp-json/wc/store/v1/products?per_page=100&page=1";
+
+        async Task<object> ProbeAsync(string ua)
+        {
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.TryAddWithoutValidation("User-Agent", ua);
+                using var resp = await client.SendAsync(req, ct);
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                var snippet = body.Length > 200 ? body[..200] : body;
+                resp.Headers.TryGetValues("CF-RAY", out var cfRay);
+                return new
+                {
+                    userAgent = ua,
+                    statusCode = (int)resp.StatusCode,
+                    status = resp.StatusCode.ToString(),
+                    server = resp.Headers.Server?.ToString() ?? "",
+                    cfRay = cfRay != null ? string.Join(", ", cfRay) : null,
+                    bodySnippet = snippet
+                };
+            }
+            catch (Exception ex)
+            {
+                return new
+                {
+                    userAgent = ua,
+                    statusCode = 0,
+                    error = ex.Message
+                };
+            }
+        }
+
+        var currentUa = await ProbeAsync("LazyBean-Collector/1.0");
+        var honestUa = await ProbeAsync("LazyBeanBot/1.0 (+https://lazy-bean.runasp.net)");
+
+        return Ok(new
+        {
+            targetUrl = url,
+            currentUa,
+            honestUa
+        });
+    }
+
+    [HttpPost("runs/{runId:guid}/competitors/{slug}/products")]
+    [ProducesResponseType(typeof(IngestBatchResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> IngestCompetitorProducts(
+        Guid runId,
+        string slug,
+        [FromBody] IngestProductsBatchRequest request,
+        [FromServices] ICompetitorProductIngestionService ingestionService,
+        CancellationToken ct)
+    {
+        if (!IsAuthorized())
+        {
+            return Unauthorized(new { error = "Invalid or missing Internal:Token header." });
+        }
+
+        if (request?.Products == null)
+        {
+            return BadRequest(new { error = "Products payload is required." });
+        }
+
+        var result = await ingestionService.IngestBatchAsync(
+            runId,
+            slug,
+            request.Page,
+            request.TotalPages,
+            request.Products,
+            ct);
+
+        return Ok(result);
+    }
+
+    [HttpPost("runs/{runId:guid}/competitors/{slug}/complete")]
+    [ProducesResponseType(typeof(CompleteCompetitorResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> CompleteCompetitorCollection(
+        Guid runId,
+        string slug,
+        [FromBody] CompleteCompetitorRunRequest request,
+        [FromServices] ICompetitorProductIngestionService ingestionService,
+        CancellationToken ct)
+    {
+        if (!IsAuthorized())
+        {
+            return Unauthorized(new { error = "Invalid or missing Internal:Token header." });
+        }
+
+        if (request == null)
+        {
+            return BadRequest(new { error = "Complete payload is required." });
+        }
+
+        var result = await ingestionService.CompleteCompetitorAsync(
+            runId,
+            slug,
+            request.Status,
+            request.TotalPages,
+            request.TotalProducts,
+            request.Error,
+            ct);
+
+        return Ok(result);
     }
 
     private static string StripTrackingParams(string url)

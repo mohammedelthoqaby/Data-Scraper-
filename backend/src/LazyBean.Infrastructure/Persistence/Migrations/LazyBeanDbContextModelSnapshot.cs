@@ -308,6 +308,13 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<DateTimeOffset?>("LastCallAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastCallStatus")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("LastTestMessage")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -622,6 +629,13 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<string>("CollectionHost")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("server");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");

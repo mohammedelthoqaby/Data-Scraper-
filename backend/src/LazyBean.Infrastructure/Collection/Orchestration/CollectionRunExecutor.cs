@@ -128,9 +128,13 @@ public class CollectionRunExecutor(
 
         try
         {
-            // Competitors run in parallel, each with its own DbContext; within each one,
-            // FetchAsync (and therefore every HTTP request) is awaited sequentially.
-            await Task.WhenAll(competitors.Select(competitor => ProcessCompetitorAsync(runId, competitor, ct)));
+            var serverCompetitors = competitors.Where(c => !string.Equals(c.CollectionHost, "github", StringComparison.OrdinalIgnoreCase)).ToList();
+            var githubCompetitors = competitors.Where(c => string.Equals(c.CollectionHost, "github", StringComparison.OrdinalIgnoreCase)).ToList();
+
+            var serverTasks = serverCompetitors.Select(c => ProcessCompetitorAsync(runId, c, ct));
+            var githubTasks = githubCompetitors.Select(c => WaitForGithubCompetitorAsync(runId, c, ct));
+
+            await Task.WhenAll(serverTasks.Concat(githubTasks));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -285,18 +289,18 @@ public class CollectionRunExecutor(
             progressTracker?.UpdatePhase(runId, "matching", "failed", ex.Message, (int)swMatch.ElapsedMilliseconds);
         }
 
-        // Phase 3: AI Review Triage (10 min timeout)
+        // Phase 3: AI Review Triage (5 min hard cap)
         var swAi = Stopwatch.StartNew();
         progressTracker?.UpdatePhase(runId, "ai_triage", "Running", "Evaluating pending review candidates with AI...");
         try
         {
             using var aiCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            aiCts.CancelAfter(TimeSpan.FromMinutes(10));
+            aiCts.CancelAfter(TimeSpan.FromMinutes(5));
 
             var triageService = sp.GetService<IAiTriageService>();
             if (triageService != null)
             {
-                var triageRes = await triageService.TriagePendingReviewsAsync(100, aiCts.Token);
+                var triageRes = await triageService.TriagePendingReviewsAsync(100, aiCts.Token, runId);
                 swAi.Stop();
                 var msg = $"{triageRes.TotalEvaluated} evaluated ({triageRes.SameCount} same, {triageRes.DifferentCount} different, {triageRes.UnsureCount} unsure)";
                 phases.Add(new { name = "ai_triage", status = "completed", durationMs = (int)swAi.ElapsedMilliseconds, message = msg });
@@ -312,17 +316,21 @@ public class CollectionRunExecutor(
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
             swAi.Stop();
-            var errMsg = "Phase timed out after 10 minutes.";
-            logger.LogError(ex, "Post-collection AI triage phase timed out after 10 minutes.");
+            var errMsg = "timeout";
+            logger.LogError(ex, "Post-collection AI triage phase timed out after 5 minutes.");
             phases.Add(new { name = "ai_triage", status = "failed", durationMs = (int)swAi.ElapsedMilliseconds, message = errMsg });
             progressTracker?.UpdatePhase(runId, "ai_triage", "failed", errMsg, (int)swAi.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
             swAi.Stop();
-            logger.LogWarning(ex, "Post-collection AI triage phase skipped or failed: {Message}", ex.Message);
-            phases.Add(new { name = "ai_triage", status = "completed", durationMs = (int)swAi.ElapsedMilliseconds, message = $"Skipped: {ex.Message}" });
-            progressTracker?.UpdatePhase(runId, "ai_triage", "completed", $"Skipped: {ex.Message}", (int)swAi.ElapsedMilliseconds);
+            var cleanErr = ex.Message.Contains("401") ? "401 invalid key"
+                : ex.Message.Contains("429") ? "429 quota"
+                : ex.Message.Contains("timeout") ? "timeout"
+                : ex.Message;
+            logger.LogWarning(ex, "Post-collection AI triage phase failed: {Message}", cleanErr);
+            phases.Add(new { name = "ai_triage", status = "failed", durationMs = (int)swAi.ElapsedMilliseconds, message = cleanErr });
+            progressTracker?.UpdatePhase(runId, "ai_triage", "failed", cleanErr, (int)swAi.ElapsedMilliseconds);
         }
 
         // Phase 4: Action Alerts Generation (10 min timeout)
@@ -380,6 +388,77 @@ public class CollectionRunExecutor(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to persist PhasesJson and MatchesCount to CollectionRun {RunId}.", runId);
+        }
+    }
+
+    private async Task WaitForGithubCompetitorAsync(Guid runId, Competitor competitor, CancellationToken ct)
+    {
+        await using (var db = await dbContextFactory.CreateDbContextAsync(ct))
+        {
+            var cr = await db.CompetitorRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
+            if (cr == null)
+            {
+                cr = new CompetitorRun
+                {
+                    RunId = runId,
+                    CompetitorId = competitor.Id,
+                    Status = CompetitorRunStatus.Running
+                };
+                db.CompetitorRuns.Add(cr);
+                await db.SaveChangesAsync(ct);
+            }
+            else
+            {
+                cr.Status = CompetitorRunStatus.Running;
+                await db.SaveChangesAsync(ct);
+            }
+        }
+
+        progressTracker?.UpdateCompetitorProgress(
+            runId,
+            competitor.Id,
+            "Running",
+            0,
+            null,
+            0,
+            "Awaiting external GitHub Actions collector...");
+
+        var start = DateTimeOffset.UtcNow;
+        var timeout = TimeSpan.FromMinutes(30);
+
+        while (!ct.IsCancellationRequested)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+
+            await using var db = await dbContextFactory.CreateDbContextAsync(ct);
+            var cr = await db.CompetitorRuns.AsNoTracking().FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
+            if (cr != null && cr.Status != CompetitorRunStatus.Running && cr.Status != CompetitorRunStatus.Queued)
+            {
+                logger.LogInformation("External GitHub collector for {Competitor} finished with status {Status}.", competitor.Key, cr.Status);
+                return;
+            }
+
+            if (DateTimeOffset.UtcNow - start > timeout)
+            {
+                logger.LogWarning("GitHub Actions collector for {Competitor} timed out after 30 minutes. Marking Skipped.", competitor.Key);
+                var entity = await db.CompetitorRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
+                if (entity != null)
+                {
+                    entity.Status = CompetitorRunStatus.Degraded;
+                    entity.Coverage = RunCoverage.Partial;
+                    await db.SaveChangesAsync(ct);
+                }
+
+                progressTracker?.UpdateCompetitorProgress(
+                    runId,
+                    competitor.Id,
+                    "Skipped",
+                    cr?.Pages ?? 0,
+                    null,
+                    cr?.Products ?? 0,
+                    "Skipped (collector did not report)");
+                return;
+            }
         }
     }
 

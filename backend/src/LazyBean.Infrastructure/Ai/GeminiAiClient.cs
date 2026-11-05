@@ -194,7 +194,7 @@ Output MUST be a JSON array of objects matching this schema:
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to execute Gemini triage for batch of {Count} pairs.", batch.Count);
-            return [];
+            throw;
         }
     }
 
@@ -387,7 +387,8 @@ Output JSON schema:
         var url = $"{BaseApiUrl}/{Uri.EscapeDataString(model)}:generateContent?key={Uri.EscapeDataString(apiKey)}";
         var jsonContent = JsonSerializer.Serialize(payload);
 
-        var delays = new[] { TimeSpan.FromMilliseconds(1500), TimeSpan.FromMilliseconds(3000), TimeSpan.FromMilliseconds(6000) };
+        var delays = new[] { TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4) };
+        const int maxAttempts = 3;
         var attempts = 0;
 
         while (true)
@@ -398,12 +399,22 @@ Output JSON schema:
                 Content = new StringContent(jsonContent, Encoding.UTF8, "application/json")
             };
 
+            // 30s timeout per Gemini API call
+            using var callCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            callCts.CancelAfter(TimeSpan.FromSeconds(30));
+
             HttpResponseMessage resp;
             try
             {
-                resp = await _httpClient.SendAsync(req, ct);
+                resp = await _httpClient.SendAsync(req, callCts.Token);
             }
-            catch (Exception ex) when (attempts <= delays.Length && !ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested && callCts.IsCancellationRequested)
+            {
+                _logger.LogWarning("Gemini request timed out after 30 seconds (attempt {Attempt}/{Max}).", attempts, maxAttempts);
+                await RecordCallStatusAsync("timeout", CancellationToken.None);
+                throw new HttpRequestException("timeout");
+            }
+            catch (Exception ex) when (attempts < maxAttempts && !ct.IsCancellationRequested)
             {
                 _logger.LogWarning("Network exception during Gemini request (attempt {Attempt}): {Message}", attempts, ex.Message);
                 await Task.Delay(delays[attempts - 1], ct);
@@ -412,29 +423,72 @@ Output JSON schema:
 
             if (resp.IsSuccessStatusCode)
             {
+                await RecordCallStatusAsync("200 OK", CancellationToken.None);
                 return await resp.Content.ReadAsStringAsync(ct);
             }
 
             var responseBody = await resp.Content.ReadAsStringAsync(ct);
 
-            // Handle HTTP 429 Too Many Requests or 503 Transient Demand with exponential backoff
-            if ((resp.StatusCode == (HttpStatusCode)429 || resp.StatusCode == (HttpStatusCode)503) && attempts <= delays.Length)
+            // On 401 Unauthorized / Forbidden: immediate failure with no retry
+            if (resp.StatusCode == HttpStatusCode.Unauthorized || resp.StatusCode == HttpStatusCode.Forbidden)
             {
-                var delay = delays[attempts - 1];
-                if (resp.Headers.RetryAfter?.Delta.HasValue == true)
+                _logger.LogWarning("Gemini API key rejected with HTTP {Status}.", (int)resp.StatusCode);
+                await RecordCallStatusAsync("401 invalid key", CancellationToken.None);
+                throw new HttpRequestException("401 invalid key");
+            }
+
+            // On 429 Too Many Requests or 503 Transient Demand
+            if (resp.StatusCode == (HttpStatusCode)429 || resp.StatusCode == (HttpStatusCode)503)
+            {
+                var retryAfter = resp.Headers.RetryAfter?.Delta;
+                if (retryAfter.HasValue && retryAfter.Value > TimeSpan.FromSeconds(60))
                 {
-                    delay = resp.Headers.RetryAfter.Delta.Value;
+                    _logger.LogWarning("Gemini returned 429 with Retry-After {Seconds}s (> 60s). Aborting call.", retryAfter.Value.TotalSeconds);
+                    await RecordCallStatusAsync("429 quota", CancellationToken.None);
+                    throw new HttpRequestException("429 quota");
+                }
+
+                if (attempts >= maxAttempts)
+                {
+                    _logger.LogWarning("Gemini returned 429 and retry limit ({Max}) reached.", maxAttempts);
+                    await RecordCallStatusAsync("429 quota", CancellationToken.None);
+                    throw new HttpRequestException("429 quota");
+                }
+
+                var delay = retryAfter ?? delays[attempts - 1];
+                if (delay > TimeSpan.FromSeconds(60))
+                {
+                    delay = TimeSpan.FromSeconds(60);
                 }
 
                 _logger.LogWarning("Gemini returned {StatusCode}. Retrying in {Seconds}s (attempt {Attempt}/{Max}).",
-                    (int)resp.StatusCode, delay.TotalSeconds, attempts, delays.Length);
+                    (int)resp.StatusCode, delay.TotalSeconds, attempts, maxAttempts);
 
                 await Task.Delay(delay, ct);
                 continue;
             }
 
-            // Unrecoverable or exceeded retries
-            throw new HttpRequestException($"Gemini API error (Status {(int)resp.StatusCode}): {SanitizeErrorMessage(responseBody)}");
+            var errDesc = $"Gemini API error (Status {(int)resp.StatusCode}): {SanitizeErrorMessage(responseBody)}";
+            await RecordCallStatusAsync($"HTTP {(int)resp.StatusCode}", CancellationToken.None);
+            throw new HttpRequestException(errDesc);
+        }
+    }
+
+    private async Task RecordCallStatusAsync(string status, CancellationToken noneCt)
+    {
+        try
+        {
+            var setting = await _dbContext.AiSettings.FirstOrDefaultAsync(noneCt);
+            if (setting != null)
+            {
+                setting.LastCallAt = DateTimeOffset.UtcNow;
+                setting.LastCallStatus = status;
+                await _dbContext.SaveChangesAsync(noneCt);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist AI call status {Status}", status);
         }
     }
 

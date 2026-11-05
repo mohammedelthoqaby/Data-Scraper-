@@ -8,7 +8,9 @@ public record AiSettingsDto(
     int RequestsUsedToday,
     DateTimeOffset? LastTestedAt,
     bool? LastTestSuccess,
-    string? LastTestMessage);
+    string? LastTestMessage,
+    DateTimeOffset? LastCallAt = null,
+    string? LastCallStatus = null);
 
 public record UpdateAiSettingsRequestDto(
     bool? IsEnabled,
@@ -49,24 +51,6 @@ public record AiReviewTriageResult(
     decimal Confidence, // 0.0 - 1.0
     string Reason);
 
-public record AttentionFactItem(
-    string Id,
-    string Type, // "price_gap" | "competitor_discount" | "competitor_ad" | "out_of_stock"
-    string ProductTitle,
-    string? Brand,
-    string CompetitorName,
-    decimal LazyBeanPrice,
-    decimal CompetitorPrice,
-    decimal? Difference,
-    decimal? DiscountPercent,
-    int? AdCount,
-    string? ProductUrl,
-    IReadOnlyList<decimal> Numbers,
-    string FallbackHeadline,
-    string FallbackExplanation,
-    string FallbackHeadlineAr,
-    string FallbackExplanationAr);
-
 public record RankedAttentionItem(
     string Id,
     string Type,
@@ -82,3 +66,21 @@ public record RankedAttentionItem(
     decimal LazyBeanPrice,
     decimal CompetitorPrice,
     bool IsAiGenerated);
+
+public record AttentionFactItem(
+    string Id,
+    string Type,
+    string ProductTitle,
+    string? Brand,
+    string CompetitorName,
+    decimal LazyBeanPrice,
+    decimal CompetitorPrice,
+    decimal? Difference,
+    decimal? DiscountPercent,
+    int? AdCount,
+    string? ProductUrl,
+    IReadOnlyList<decimal> Numbers,
+    string FallbackHeadline,
+    string FallbackExplanation,
+    string FallbackHeadlineAr,
+    string FallbackExplanationAr);

@@ -7,6 +7,8 @@ export interface AiSettingsDto {
   lastTestedAt: string | null;
   lastTestSuccess: boolean | null;
   lastTestMessage: string | null;
+  lastCallAt?: string | null;
+  lastCallStatus?: string | null;
 }
 
 export interface UpdateAiSettingsRequest {

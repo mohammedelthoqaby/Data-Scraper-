@@ -19,5 +19,6 @@ public class CompetitorConfiguration : IEntityTypeConfiguration<Competitor>
         builder.Property(c => c.BaseUrl).HasMaxLength(500).IsRequired();
         builder.Property(c => c.Platform).HasConversion<string>().HasMaxLength(30);
         builder.Property(c => c.IsReference).HasDefaultValue(false);
+        builder.Property(c => c.CollectionHost).HasMaxLength(32).HasDefaultValue("server");
     }
 }

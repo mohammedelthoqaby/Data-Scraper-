@@ -25,13 +25,15 @@ public class GetAiSettingsQueryHandler : IRequestHandler<GetAiSettingsQuery, AiS
         {
             return new AiSettingsDto(
                 IsEnabled: false,
-                ModelName: "gemini-3.8-flash",
+                ModelName: "gemini-3.5-flash",
                 MaskedApiKey: null,
                 DailyRequestCap: 1000,
                 RequestsUsedToday: 0,
                 LastTestedAt: null,
                 LastTestSuccess: null,
-                LastTestMessage: null);
+                LastTestMessage: null,
+                LastCallAt: null,
+                LastCallStatus: null);
         }
 
         var masked = !string.IsNullOrWhiteSpace(setting.KeyLastFour)
@@ -46,6 +48,8 @@ public class GetAiSettingsQueryHandler : IRequestHandler<GetAiSettingsQuery, AiS
             setting.RequestsUsedToday,
             setting.LastTestedAt,
             setting.LastTestSuccess,
-            setting.LastTestMessage);
+            setting.LastTestMessage,
+            setting.LastCallAt,
+            setting.LastCallStatus);
     }
 }

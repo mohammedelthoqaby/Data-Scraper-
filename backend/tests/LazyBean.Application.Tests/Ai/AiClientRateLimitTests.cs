@@ -128,6 +128,6 @@ public class AiClientRateLimitTests
         // Verify: reported as failure without unhandled crash
         Assert.False(result.Success);
         Assert.Contains("429", result.Message);
-        Assert.True(handler.CallCount >= 4); // Initial + retries
+        Assert.Equal(3, handler.CallCount); // Initial + max 2 retries = 3 attempts
     }
 }

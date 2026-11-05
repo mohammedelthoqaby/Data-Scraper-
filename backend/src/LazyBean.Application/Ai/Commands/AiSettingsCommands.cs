@@ -110,7 +110,9 @@ public class AiSettingsCommandHandler :
             setting.RequestsUsedToday,
             setting.LastTestedAt,
             setting.LastTestSuccess,
-            setting.LastTestMessage);
+            setting.LastTestMessage,
+            setting.LastCallAt,
+            setting.LastCallStatus);
     }
 
     public async Task<bool> Handle(DeleteAiSettingsCommand request, CancellationToken ct)

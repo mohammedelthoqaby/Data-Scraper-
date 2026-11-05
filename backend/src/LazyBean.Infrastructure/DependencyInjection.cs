@@ -71,7 +71,7 @@ public static class DependencyInjection
         services.AddHttpClient("Collector", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(120);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("LazyBean-Collector/1.0");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("LazyBeanBot/1.0 (+https://lazy-bean.runasp.net)");
         });
 
         services.AddSingleton<RobotsTxtCache>();
@@ -84,6 +84,7 @@ public static class DependencyInjection
         services.AddScoped<ICompetitorAdapter, WooStoreApiAdapter>();
         services.AddScoped<ICompetitorAdapter, LazzyBeanAdapter>();
         services.AddScoped<ICompetitorAdapterResolver, CompetitorAdapterResolver>();
+        services.AddScoped<ICompetitorProductIngestionService, CompetitorProductIngestionService>();
 
         services.AddScoped<ICollectionRunExecutor, CollectionRunExecutor>();
         services.AddHttpClient<IMetaAdLibraryClient, MetaAdLibraryClient>(client =>

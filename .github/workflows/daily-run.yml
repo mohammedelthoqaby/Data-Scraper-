@@ -6,10 +6,19 @@ on:
   workflow_dispatch:
 
 jobs:
-  trigger-run:
+  run-collection:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Internal Collection Run
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Trigger Internal Collection Run on Server
+        id: trigger
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
@@ -31,9 +40,40 @@ jobs:
           echo "Response status: $HTTP_STATUS"
           echo "Response body: $HTTP_BODY"
 
-          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 202 ]; then
-            echo "Collection run initiated successfully."
-          else
+          if [ "$HTTP_STATUS" -ne 200 ] && [ "$HTTP_STATUS" -ne 202 ]; then
             echo "::error::Failed to trigger run. HTTP $HTTP_STATUS: $HTTP_BODY"
+            exit 1
+          fi
+
+          RUN_ID=$(echo "$HTTP_BODY" | jq -r '.runId // .id // empty')
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Initiated collection run with ID: $RUN_ID"
+
+      - name: Run Strong Coffee Collector (GitHub Hosted)
+        if: steps.trigger.outputs.run_id != ''
+        env:
+          RUN_ID: ${{ steps.trigger.outputs.run_id }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
+        run: |
+          echo "Starting GitHub Actions collector for strong-coffee (Run ID: $RUN_ID)..."
+          SUCCESS=0
+          for attempt in 1 2; do
+            echo "=== Attempt $attempt of 2 ==="
+            if dotnet run --project backend/src/LazyBean.CollectorCli -- \
+                --run-id "$RUN_ID" \
+                --slug "strong-coffee" \
+                --api-url "$API_BASE_URL" \
+                --token "$INTERNAL_TOKEN"; then
+              echo "Collector completed successfully on attempt $attempt."
+              SUCCESS=1
+              break
+            fi
+            echo "Attempt $attempt failed. Waiting 10s before retry..."
+            sleep 10
+          done
+
+          if [ "$SUCCESS" -ne 1 ]; then
+            echo "::error::Strong Coffee collector failed after 2 attempts."
             exit 1
           fi

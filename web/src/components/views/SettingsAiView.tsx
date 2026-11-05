@@ -249,6 +249,28 @@ export const SettingsAiView: React.FC = () => {
           </div>
         </div>
 
+        {/* Last Call Telemetry & Status */}
+        {(settings?.lastCallStatus || settings?.lastCallAt) && (
+          <div style={{ marginBottom: '20px', padding: '12px 16px', background: '#f8fafc', border: '1px solid var(--line)', borderRadius: '6px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '6px' }}>
+              Last Gemini API Call
+            </div>
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center', fontSize: '13px' }}>
+              <div>
+                Status:{' '}
+                <span className={`badge ${settings.lastCallStatus === '200 OK' ? 'good' : 'bad'}`} style={{ fontWeight: 600 }}>
+                  {settings.lastCallStatus || 'Unknown'}
+                </span>
+              </div>
+              {settings.lastCallAt && (
+                <div style={{ color: 'var(--muted)' }}>
+                  Time: {new Date(settings.lastCallAt).toLocaleString()}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Test Connection Result Alert */}
         {testResult && (
           <div
@@ -284,7 +306,7 @@ export const SettingsAiView: React.FC = () => {
               onClick={handleTestConnection}
               style={{ padding: '8px 16px', fontSize: '14px' }}
             >
-              {isTesting ? 'Testing...' : 'Test Connection'}
+              {isTesting ? 'Testing...' : 'Test Key'}
             </button>
           </div>
 

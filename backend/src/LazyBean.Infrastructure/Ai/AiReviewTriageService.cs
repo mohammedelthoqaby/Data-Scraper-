@@ -10,22 +10,35 @@ using LazyBean.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
+using LazyBean.Application.Collection.Orchestration;
+
 namespace LazyBean.Infrastructure.Ai;
 
 public class AiReviewTriageService : IAiTriageService
 {
     private readonly LazyBeanDbContext _dbContext;
     private readonly IAiClient _aiClient;
+    private readonly ICollectionProgressTracker? _progressTracker;
     private readonly ILogger<AiReviewTriageService> _logger;
 
     public AiReviewTriageService(
         LazyBeanDbContext dbContext,
         IAiClient aiClient,
+        ICollectionProgressTracker? progressTracker,
         ILogger<AiReviewTriageService> logger)
     {
         _dbContext = dbContext;
         _aiClient = aiClient;
+        _progressTracker = progressTracker;
         _logger = logger;
+    }
+
+    public AiReviewTriageService(
+        LazyBeanDbContext dbContext,
+        IAiClient aiClient,
+        ILogger<AiReviewTriageService> logger)
+        : this(dbContext, aiClient, null, logger)
+    {
     }
 
     public string ComputePairHash(
@@ -60,7 +73,7 @@ public class AiReviewTriageService : IAiTriageService
         return Convert.ToHexStringLower(bytes);
     }
 
-    public async Task<AiTriageStats> TriagePendingReviewsAsync(int limit = 100, CancellationToken ct = default)
+    public async Task<AiTriageStats> TriagePendingReviewsAsync(int limit = 100, CancellationToken ct = default, Guid? runId = null)
     {
         var setting = await _dbContext.AiSettings.FirstOrDefaultAsync(ct);
         if (setting == null || !setting.IsEnabled)
@@ -157,13 +170,33 @@ public class AiReviewTriageService : IAiTriageService
 
         // Process uncached in batches of up to 20
         var batchSize = 20;
+        var totalBatches = (uncached.Count + batchSize - 1) / Math.Max(1, batchSize);
+
         for (var i = 0; i < uncached.Count; i += batchSize)
         {
+            var batchIndex = (i / batchSize) + 1;
+            if (runId.HasValue)
+            {
+                _progressTracker?.UpdatePhase(runId.Value, "ai_triage", "Running", $"AI {batchIndex}/{totalBatches}");
+            }
+
             var batchTuples = uncached.Skip(i).Take(batchSize).ToList();
             var batchRequests = batchTuples.Select(b => b.Request).ToList();
 
             apiCalls++;
-            var results = await _aiClient.TriageReviewBatchAsync(batchRequests, ct);
+            IReadOnlyList<AiReviewTriageResult> results;
+            try
+            {
+                results = await _aiClient.TriageReviewBatchAsync(batchRequests, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Gemini triage API call failed during batch {BatchIndex}/{TotalBatches}: {Message}", batchIndex, totalBatches, ex.Message);
+                // Apply whatever has been evaluated so far
+                await ApplyMatchingAutomationAsync(requests, CancellationToken.None);
+                await _dbContext.SaveChangesAsync(CancellationToken.None);
+                throw;
+            }
 
             foreach (var res in results)
             {

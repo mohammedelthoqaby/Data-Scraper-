@@ -24,5 +24,5 @@ public interface IAiTriageService
         int? compUnit,
         string? compCapsule);
 
-    Task<AiTriageStats> TriagePendingReviewsAsync(int limit = 100, CancellationToken ct = default);
+    Task<AiTriageStats> TriagePendingReviewsAsync(int limit = 100, CancellationToken ct = default, Guid? runId = null);
 }

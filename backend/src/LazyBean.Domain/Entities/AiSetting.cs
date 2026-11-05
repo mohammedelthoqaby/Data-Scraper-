@@ -14,4 +14,6 @@ public class AiSetting : BaseEntity, IAggregateRoot
     public DateTimeOffset? LastTestedAt { get; set; }
     public bool? LastTestSuccess { get; set; }
     public string? LastTestMessage { get; set; }
+    public DateTimeOffset? LastCallAt { get; set; }
+    public string? LastCallStatus { get; set; }
 }
