@@ -25,7 +25,7 @@ public class AiSecurityAndValidationTests
     public void Test1_EncryptionRoundTrip_EncryptsAndDecryptsSuccessfully()
     {
         // 1. Encryption round trip
-        const string rawKey = "dummy-test-key-for-unit-testing-only-1234567890-xyz";
+        const string rawKey = "test-key-0000";
 
         var encrypted = _protector.EncryptKey(rawKey);
 
@@ -41,12 +41,12 @@ public class AiSecurityAndValidationTests
     public void Test2_KeyNeverInResponses_MaskKeyOnlyExposesLastFourCharacters()
     {
         // 2. Key never in responses
-        const string rawKey = "dummy-test-key-for-unit-testing-only-1234567890-xyz";
+        const string rawKey = "test-key-0000";
         var masked = _protector.MaskKey(rawKey);
 
         Assert.NotNull(masked);
-        Assert.DoesNotContain("dummy-test-key", masked);
-        Assert.EndsWith("-xyz", masked);
+        Assert.DoesNotContain("test-key", masked);
+        Assert.EndsWith("0000", masked);
         Assert.StartsWith("••••", masked);
 
         // Edge case: empty/null
