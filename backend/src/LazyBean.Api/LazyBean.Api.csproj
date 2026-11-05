@@ -38,6 +38,7 @@
 
   <Target Name="BuildWebAndCopyWwwroot" BeforeTargets="AssignTargetPaths">
     <Message Text="Building web frontend and copying to wwwroot..." Importance="high" />
+    <Exec Command="npm ci --prefix ../../../web" Condition="!Exists('../../../web/node_modules')" ContinueOnError="false" />
     <Exec Command="npm run build --prefix ../../../web" ContinueOnError="false" />
     <ItemGroup>
       <DistFiles Include="..\..\..\web\dist\**\*.*" />
