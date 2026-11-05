@@ -9,6 +9,25 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
   const [campaigns, setCampaigns] = useState<AdCampaignDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  const handleSyncGoogleAds = async () => {
+    setIsSyncing(true);
+    setSyncMessage(null);
+    try {
+      const res = await api.POST('/api/ads/sync', { params: { query: { platform: 'google' } } });
+      setSyncMessage(`Google Ads sync complete: ${res.data?.totalAdsFetched ?? 0} ads fetched, ${res.data?.newAdsCount ?? 0} new.`);
+      const campRes = await api.GET('/api/ads/campaigns');
+      if (campRes.data) {
+        setCampaigns(campRes.data);
+      }
+    } catch (err: any) {
+      setSyncMessage(err?.message || 'Failed to sync Google Ads.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Filters
   const [selectedCompetitor, setSelectedCompetitor] = useState<string>('all');
@@ -95,7 +114,7 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
   return (
     <div className="ads-campaigns-view">
       {/* Page Heading */}
-      <div className="page-heading">
+      <div className="page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div className="eyebrow">MARKET INTELLIGENCE</div>
           <h1 className="view-title">Ads & Campaigns</h1>
@@ -103,7 +122,21 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
             Competitor catalog ad campaigns, creative variants, and linked product price comparisons observed across Meta & Google Ad Libraries.
           </p>
         </div>
+        <button
+          className="btn btn-secondary"
+          disabled={isSyncing}
+          onClick={handleSyncGoogleAds}
+          style={{ whiteSpace: 'nowrap', marginTop: '4px' }}
+        >
+          {isSyncing ? 'Syncing Google Ads...' : 'Sync Google Ads'}
+        </button>
       </div>
+
+      {syncMessage && (
+        <div style={{ padding: '10px 16px', borderRadius: '6px', background: '#eef2ff', color: '#3730a3', marginBottom: '20px', fontSize: '13px' }}>
+          {syncMessage}
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="stats-grid-4">

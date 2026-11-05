@@ -1,8 +1,8 @@
 # Self-Hosted Ads Collector Host Guide
 
-This document describes how to configure, run, and migrate the self-hosted GitHub Actions runner used for weekly Meta and Google Ads collection (`meta-ads.yml` and `google-ads.yml`).
+This document describes how to configure, run, and migrate the self-hosted GitHub Actions runner used for weekly Meta Ads collection (`meta-ads.yml`). (Google Ads collection runs directly in the C# backend on MonsterASP).
 
-Both workflows target the labels:
+The workflow targets the labels:
 ```yaml
 runs-on: [self-hosted, lazybean-collector]
 ```

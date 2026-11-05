@@ -42,7 +42,6 @@ This document describes how to deploy, configure, and maintain the LazyBean Comp
                     ┌───────────────┴──────────────────────┐
                     │          GitHub Actions              │
                     │  - daily-run.yml (05:00 UTC)         │
-                    │  - google-ads.yml (Weekly)           │
                     │  - meta-ads.yml (Self-hosted runner) │
                     └──────────────────────────────────────┘
 ```
@@ -153,12 +152,12 @@ Follow these steps when deploying to MonsterASP:
 - **IIS 411 Fix**: Sends `POST /api/internal/runs` with `-H "Content-Type: application/json" -d "{}"` to satisfy IIS Content-Length requirements and avoid HTTP 411 errors.
 - **Verification Endpoint**: Checks run status via `GET /api/internal/runs/latest`.
 
-### 5.2 Google Ads Sync (`.github/workflows/google-ads.yml`)
-- **Schedule**: Every Sunday at 06:00 UTC.
-- Runs transparency scrapers and ingests via `POST /api/internal/ads/google`.
+### 5.2 Google Ads Sync (In-App Backend Service)
+- **Schedule**: Automatically executed weekly (if >= 7 days elapsed since last sync) following the daily collection run, or triggered on-demand via the Ads dashboard or `POST /api/internal/ads/google/sync`.
+- **Runtime**: Native C# implementation in `GoogleAdsTransparencyClient` & `GoogleAdsSyncService` without external runner or proxies. Caches advertiser AR IDs and backs off for 24h on 429/CAPTCHA.
 
 ### 5.3 Meta Ads Sync (`.github/workflows/meta-ads.yml`)
-- **Schedule**: Every Sunday at 06:00 UTC on a self-hosted runner (`lazybean-collector`).
+- **Schedule**: Every Sunday at 07:00 UTC on a self-hosted runner (`lazybean-collector`).
 - Ingests verified ad creatives and links via `POST /api/internal/ads/meta`.
 
 ---

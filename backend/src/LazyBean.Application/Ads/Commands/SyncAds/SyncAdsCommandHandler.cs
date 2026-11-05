@@ -13,11 +13,41 @@ public class SyncAdsCommandHandler(
     IUnitOfWork unitOfWork,
     IReadDbContext readContext,
     IMetaAdLibraryClient metaClient,
+    IGoogleAdsSyncService googleAdsSyncService,
     ILogger<SyncAdsCommandHandler> logger)
     : IRequestHandler<SyncAdsCommand, SyncAdsResultDto>
 {
     public async Task<SyncAdsResultDto> Handle(SyncAdsCommand request, CancellationToken ct)
     {
+        var errors = new List<string>();
+        var totalFetched = 0;
+        var newAdsCount = 0;
+        var activeAdsCount = 0;
+        var campaignsCreated = 0;
+
+        // If syncing Google specifically (or all platforms), run the in-app Google Ads sync service
+        if (string.IsNullOrWhiteSpace(request.Platform) ||
+            string.Equals(request.Platform, "google", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var gResult = await googleAdsSyncService.SyncGoogleAdsAsync(force: true, ct);
+                totalFetched += gResult.AdsIngested;
+                newAdsCount += gResult.AdsIngested;
+                campaignsCreated += gResult.CampaignsUpdated;
+                if (gResult.Errors.Count > 0)
+                {
+                    errors.AddRange(gResult.Errors);
+                }
+            }
+            catch (Exception ex)
+            {
+                var errMsg = $"Failed to execute Google Ads sync: {ex.Message}";
+                logger.LogError(ex, "{Error}", errMsg);
+                errors.Add(errMsg);
+            }
+        }
+
         var identitiesQuery = readContext.Query<AdvertiserIdentity>()
             .Where(i => i.Status == AdvertiserIdentityStatus.Approved);
 
@@ -33,12 +63,6 @@ public class SyncAdsCommandHandler(
         }
 
         var identities = await identitiesQuery.ToListAsync(ct);
-
-        var errors = new List<string>();
-        var totalFetched = 0;
-        var newAdsCount = 0;
-        var activeAdsCount = 0;
-        var campaignsCreated = 0;
 
         foreach (var identity in identities)
         {
@@ -158,9 +182,7 @@ public class SyncAdsCommandHandler(
                 }
                 else if (identity.Platform == AdPlatform.Google)
                 {
-                    logger.LogInformation(
-                        "Google Ads for '{IdentityName}' are collected externally via weekly GitHub Actions workflow and posted to /api/internal/ads/google.",
-                        identity.Name);
+                    // Google Ads are collected in-app via IGoogleAdsSyncService
                     continue;
                 }
 

@@ -91,6 +91,12 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(60);
         });
 
+        services.AddHttpClient<IGoogleAdsTransparencyClient, GoogleAdsTransparencyClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddScoped<IGoogleAdsSyncService, GoogleAdsSyncService>();
+
         // Google AI Studio (Gemini) integration
         services.AddHttpClient("GeminiClient", client =>
         {

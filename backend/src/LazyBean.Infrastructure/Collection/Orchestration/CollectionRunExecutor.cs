@@ -29,6 +29,7 @@ public class CollectionRunExecutor(
     IProductClassifier classifier,
     ICollectorHttpClient? http,
     IConfiguration? configuration,
+    IGoogleAdsSyncService? googleAdsSyncService,
     ILogger<CollectionRunExecutor> logger) : ICollectionRunExecutor
 {
     public CollectionRunExecutor(
@@ -36,7 +37,7 @@ public class CollectionRunExecutor(
         ICompetitorAdapterResolver adapters,
         ICacheService cache,
         ILogger<CollectionRunExecutor> logger)
-        : this(dbContextFactory, adapters, cache, new ProductClassifier(), null, null, logger)
+        : this(dbContextFactory, adapters, cache, new ProductClassifier(), null, null, null, logger)
     {
     }
 
@@ -46,7 +47,19 @@ public class CollectionRunExecutor(
         ICacheService cache,
         IProductClassifier classifier,
         ILogger<CollectionRunExecutor> logger)
-        : this(dbContextFactory, adapters, cache, classifier, null, null, logger)
+        : this(dbContextFactory, adapters, cache, classifier, null, null, null, logger)
+    {
+    }
+
+    public CollectionRunExecutor(
+        IDbContextFactory<LazyBeanDbContext> dbContextFactory,
+        ICompetitorAdapterResolver adapters,
+        ICacheService cache,
+        IProductClassifier classifier,
+        ICollectorHttpClient? http,
+        IConfiguration? configuration,
+        ILogger<CollectionRunExecutor> logger)
+        : this(dbContextFactory, adapters, cache, classifier, http, configuration, null, logger)
     {
     }
 
@@ -126,6 +139,18 @@ public class CollectionRunExecutor(
 
         await cache.RemoveByTagAsync("runs", CancellationToken.None);
         await cache.RemoveByTagAsync("products", CancellationToken.None);
+
+        if (googleAdsSyncService != null)
+        {
+            try
+            {
+                await googleAdsSyncService.SyncGoogleAdsIfDueAsync(CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to run weekly Google Ads sync check after CollectionRun {RunId}.", runId);
+            }
+        }
     }
 
     private async Task ProcessCompetitorAsync(Guid runId, Competitor competitor, CancellationToken ct)
