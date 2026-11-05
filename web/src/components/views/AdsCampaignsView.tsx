@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { api, type AdCampaignDto, type AdDto } from '../../api/client';
+import { api, type AdCampaignDto, type AdDto, type Competitor, type AdvertiserIdentity } from '../../api/client';
 
 interface AdsCampaignsViewProps {
   onOpenProductDetail?: (productId: string, title?: string) => void;
@@ -7,20 +7,40 @@ interface AdsCampaignsViewProps {
 
 export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProductDetail }) => {
   const [campaigns, setCampaigns] = useState<AdCampaignDto[]>([]);
+  const [sources, setSources] = useState<Competitor[]>([]);
+  const [identities, setIdentities] = useState<AdvertiserIdentity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncErrors, setSyncErrors] = useState<string[]>([]);
 
   const handleSyncGoogleAds = async () => {
     setIsSyncing(true);
     setSyncMessage(null);
+    setSyncErrors([]);
     try {
       const res = await api.POST('/api/ads/sync', { params: { query: { platform: 'google' } } });
-      setSyncMessage(`Google Ads sync complete: ${res.data?.totalAdsFetched ?? 0} ads fetched, ${res.data?.newAdsCount ?? 0} new.`);
+      const data = res.data;
+      const checked = data?.identitiesProcessed ?? 0;
+      const fetched = data?.totalAdsFetched ?? 0;
+      const newCount = data?.newAdsCount ?? 0;
+      const errs = data?.errors ?? [];
+
+      setSyncMessage(
+        `Google Ads sync complete: ${checked} advertiser identity${checked === 1 ? '' : 'ies'} checked, ${fetched} ads fetched (${newCount} new).`
+      );
+      if (errs.length > 0) {
+        setSyncErrors(errs);
+      }
+
       const campRes = await api.GET('/api/ads/campaigns');
       if (campRes.data) {
         setCampaigns(campRes.data);
+      }
+      const idRes = await api.GET('/api/identities');
+      if (idRes.data) {
+        setIdentities(idRes.data);
       }
     } catch (err: any) {
       setSyncMessage(err?.message || 'Failed to sync Google Ads.');
@@ -35,16 +55,23 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [search, setSearch] = useState<string>('');
 
-  // Fetch campaigns from /api/ads/campaigns
+  // Fetch campaigns, sources, and identities on mount
   useEffect(() => {
     let isMounted = true;
-    const fetchCampaigns = async () => {
+    const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await api.GET('/api/ads/campaigns');
-        if (isMounted && res.data) {
-          setCampaigns(res.data);
+        const [campRes, srcRes, idRes] = await Promise.all([
+          api.GET('/api/ads/campaigns'),
+          api.GET('/api/sources'),
+          api.GET('/api/identities'),
+        ]);
+
+        if (isMounted) {
+          if (campRes.data) setCampaigns(campRes.data);
+          if (srcRes.data) setSources(srcRes.data);
+          if (idRes.data) setIdentities(idRes.data);
         }
       } catch (err: any) {
         if (isMounted) setError(err?.message || 'Failed to load campaigns');
@@ -53,7 +80,7 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       }
     };
 
-    fetchCampaigns();
+    fetchData();
     return () => {
       isMounted = false;
     };
@@ -81,14 +108,77 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
     };
   }, [campaigns]);
 
-  // Distinct competitors
+  // Distinct competitors list for filter dropdown - always list all 5 competitors from the competitors table
   const competitorOptions = useMemo(() => {
-    const names = new Set<string>();
-    campaigns.forEach((c) => {
-      if (c.competitorName) names.add(c.competitorName);
+    const nonRef = sources.filter((s) => !s.isReference);
+    if (nonRef.length > 0) {
+      return nonRef.map((s) => s.name || s.key).sort();
+    }
+    // Standard 5 competitors fallback if sources not yet loaded
+    return ['CAFELAX', 'Coffee & Cream', 'Coffee Zone Misr', 'Fengany', 'Strong Coffee'];
+  }, [sources]);
+
+  // Approved identities count
+  const approvedIdentitiesCount = useMemo(() => {
+    return identities.filter((i) => (i.status || '').toLowerCase() === 'approved').length;
+  }, [identities]);
+
+  // Per-competitor/platform status summary table
+  const competitorStatusList = useMemo(() => {
+    const nonRef = sources.filter((s) => !s.isReference);
+    const storeList = nonRef.length > 0
+      ? nonRef
+      : [
+          { id: '1', key: 'cafelax', name: 'CAFELAX' },
+          { id: '2', key: 'coffee-and-cream', name: 'Coffee & Cream' },
+          { id: '3', key: 'coffee-zone', name: 'Coffee Zone Misr' },
+          { id: '4', key: 'fengany', name: 'Fengany' },
+          { id: '5', key: 'strong-coffee', name: 'Strong Coffee' },
+        ];
+
+    return storeList.map((store) => {
+      const storeName = store.name || store.key;
+      const storeIdentities = identities.filter(
+        (i) => i.competitorId === store.id || (i.competitorName && i.competitorName.toLowerCase() === storeName.toLowerCase())
+      );
+
+      // Meta status & ads
+      const metaId = storeIdentities.find((i) => (i.platform || '').toLowerCase() === 'meta');
+      const metaStatus = metaId ? metaId.status : 'No identity';
+      const metaCampaigns = campaigns.filter(
+        (c) => (c.competitorName || '').toLowerCase() === storeName.toLowerCase() && (c.platform || '').toLowerCase() === 'meta'
+      );
+      const metaAdCount = metaCampaigns.reduce((acc, c) => acc + (c.adCount ?? 0), 0);
+
+      // Google status & ads
+      const googleId = storeIdentities.find((i) => (i.platform || '').toLowerCase() === 'google');
+      const googleStatus = googleId ? googleId.status : 'No identity';
+      const googleCampaigns = campaigns.filter(
+        (c) => (c.competitorName || '').toLowerCase() === storeName.toLowerCase() && (c.platform || '').toLowerCase() === 'google'
+      );
+      const googleAdCount = googleCampaigns.reduce((acc, c) => acc + (c.adCount ?? 0), 0);
+
+      // Latest sync time
+      const allStoreCampaigns = campaigns.filter((c) => (c.competitorName || '').toLowerCase() === storeName.toLowerCase());
+      let latestSync: string | null = null;
+      allStoreCampaigns.forEach((c) => {
+        if (c.lastSeenAt && (!latestSync || c.lastSeenAt > latestSync)) {
+          latestSync = c.lastSeenAt;
+        }
+      });
+
+      return {
+        id: store.id,
+        name: storeName,
+        metaStatus,
+        metaAdCount,
+        googleStatus,
+        googleAdCount,
+        totalAds: metaAdCount + googleAdCount,
+        latestSync,
+      };
     });
-    return Array.from(names).sort();
-  }, [campaigns]);
+  }, [sources, identities, campaigns]);
 
   // Filtered campaigns
   const filteredCampaigns = useMemo(() => {
@@ -110,6 +200,14 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       return true;
     });
   }, [campaigns, selectedCompetitor, selectedPlatform, selectedStatus, search]);
+
+  const renderStatusBadge = (status?: string | null) => {
+    const s = (status || 'No identity').toLowerCase();
+    if (s === 'approved') return <span className="badge good">Approved</span>;
+    if (s === 'pending' || s === 'pendingapproval') return <span className="badge warn">Pending</span>;
+    if (s === 'rejected') return <span className="badge bad">Rejected</span>;
+    return <span className="badge neutral">No identity</span>;
+  };
 
   return (
     <div className="ads-campaigns-view">
@@ -133,8 +231,18 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       </div>
 
       {syncMessage && (
-        <div style={{ padding: '10px 16px', borderRadius: '6px', background: '#eef2ff', color: '#3730a3', marginBottom: '20px', fontSize: '13px' }}>
-          {syncMessage}
+        <div style={{ padding: '12px 16px', borderRadius: '6px', background: syncErrors.length > 0 ? '#fffbeb' : '#eef2ff', color: syncErrors.length > 0 ? '#92400e' : '#3730a3', border: `1px solid ${syncErrors.length > 0 ? '#fde68a' : '#c7d2fe'}`, marginBottom: '20px', fontSize: '13px' }}>
+          <div style={{ fontWeight: 600 }}>{syncMessage}</div>
+          {syncErrors.length > 0 && (
+            <div style={{ marginTop: '6px', fontSize: '12px' }}>
+              <strong>Errors per identity:</strong>
+              <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                {syncErrors.map((err, idx) => (
+                  <li key={idx}>{err}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -168,6 +276,69 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
           <div className="stat-label">Monitored advertisers</div>
           <div className="stat-sub">Active advertising competitor stores</div>
         </div>
+      </div>
+
+      {/* Competitor / Platform Advertiser Status Grid */}
+      <div className="panel" style={{ marginBottom: '20px', padding: '16px 20px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <h2 style={{ fontSize: '14px', fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--muted)' }}>
+            Advertiser Identities & Platform Coverage
+          </h2>
+          <a href="#/sources" style={{ fontSize: '12px', color: 'var(--action)', fontWeight: 600, textDecoration: 'none' }}>
+            Manage sources &gt; Advertiser identities ↗
+          </a>
+        </div>
+
+        {isLoading ? (
+          <div>
+            <div className="skeleton skeleton-row" style={{ height: '24px', width: '100%', marginBottom: '8px' }} />
+            <div className="skeleton skeleton-row" style={{ height: '24px', width: '100%', marginBottom: '8px' }} />
+            <div className="skeleton skeleton-row" style={{ height: '24px', width: '100%' }} />
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--line)', textAlign: 'left', color: 'var(--muted)', fontSize: '11px', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '8px 12px' }}>Competitor Store</th>
+                  <th style={{ padding: '8px 12px' }}>Meta Ad Library</th>
+                  <th style={{ padding: '8px 12px' }}>Google Ads Transparency</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Total Ads</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Last Seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {competitorStatusList.map((item) => (
+                  <tr key={item.name} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '10px 12px', fontWeight: 600 }}>{item.name}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        {renderStatusBadge(item.metaStatus)}
+                        {item.metaAdCount > 0 && (
+                          <span style={{ fontSize: '11px', color: 'var(--muted)' }}>({item.metaAdCount} ads)</span>
+                        )}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        {renderStatusBadge(item.googleStatus)}
+                        {item.googleAdCount > 0 && (
+                          <span style={{ fontSize: '11px', color: 'var(--muted)' }}>({item.googleAdCount} ads)</span>
+                        )}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>
+                      {item.totalAds > 0 ? item.totalAds : '—'}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)', fontSize: '12px' }}>
+                      {item.latestSync ? new Date(item.latestSync).toLocaleDateString() : 'Not synced yet'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Filters Bar */}
@@ -235,6 +406,21 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       ) : error ? (
         <div className="callout" style={{ borderLeftColor: '#962f32', color: '#962f32' }}>
           {error}
+        </div>
+      ) : approvedIdentitiesCount === 0 ? (
+        <div className="panel" style={{ padding: '48px 24px', textAlign: 'center', background: '#fff', border: '1px solid var(--line)', borderRadius: '8px' }}>
+          <div style={{ fontSize: '32px', marginBottom: '12px' }}>📢</div>
+          <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 8px 0' }}>No approved advertisers yet</h2>
+          <p style={{ color: 'var(--muted)', fontSize: '14px', maxWidth: '520px', margin: '0 auto 20px auto', lineHeight: 1.5 }}>
+            No approved advertiser identities found. Approve seeded Meta page IDs or discover Google advertisers in Manage sources to begin tracking campaigns.
+          </p>
+          <a
+            href="#/sources"
+            className="btn btn-primary"
+            style={{ display: 'inline-block', textDecoration: 'none', padding: '9px 18px', fontWeight: 600 }}
+          >
+            Go to Manage sources &gt; Advertiser identities →
+          </a>
         </div>
       ) : filteredCampaigns.length === 0 ? (
         <div className="panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--muted)' }}>

@@ -45,14 +45,24 @@ public class CreateIdentityCommandHandler(IUnitOfWork unitOfWork, IReadDbContext
                 existing.CreatedAt);
         }
 
+        var cleanExtId = request.ExternalId.Trim();
+        var displayName = string.IsNullOrWhiteSpace(request.Name) ? competitor.Name : request.Name.Trim();
+        var libraryUrl = request.LibraryUrl;
+        if (string.IsNullOrWhiteSpace(libraryUrl))
+        {
+            libraryUrl = platform == AdPlatform.Meta
+                ? $"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=EG&view_all_page_id={cleanExtId}"
+                : $"https://adstransparency.google.com/advertiser/{cleanExtId}?region=EG";
+        }
+
         var identity = new AdvertiserIdentity
         {
             CompetitorId = competitor.Id,
             Platform = platform,
-            ExternalId = request.ExternalId.Trim(),
-            Name = request.Name.Trim(),
+            ExternalId = cleanExtId,
+            Name = displayName,
             Status = AdvertiserIdentityStatus.Pending,
-            LibraryUrl = request.LibraryUrl,
+            LibraryUrl = libraryUrl,
             OwnershipEvidenceUrl = request.OwnershipEvidenceUrl,
             Notes = request.Notes
         };

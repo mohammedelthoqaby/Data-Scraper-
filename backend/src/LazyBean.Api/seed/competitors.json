@@ -5,7 +5,8 @@
     "baseUrl": "https://api.lazzybean.com",
     "platform": "LazzyBeanApi",
     "isReference": true,
-    "minDelayMs": 3000
+    "minDelayMs": 3000,
+    "metaPageIds": []
   },
   {
     "key": "coffee-zone",
@@ -13,7 +14,10 @@
     "baseUrl": "https://coffeezonemisr.com",
     "platform": "Shopify",
     "isReference": false,
-    "minDelayMs": 3000
+    "minDelayMs": 3000,
+    "metaPageIds": [
+      "110140451538461"
+    ]
   },
   {
     "key": "fengany",
@@ -21,7 +25,10 @@
     "baseUrl": "https://fengany.com",
     "platform": "Shopify",
     "isReference": false,
-    "minDelayMs": 3000
+    "minDelayMs": 3000,
+    "metaPageIds": [
+      "833564813655781"
+    ]
   },
   {
     "key": "coffee-and-cream",
@@ -29,7 +36,10 @@
     "baseUrl": "https://coffeeandcream.app",
     "platform": "Shopify",
     "isReference": false,
-    "minDelayMs": 3000
+    "minDelayMs": 3000,
+    "metaPageIds": [
+      "109786085108938"
+    ]
   },
   {
     "key": "cafelax",
@@ -37,7 +47,10 @@
     "baseUrl": "https://cafelax.com",
     "platform": "Shopify",
     "isReference": false,
-    "minDelayMs": 3000
+    "minDelayMs": 3000,
+    "metaPageIds": [
+      "100456846237420"
+    ]
   },
   {
     "key": "strong-coffee",
@@ -45,6 +58,9 @@
     "baseUrl": "https://strongcoffee-eg.com",
     "platform": "WooCommerce",
     "isReference": false,
-    "minDelayMs": 3000
+    "minDelayMs": 3000,
+    "metaPageIds": [
+      "102631558265863"
+    ]
   }
 ]

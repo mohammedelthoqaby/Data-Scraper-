@@ -7,7 +7,7 @@ public record CreateIdentityCommand(
     Guid CompetitorId,
     string Platform,
     string ExternalId,
-    string Name,
+    string? Name = null,
     string? LibraryUrl = null,
     string? OwnershipEvidenceUrl = null,
     string? Notes = null) : IRequest<AdvertiserIdentityDto>;

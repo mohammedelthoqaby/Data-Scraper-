@@ -24,6 +24,7 @@ public class SyncAdsCommandHandler(
         var newAdsCount = 0;
         var activeAdsCount = 0;
         var campaignsCreated = 0;
+        var identitiesProcessed = 0;
 
         // If syncing Google specifically (or all platforms), run the in-app Google Ads sync service
         if (string.IsNullOrWhiteSpace(request.Platform) ||
@@ -32,6 +33,7 @@ public class SyncAdsCommandHandler(
             try
             {
                 var gResult = await googleAdsSyncService.SyncGoogleAdsAsync(force: true, ct);
+                identitiesProcessed += gResult.AdvertisersProcessed;
                 totalFetched += gResult.AdsIngested;
                 newAdsCount += gResult.AdsIngested;
                 campaignsCreated += gResult.CampaignsUpdated;
@@ -70,6 +72,7 @@ public class SyncAdsCommandHandler(
             {
                 if (identity.Platform == AdPlatform.Meta)
                 {
+                    identitiesProcessed++;
                     var tokenDebug = await metaClient.DebugTokenAsync(ct);
                     if (!tokenDebug.IsValid)
                     {
@@ -197,7 +200,7 @@ public class SyncAdsCommandHandler(
         }
 
         return new SyncAdsResultDto(
-            identities.Count,
+            identitiesProcessed,
             totalFetched,
             newAdsCount,
             activeAdsCount,

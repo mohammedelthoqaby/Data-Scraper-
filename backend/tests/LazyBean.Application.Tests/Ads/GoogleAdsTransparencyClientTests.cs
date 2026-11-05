@@ -152,4 +152,54 @@ public class GoogleAdsTransparencyClientTests
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1782033909), creative.FirstSeen);
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1793765949), creative.LastSeen);
     }
+
+    [Fact]
+    public async Task SearchCandidatesAsync_ParsesCandidatesCorrectly_WhenSuggestionsPresent()
+    {
+        const string fixtureJson = """
+        {
+          "1": [
+            {
+              "1": {
+                "1": "CAFELAX",
+                "2": "AR01064852753525768193",
+                "3": "EG",
+                "4": {
+                  "2": {
+                    "2": 52
+                  }
+                }
+              }
+            },
+            {
+              "2": {
+                "1": "cafelax.com"
+              }
+            }
+          ]
+        }
+        """;
+
+        var handler = new TestHttpMessageHandler(req =>
+        {
+            Assert.Contains("/anji/_/rpc/SearchService/SearchSuggestions", req.RequestUri!.AbsolutePath);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(fixtureJson)
+            };
+        });
+
+        var client = new HttpClient(handler);
+        var transparencyClient = new GoogleAdsTransparencyClient(client, NullLogger<GoogleAdsTransparencyClient>.Instance);
+
+        var candidates = await transparencyClient.SearchCandidatesAsync("cafelax.com");
+
+        Assert.NotNull(candidates);
+        Assert.Single(candidates);
+        var candidate = candidates[0];
+        Assert.Equal("AR01064852753525768193", candidate.AdvertiserId);
+        Assert.Equal("CAFELAX", candidate.Name);
+        Assert.Equal("EG", candidate.Region);
+        Assert.Equal(52, candidate.ApproxAdCount);
+    }
 }

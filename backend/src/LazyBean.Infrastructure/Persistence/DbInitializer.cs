@@ -5,6 +5,7 @@ using LazyBean.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace LazyBean.Infrastructure.Persistence;
@@ -52,18 +53,24 @@ public static class DbInitializer
         string BaseUrl,
         string Platform,
         bool IsReference,
-        int MinDelayMs);
+        int MinDelayMs,
+        List<string>? MetaPageIds = null);
 
     public static async Task SeedCompetitorsAsync(IServiceProvider services, CancellationToken ct = default)
     {
         using var scope = services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<LazyBeanDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbInitializer");
+        var env = scope.ServiceProvider.GetService<IHostEnvironment>();
+        var contentRoot = env?.ContentRootPath ?? Directory.GetCurrentDirectory();
 
         var possiblePaths = new[]
         {
+            Path.Combine(contentRoot, "seed", "competitors.json"),
+            Path.Combine(contentRoot, "backend", "src", "LazyBean.Api", "seed", "competitors.json"),
             Path.Combine(AppContext.BaseDirectory, "seed", "competitors.json"),
             Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "seed", "competitors.json"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "seed", "competitors.json"),
             Path.Combine(Directory.GetCurrentDirectory(), "seed", "competitors.json"),
             Path.Combine(Directory.GetCurrentDirectory(), "backend", "src", "LazyBean.Api", "seed", "competitors.json")
         };
@@ -188,6 +195,63 @@ public static class DbInitializer
         {
             await context.SaveChangesAsync(ct);
             logger.LogInformation("Seeded competitors from {Path}: {Added} added, {Updated} updated.", filePath, added, updated);
+        }
+
+        // Seed Meta advertiser identities idempotently with status PendingApproval
+        var existingIdentities = await context.AdvertiserIdentities
+            .Where(i => i.Platform == AdPlatform.Meta)
+            .ToListAsync(ct);
+        var existingMetaById = existingIdentities
+            .ToDictionary(i => i.ExternalId, StringComparer.OrdinalIgnoreCase);
+
+        var allCompetitors = await context.Competitors.ToListAsync(ct);
+        var allCompetitorsByKey = allCompetitors.ToDictionary(c => c.Key, StringComparer.OrdinalIgnoreCase);
+
+        var identitiesAdded = 0;
+        foreach (var item in items)
+        {
+            if (item.MetaPageIds == null || item.MetaPageIds.Count == 0)
+                continue;
+
+            if (!allCompetitorsByKey.TryGetValue(item.Key, out var comp))
+                continue;
+
+            foreach (var pageId in item.MetaPageIds)
+            {
+                var cleanPageId = pageId.Trim();
+                if (string.IsNullOrWhiteSpace(cleanPageId))
+                    continue;
+
+                if (existingMetaById.TryGetValue(cleanPageId, out var existing))
+                {
+                    if (existing.CompetitorId != comp.Id)
+                    {
+                        existing.CompetitorId = comp.Id;
+                    }
+                }
+                else
+                {
+                    var newIdentity = new AdvertiserIdentity
+                    {
+                        CompetitorId = comp.Id,
+                        Platform = AdPlatform.Meta,
+                        ExternalId = cleanPageId,
+                        Name = comp.Name,
+                        Status = AdvertiserIdentityStatus.Pending,
+                        LibraryUrl = $"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=EG&view_all_page_id={cleanPageId}",
+                        Notes = "Seeded from competitors.json"
+                    };
+                    context.AdvertiserIdentities.Add(newIdentity);
+                    existingMetaById[cleanPageId] = newIdentity;
+                    identitiesAdded++;
+                }
+            }
+        }
+
+        if (identitiesAdded > 0)
+        {
+            await context.SaveChangesAsync(ct);
+            logger.LogInformation("Seeded {Count} Meta advertiser identities with status Pending (awaiting admin approval).", identitiesAdded);
         }
     }
 

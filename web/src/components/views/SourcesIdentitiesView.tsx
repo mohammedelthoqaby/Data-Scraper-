@@ -15,6 +15,15 @@ export const SourcesIdentitiesView: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
+  // Discover & Add Identity State
+  const [discoveringId, setDiscoveringId] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const [newCompId, setNewCompId] = useState<string>('');
+  const [newPlatform, setNewPlatform] = useState<string>('Meta');
+  const [newExternalId, setNewExternalId] = useState<string>('');
+  const [newName, setNewName] = useState<string>('');
+  const [isSubmittingNew, setIsSubmittingNew] = useState<boolean>(false);
+
   // Fetch sources
   const fetchSources = async () => {
     setIsSourcesLoading(true);
@@ -95,6 +104,59 @@ export const SourcesIdentitiesView: React.FC = () => {
       setActionNotice(`Advertiser account ${name || id} rejected.`);
     } catch (err: any) {
       alert(err?.message || 'Failed to reject identity');
+    }
+  };
+
+  // Discover Google Advertisers
+  const handleDiscoverGoogle = async (source: Competitor) => {
+    if (!source.id) return;
+    setDiscoveringId(source.id);
+    setActionNotice(null);
+    try {
+      const res = await api.POST('/api/competitors/{id}/discover-google-advertisers', {
+        params: { path: { id: source.id } },
+      });
+      const discovered = res.data ?? [];
+      await fetchIdentities();
+      setActionNotice(
+        `Discovered ${discovered.length} Google advertiser candidates for ${source.name}. Review and approve them in the Advertiser Identities tab.`
+      );
+    } catch (err: any) {
+      alert(err?.message || `Failed to discover Google advertisers for ${source.name}`);
+    } finally {
+      setDiscoveringId(null);
+    }
+  };
+
+  // Create manual advertiser identity
+  const handleCreateManualIdentity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCompId || !newExternalId.trim()) {
+      alert('Please select a competitor and provide an Account ID / Domain.');
+      return;
+    }
+    setIsSubmittingNew(true);
+    setActionNotice(null);
+    try {
+      const res = await api.POST('/api/identities', {
+        body: {
+          competitorId: newCompId,
+          platform: newPlatform,
+          externalId: newExternalId.trim(),
+          name: newName.trim() || undefined,
+        },
+      });
+      if (res.data) {
+        await fetchIdentities();
+        setShowAddModal(false);
+        setNewExternalId('');
+        setNewName('');
+        setActionNotice(`Added identity '${res.data.name || res.data.externalId}' as Pending review.`);
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to create advertiser identity.');
+    } finally {
+      setIsSubmittingNew(false);
     }
   };
 
@@ -199,19 +261,30 @@ export const SourcesIdentitiesView: React.FC = () => {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #edf0f2' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #edf0f2', flexWrap: 'wrap', gap: '8px' }}>
                     <span className={`badge ${src.enabled ? 'good' : 'warn'}`}>
                       {src.enabled ? 'Monitoring Enabled' : 'Monitoring Disabled'}
                     </span>
 
                     {!src.isReference && (
-                      <button
-                        type="button"
-                        className={`btn-xs ${src.enabled ? 'reject' : 'approve'}`}
-                        onClick={() => handleToggleMonitoring(src)}
-                      >
-                        {src.enabled ? 'Disable' : 'Enable'}
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          type="button"
+                          className="btn-xs"
+                          style={{ background: '#f0f5ff', color: '#1d4ed8', border: '1px solid #c7d2fe', fontWeight: 600 }}
+                          disabled={discoveringId === src.id}
+                          onClick={() => handleDiscoverGoogle(src)}
+                        >
+                          {discoveringId === src.id ? 'Discovering...' : '🔍 Discover Google Advertisers'}
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn-xs ${src.enabled ? 'reject' : 'approve'}`}
+                          onClick={() => handleToggleMonitoring(src)}
+                        >
+                          {src.enabled ? 'Disable' : 'Enable'}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -224,6 +297,99 @@ export const SourcesIdentitiesView: React.FC = () => {
       {/* Tab 2: Advertiser Identities */}
       {activeTab === 'identities' && (
         <div>
+          {/* Header Action & Manual Add Button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ fontSize: '13px', color: 'var(--muted)' }}>
+              Manage official advertising accounts across Meta Ad Library and Google Ads Transparency. Only approved accounts are synced.
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: '13px', padding: '6px 14px' }}
+              onClick={() => setShowAddModal(!showAddModal)}
+            >
+              {showAddModal ? '✕ Close Form' : '+ Add Identity Manually'}
+            </button>
+          </div>
+
+          {/* Manual Add Form */}
+          {showAddModal && (
+            <div className="panel" style={{ padding: '20px', marginBottom: '20px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#fafbfc' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 600 }}>Add Advertiser Identity Manually</h3>
+              <form onSubmit={handleCreateManualIdentity} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', alignItems: 'flex-end' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--muted)' }}>
+                    Competitor Store *
+                  </label>
+                  <select
+                    value={newCompId}
+                    onChange={(e) => setNewCompId(e.target.value)}
+                    required
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff' }}
+                  >
+                    <option value="">Select competitor...</option>
+                    {sources.filter(s => !s.isReference).map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--muted)' }}>
+                    Platform *
+                  </label>
+                  <select
+                    value={newPlatform}
+                    onChange={(e) => setNewPlatform(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff' }}
+                  >
+                    <option value="Meta">Meta Ads Library</option>
+                    <option value="Google">Google Ads Transparency</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--muted)' }}>
+                    Account ID / Domain *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={newPlatform === 'Meta' ? 'e.g. 100456846237420' : 'e.g. AR01064852753525768193 or cafelax.com'}
+                    value={newExternalId}
+                    onChange={(e) => setNewExternalId(e.target.value)}
+                    required
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--muted)' }}>
+                    Display Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Defaults to competitor name"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff' }}
+                  />
+                </div>
+
+                <div>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={isSubmittingNew}
+                    style={{ width: '100%', padding: '9px 14px', fontSize: '13px' }}
+                  >
+                    {isSubmittingNew ? 'Saving...' : 'Save Identity (Pending)'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
           {/* Filters Bar */}
           <div className="matrix-filters-bar" style={{ marginBottom: '16px', borderRadius: '8px', border: '1px solid var(--line)' }}>
             <select

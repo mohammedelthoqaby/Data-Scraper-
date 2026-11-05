@@ -1,5 +1,6 @@
 using LazyBean.Application.Ads.Commands.ApproveIdentity;
 using LazyBean.Application.Ads.Commands.CreateIdentity;
+using LazyBean.Application.Ads.Commands.DiscoverGoogleAdvertisers;
 using LazyBean.Application.Ads.Commands.RejectIdentity;
 using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Ads.Queries.GetIdentities;
@@ -16,6 +17,16 @@ public record DecisionBody(string? Notes = null);
 [EnableRateLimiting("api")]
 public class IdentitiesController(ISender sender) : ControllerBase
 {
+    [HttpPost("discover-google/{competitorId:guid}")]
+    [ProducesResponseType(typeof(IReadOnlyList<AdvertiserIdentityDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<AdvertiserIdentityDto>>> DiscoverGoogleAdvertisers(
+        Guid competitorId,
+        CancellationToken ct)
+    {
+        var result = await sender.Send(new DiscoverGoogleAdvertisersCommand(competitorId), ct);
+        return Ok(result);
+    }
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<AdvertiserIdentityDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<AdvertiserIdentityDto>>> GetIdentities(

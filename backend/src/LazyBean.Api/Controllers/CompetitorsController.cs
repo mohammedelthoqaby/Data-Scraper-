@@ -1,3 +1,5 @@
+using LazyBean.Application.Ads.Commands.DiscoverGoogleAdvertisers;
+using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Competitors.Commands.CreateCompetitor;
 using LazyBean.Application.Competitors.Commands.DeleteCompetitor;
 using LazyBean.Application.Competitors.Commands.UpdateCompetitor;
@@ -16,6 +18,16 @@ namespace LazyBean.Api.Controllers;
 [EnableRateLimiting("api")]
 public class CompetitorsController(ISender sender) : ControllerBase
 {
+    [HttpPost("{id:guid}/discover-google-advertisers")]
+    [ProducesResponseType(typeof(IReadOnlyList<AdvertiserIdentityDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<AdvertiserIdentityDto>>> DiscoverGoogleAdvertisers(
+        Guid id,
+        CancellationToken ct)
+    {
+        var result = await sender.Send(new DiscoverGoogleAdvertisersCommand(id), ct);
+        return Ok(result);
+    }
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<CompetitorDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<CompetitorDto>>> GetAll(CancellationToken ct)

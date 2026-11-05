@@ -118,6 +118,108 @@ public partial class GoogleAdsTransparencyClient(
         }
     }
 
+    public async Task<IReadOnlyList<GoogleAdvertiserCandidateDto>> SearchCandidatesAsync(string query, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Array.Empty<GoogleAdvertiserCandidateDto>();
+        }
+
+        var normalizedQuery = query.Trim();
+        if (normalizedQuery.StartsWith("AR", StringComparison.OrdinalIgnoreCase) && normalizedQuery.Length >= 10)
+        {
+            return new List<GoogleAdvertiserCandidateDto>
+            {
+                new(normalizedQuery, normalizedQuery, null, null)
+            };
+        }
+
+        var rpcUrl = $"{BaseUrl}/anji/_/rpc/SearchService/SearchSuggestions?authuser=0";
+        var payload = new Dictionary<string, object>
+        {
+            ["1"] = normalizedQuery,
+            ["2"] = 10,
+            ["3"] = 10
+        };
+
+        var formData = new Dictionary<string, string>
+        {
+            ["f.req"] = JsonSerializer.Serialize(payload)
+        };
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
+        {
+            Content = new FormUrlEncodedContent(formData)
+        };
+        ApplyStandardHeaders(req);
+
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await httpClient.SendAsync(req, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogError(ex, "Failed to reach Google Ads SearchSuggestions endpoint for query '{Query}'.", normalizedQuery);
+            throw;
+        }
+
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        EnsureNotBlocked(resp.StatusCode, body, resp.Headers.Location?.ToString());
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Google Ads SearchSuggestions returned HTTP {StatusCode} for query '{Query}'.", (int)resp.StatusCode, normalizedQuery);
+            return Array.Empty<GoogleAdvertiserCandidateDto>();
+        }
+
+        var candidates = new List<GoogleAdvertiserCandidateDto>();
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("1", out var suggestionsArray) || suggestionsArray.ValueKind != JsonValueKind.Array)
+            {
+                return candidates;
+            }
+
+            foreach (var suggestion in suggestionsArray.EnumerateArray())
+            {
+                if (suggestion.TryGetProperty("1", out var advInfo) && advInfo.ValueKind == JsonValueKind.Object)
+                {
+                    var advName = advInfo.TryGetProperty("1", out var np) && np.ValueKind == JsonValueKind.String ? np.GetString() ?? "" : "";
+                    var advId = advInfo.TryGetProperty("2", out var ip) && ip.ValueKind == JsonValueKind.String ? ip.GetString() : null;
+
+                    if (!string.IsNullOrWhiteSpace(advId) &&
+                        advId.StartsWith("AR", StringComparison.OrdinalIgnoreCase) &&
+                        seenIds.Add(advId))
+                    {
+                        var region = advInfo.TryGetProperty("3", out var rp) && rp.ValueKind == JsonValueKind.String ? rp.GetString() : null;
+                        int? approxCount = null;
+
+                        if (advInfo.TryGetProperty("4", out var p4) &&
+                            p4.TryGetProperty("2", out var p42) &&
+                            p42.TryGetProperty("2", out var p422) &&
+                            p422.TryGetInt32(out var count))
+                        {
+                            approxCount = count;
+                        }
+
+                        candidates.Add(new GoogleAdvertiserCandidateDto(advId, advName, region, approxCount));
+                    }
+                }
+            }
+
+            return candidates;
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError(ex, "Failed to parse Google Ads SearchSuggestions JSON response for query '{Query}'.", normalizedQuery);
+            return candidates;
+        }
+    }
+
     public async Task<GoogleCreativesPageResult> SearchCreativesAsync(string advertiserId, string? pageToken = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(advertiserId))
