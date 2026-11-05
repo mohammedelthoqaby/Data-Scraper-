@@ -441,7 +441,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
           <div style={{ padding: '12px', background: '#fafbfc', border: '1px solid var(--line)', borderRadius: '6px' }}>
             <div style={{ fontWeight: 600, fontSize: '14px' }}>Strong Coffee</div>
-            <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>strongcoffee.net (WooCommerce)</div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>strongcoffee-eg.com (WooCommerce)</div>
             <div style={{ marginTop: '8px' }}><span className="badge good">Active</span></div>
           </div>
         </div>

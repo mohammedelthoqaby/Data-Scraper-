@@ -244,4 +244,38 @@ public class InternalIngestionTests(TestDatabaseFixture testDb) : IAsyncLifetime
             Assert.Equal("Completed", completeRes.Status);
         }
     }
+
+    [Fact]
+    public async Task GetCompetitorConfig_WithoutToken_ReturnsUnauthorized()
+    {
+        var resp = await _client.GetAsync("/api/internal/competitors/strong-coffee");
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetCompetitorConfig_UnknownSlug_ReturnsNotFound()
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/internal/competitors/non-existent-competitor-999");
+        req.Headers.Add("X-Internal-Token", InternalToken);
+
+        var resp = await _client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetCompetitorConfig_ValidSlug_ReturnsConfig()
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/internal/competitors/strong-coffee");
+        req.Headers.Add("X-Internal-Token", InternalToken);
+
+        var resp = await _client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var config = await resp.Content.ReadFromJsonAsync<CompetitorConfigDto>();
+        Assert.NotNull(config);
+        Assert.Equal("strong-coffee", config.Slug);
+        Assert.Equal("https://strongcoffee-eg.com", config.BaseUrl);
+        Assert.Equal("github", config.CollectionHost);
+        Assert.Equal("WooCommerce", config.Platform);
+    }
 }

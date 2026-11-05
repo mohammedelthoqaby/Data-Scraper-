@@ -40,7 +40,7 @@ The system is designed for **zero developer maintenance**:
    - Collects from server-friendly sources: Lazy Bean (Shopify), Cafelax, Coffee & Cream, Coffee Zone, Fengany.
    - Orchestrates automated catalog classification, deterministic matching, optional Gemini AI review triage, and manager action alerts.
 2. **External WooCommerce Collector (GitHub Actions)**:
-   - Strong Coffee (`strongcoffeeegypt.com`) blocks MonsterASP server IPs (HTTP 403) but succeeds from standard cloud IPs.
+   - Strong Coffee (`strongcoffee-eg.com`) blocks MonsterASP server IPs (HTTP 403) but succeeds from standard cloud IPs.
    - A dedicated .NET console tool (`LazyBean.CollectorCli`) runs in GitHub Actions (`.github/workflows/daily-run.yml` and `github-collect.yml`), reuses the exact same `WooStoreApiAdapter` and domain rules, and streams product batches back to the backend.
 3. **Ads Intelligence**:
    - **Google Ads**: Direct in-app backend sync with transparency `SearchSuggestions` & `SearchCreatives`. Weekly internal trigger + manual button.

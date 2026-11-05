@@ -22,7 +22,6 @@ public class Program
         var slug = GetArg(args, "--slug") ?? "strong-coffee";
         var apiUrl = GetArg(args, "--api-url");
         var token = GetArg(args, "--token");
-        var baseUrl = GetArg(args, "--base-url") ?? "https://strongcoffeeegypt.com";
 
         if (string.IsNullOrWhiteSpace(runIdStr) || !Guid.TryParse(runIdStr, out var runId))
         {
@@ -45,22 +44,89 @@ public class Program
         apiUrl = apiUrl.TrimEnd('/');
         Console.WriteLine($"Target Run: {runId}");
         Console.WriteLine($"Competitor Slug: {slug}");
-        Console.WriteLine($"Base URL: {baseUrl}");
         Console.WriteLine($"API Endpoint: {apiUrl}");
+
+        using var backendHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        backendHttp.DefaultRequestHeaders.Add("X-Internal-Token", token);
+
+        using var cts = new CancellationTokenSource();
+
+        // 1. Fetch competitor configuration from the server (DB as single source of truth)
+        Console.WriteLine($"Fetching competitor configuration for '{slug}' from server...");
+        CompetitorConfigDto? config;
+        try
+        {
+            var configResp = await backendHttp.GetAsync($"{apiUrl}/api/internal/competitors/{slug}", cts.Token);
+            if (configResp.StatusCode == HttpStatusCode.NotFound)
+            {
+                Console.Error.WriteLine($"Error: Competitor '{slug}' not found in database.");
+                return 1;
+            }
+            if (configResp.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                Console.Error.WriteLine("Error: Unauthorized to fetch competitor config from server. Check X-Internal-Token.");
+                return 1;
+            }
+            if (!configResp.IsSuccessStatusCode)
+            {
+                var err = await configResp.Content.ReadAsStringAsync(cts.Token);
+                Console.Error.WriteLine($"Error: Failed to fetch competitor config for '{slug}' (HTTP {configResp.StatusCode}): {err}");
+                return 1;
+            }
+
+            config = await configResp.Content.ReadFromJsonAsync<CompetitorConfigDto>(
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true },
+                cts.Token);
+
+            if (config == null)
+            {
+                Console.Error.WriteLine($"Error: Received null competitor configuration for '{slug}'.");
+                return 1;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error: Network or server error fetching competitor config for '{slug}': {ex.Message}");
+            return 1;
+        }
+
+        // 2. Validate competitor configuration - fail fast
+        if (!config.Enabled)
+        {
+            Console.Error.WriteLine($"Error: Competitor '{slug}' is disabled in database.");
+            return 1;
+        }
+
+        if (!string.Equals(config.CollectionHost, "github", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine($"Error: Competitor '{slug}' has collectionHost='{config.CollectionHost}', expected 'github'. CLI collection aborted.");
+            return 1;
+        }
+
+        if (string.IsNullOrWhiteSpace(config.BaseUrl) || !Uri.TryCreate(config.BaseUrl, UriKind.Absolute, out _))
+        {
+            Console.Error.WriteLine($"Error: Competitor '{slug}' has an invalid or empty BaseUrl in database: '{config.BaseUrl}'.");
+            return 1;
+        }
+
+        Console.WriteLine($"Competitor Name: {config.Name}");
+        Console.WriteLine($"Base URL: {config.BaseUrl}");
+        Console.WriteLine($"Platform: {config.Platform}");
+        Console.WriteLine($"Collection Host: {config.CollectionHost}");
+        Console.WriteLine($"Min Delay: {config.MinDelayMs}ms");
 
         var competitor = new Competitor
         {
             Id = Guid.NewGuid(),
-            Key = slug,
-            Name = slug,
-            BaseUrl = baseUrl,
-            Platform = CompetitorPlatform.WooCommerce,
-            MinDelayMs = 1500,
-            Enabled = true
+            Key = config.Slug,
+            Name = config.Name,
+            BaseUrl = config.BaseUrl,
+            Platform = Enum.TryParse<CompetitorPlatform>(config.Platform, true, out var platform) ? platform : CompetitorPlatform.WooCommerce,
+            CollectionHost = config.CollectionHost,
+            MinDelayMs = Math.Max(500, config.MinDelayMs),
+            MaxConcurrency = Math.Max(1, config.MaxConcurrency),
+            Enabled = config.Enabled
         };
-
-        using var backendHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-        backendHttp.DefaultRequestHeaders.Add("X-Internal-Token", token);
 
         using var scrapeHttp = new HttpClient(new SocketsHttpHandler
         {
@@ -73,17 +139,16 @@ public class Program
         scrapeHttp.DefaultRequestHeaders.UserAgent.ParseAdd("LazyBeanBot/1.0 (+https://lazy-bean.runasp.net)");
         scrapeHttp.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        var collectorHttp = new CliCollectorHttpClient(scrapeHttp);
+        var collectorHttp = new CliCollectorHttpClient(scrapeHttp, competitor.MinDelayMs);
         var adapter = new WooStoreApiAdapter(collectorHttp);
 
         var totalSeen = 0;
         var batchNumber = 0;
         var batch = new List<RawProduct>(50);
-        using var cts = new CancellationTokenSource();
 
         try
         {
-            Console.WriteLine("Starting WooCommerce fetch iteration...");
+            Console.WriteLine("Starting collection iteration via adapter...");
 
             await foreach (var raw in adapter.FetchAsync(competitor, cts.Token))
             {
@@ -205,10 +270,10 @@ public class Program
     }
 }
 
-public class CliCollectorHttpClient(HttpClient httpClient) : ICollectorHttpClient
+public class CliCollectorHttpClient(HttpClient httpClient, int minDelayMs = 1500) : ICollectorHttpClient
 {
     private DateTimeOffset _lastRequestAt = DateTimeOffset.MinValue;
-    private readonly TimeSpan _minDelay = TimeSpan.FromMilliseconds(1500);
+    private readonly TimeSpan _minDelay = TimeSpan.FromMilliseconds(Math.Max(500, minDelayMs));
 
     public async Task<CollectedResponse> GetAsync(Competitor competitor, string url, CancellationToken ct)
     {
@@ -229,10 +294,22 @@ public class CliCollectorHttpClient(HttpClient httpClient) : ICollectorHttpClien
                 _lastRequestAt = DateTimeOffset.UtcNow;
                 using var resp = await httpClient.GetAsync(url, ct);
 
-                if ((int)resp.StatusCode == 429 && attempts < maxAttempts)
+                var statusCode = (int)resp.StatusCode;
+
+                // 429 Too Many Requests -> retry with Retry-After or exponential delay
+                if (statusCode == 429 && attempts < maxAttempts)
                 {
-                    var delay = resp.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(5);
-                    Console.WriteLine($"Rate limited (429) on {url}. Retrying after {delay.TotalSeconds}s...");
+                    var delay = resp.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(5 * attempts);
+                    Console.WriteLine($"Rate limited (429) on {url}. Retrying attempt {attempts + 1} after {delay.TotalSeconds}s...");
+                    await Task.Delay(delay, ct);
+                    continue;
+                }
+
+                // 5xx Server Errors (500, 502, 503, 504, etc.) -> retry
+                if (statusCode >= 500 && statusCode <= 599 && attempts < maxAttempts)
+                {
+                    var delay = TimeSpan.FromSeconds(2 * attempts);
+                    Console.WriteLine($"Server error ({statusCode}) on {url}. Retrying attempt {attempts + 1} after {delay.TotalSeconds}s...");
                     await Task.Delay(delay, ct);
                     continue;
                 }
@@ -243,16 +320,25 @@ public class CliCollectorHttpClient(HttpClient httpClient) : ICollectorHttpClien
                     .ToDictionary(h => h.Key, h => string.Join(", ", h.Value), StringComparer.OrdinalIgnoreCase);
 
                 return new CollectedResponse(
-                    (int)resp.StatusCode,
+                    statusCode,
                     body,
                     resp.IsSuccessStatusCode,
-                    resp.IsSuccessStatusCode ? null : $"HTTP {(int)resp.StatusCode}",
+                    resp.IsSuccessStatusCode ? null : $"HTTP {statusCode}",
                     headers);
             }
-            catch (Exception ex) when (attempts < maxAttempts && !ct.IsCancellationRequested)
+            catch (Exception ex)
             {
-                Console.WriteLine($"Request attempt {attempts} failed on {url}: {ex.Message}. Retrying...");
-                await Task.Delay(TimeSpan.FromSeconds(2 * attempts), ct);
+                // DNS and connection errors must NOT be retried; ONLY 429, 5xx, timeouts.
+                if (attempts < maxAttempts && HttpRetryHelper.IsRetryableException(ex, ct))
+                {
+                    Console.WriteLine($"Transient retryable error on attempt {attempts} for {url}: {ex.Message}. Retrying...");
+                    await Task.Delay(TimeSpan.FromSeconds(2 * attempts), ct);
+                    continue;
+                }
+
+                // Non-retryable (DNS error, connection refused, cancelled, or max attempts reached): rethrow immediately
+                Console.Error.WriteLine($"Non-retryable or fatal HTTP error on {url}: {ex.Message}");
+                throw;
             }
         }
     }

@@ -766,6 +766,36 @@ public class InternalApiController(
         return Ok(result);
     }
 
+    [HttpGet("competitors/{slug}")]
+    [ProducesResponseType(typeof(CompetitorConfigDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetCompetitorConfig(string slug, CancellationToken ct)
+    {
+        if (!IsAuthorized())
+        {
+            return Unauthorized(new { error = "Invalid or missing X-Internal-Token header." });
+        }
+
+        var competitor = await unitOfWork.Competitors.GetByKeyAsync(slug, ct);
+        if (competitor == null)
+        {
+            return NotFound(new { error = $"Competitor '{slug}' not found in database." });
+        }
+
+        var dto = new CompetitorConfigDto(
+            Slug: competitor.Key,
+            Name: competitor.Name,
+            BaseUrl: competitor.BaseUrl,
+            Platform: competitor.Platform.ToString(),
+            CollectionHost: competitor.CollectionHost,
+            MinDelayMs: competitor.MinDelayMs,
+            MaxConcurrency: competitor.MaxConcurrency,
+            Enabled: competitor.Enabled);
+
+        return Ok(dto);
+    }
+
     private static string StripTrackingParams(string url)
     {
         if (string.IsNullOrWhiteSpace(url)) return string.Empty;

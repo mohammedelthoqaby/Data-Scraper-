@@ -74,7 +74,7 @@ public class CollectorHttpClient(
                 using var response = await client.GetAsync(new Uri(url), ct);
                 lastStatus = (int)response.StatusCode;
 
-                if ((int)response.StatusCode is 429 or 503 or 524)
+                if (HttpRetryHelper.IsRetryableStatusCode((int)response.StatusCode))
                 {
                     var delay = GetRetryAfterDelay(response) ?? TimeSpan.FromSeconds(Math.Pow(2, attempt));
                     logger.LogWarning(
@@ -97,10 +97,10 @@ public class CollectorHttpClient(
 
                 return new CollectedResponse((int)response.StatusCode, body, response.IsSuccessStatusCode, Headers: headers);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException || (!ct.IsCancellationRequested && (ex is TaskCanceledException || ex is TimeoutException)))
+            catch (Exception ex) when (HttpRetryHelper.IsRetryableException(ex, ct))
             {
                 lastException = ex;
-                logger.LogWarning(ex, "Attempt {Attempt}/{Max} fetching {Url} threw.", attempt, MaxRetries, url);
+                logger.LogWarning(ex, "Attempt {Attempt}/{Max} fetching {Url} threw retryable error.", attempt, MaxRetries, url);
                 await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), ct);
             }
         }
