@@ -14,6 +14,49 @@ const USER_AGENT = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function timingSafeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const aTrim = a.trim();
+  const bTrim = b.trim();
+  if (aTrim.length === 0 || bTrim.length === 0) return false;
+  if (aTrim.length !== bTrim.length) return false;
+
+  let result = 0;
+  for (let i = 0; i < aTrim.length; i++) {
+    result |= aTrim.charCodeAt(i) ^ bTrim.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+function isAuthorized(request, env) {
+  const expectedSecret = env?.WORKER_SECRET;
+  if (!expectedSecret || typeof expectedSecret !== "string" || expectedSecret.trim().length === 0) {
+    return false;
+  }
+
+  const url = new URL(request.url);
+  const keyParam = url.searchParams.get("key");
+  const tokenParam = url.searchParams.get("token");
+  const headerSecret = request.headers.get("X-Worker-Secret") || request.headers.get("X-Internal-Token");
+
+  const candidate = keyParam || tokenParam || headerSecret;
+  if (!candidate || typeof candidate !== "string") {
+    return false;
+  }
+
+  return timingSafeEqual(expectedSecret, candidate);
+}
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data, null, 2), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -29,25 +72,24 @@ export default {
       });
     }
 
-    // Authenticate shared secret on ALL endpoints (?key= allowed for browser testing)
-    if (!authenticate(request, env)) {
+    // Health check (No secret required) - returns only secretConfigured status
+    if (url.pathname === "/health" || url.pathname === "/") {
+      const isConfigured = Boolean(
+        env?.WORKER_SECRET &&
+        typeof env.WORKER_SECRET === "string" &&
+        env.WORKER_SECRET.trim().length > 0
+      );
       return jsonResponse({
-        error: "Unauthorized",
-        message: "Missing or invalid secret. Pass header 'X-Worker-Secret' or query parameter '?key=YOUR_SECRET'.",
-      }, 401);
+        secretConfigured: isConfigured,
+      });
     }
 
-    // Health check
-    if (url.pathname === "/" || url.pathname === "/health") {
+    // All other endpoints require authentication
+    if (!isAuthorized(request, env)) {
       return jsonResponse({
-        status: "ok",
-        service: "lazybean-meta-collector",
-        timestamp: new Date().toISOString(),
-        endpoints: [
-          "/diagnose?pageId=100456846237420&key=YOUR_SECRET",
-          "/api/ads/collect",
-        ],
-      });
+        error: "Unauthorized",
+        message: "Invalid or missing secret. Pass ?key=YOUR_SECRET or header 'X-Worker-Secret'.",
+      }, 401);
     }
 
     // Diagnostics endpoint: Feasibility test for CAFELAX or any page ID
@@ -84,34 +126,6 @@ export default {
     return jsonResponse({ error: "Not found" }, 404);
   },
 };
-
-function authenticate(request, env) {
-  const expected = env.WORKER_SECRET || env.INTERNAL_TOKEN;
-  const url = new URL(request.url);
-  const provided = request.headers.get("X-Worker-Secret")
-    || request.headers.get("X-Internal-Token")
-    || url.searchParams.get("key")
-    || url.searchParams.get("token")
-    || url.searchParams.get("secret");
-
-  if (expected) {
-    return Boolean(provided && provided === expected);
-  }
-
-  // If WORKER_SECRET has not yet been defined in Worker Environment Variables,
-  // require a non-empty key parameter (at least 4 chars) to prevent unauthenticated scraping.
-  return Boolean(provided && provided.length >= 4);
-}
-
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data, null, 2), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    },
-  });
-}
 
 function calculateJazoest(lsd) {
   if (!lsd) return "2893";
