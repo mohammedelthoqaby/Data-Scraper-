@@ -1,6 +1,11 @@
-# LazyBean Meta Ads Cloudflare Worker
+# [DEPRECATED] LazyBean Meta Ads Cloudflare Worker
 
-This worker provides serverless Meta Ad Library extraction for LazyBean without requiring self-hosted runners or paid proxies.
+> [!WARNING]
+> **DEPRECATED & NOT IN USE**:
+> Meta conclusively blocks all datacenter egress IPs (GitHub Actions, MonsterASP, and Cloudflare Worker edge nodes) with challenge triggers (`challengeTriggered: true`) and rate limits (`1675004`).
+> Meta collection does **not** run via Cloudflare Workers. Instead, it runs optionally via a self-hosted runner on an office PC (`tools/meta-ads/` + `.github/workflows/meta-ads.yml`) using a standard residential/office Egyptian IP.
+>
+> This directory is kept for historical diagnostic reference only. It is **not** included in the production build or deployment packages.
 
 ## Deployment Options
 

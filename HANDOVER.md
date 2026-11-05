@@ -22,11 +22,11 @@ The system is designed for **zero developer maintenance**:
                                                     | (X-Internal-Token)
                                                     v
 +--------------------------+              +------------------------------------+
-|   Cloudflare Worker      |              |        MonsterASP (Backend API)    |
-|   lazybean-meta          | <----------  |  - Serves ASP.NET Core & React UI  |
-|  - Queries public Meta   |  (Optional   |  - Runs Shopify, Woo & LB Scraping |
-|    Ad Library GraphQL    |   Worker     |  - Executes Matching, AI & Alerts  |
-|  - Free tier (100k/day)  |   Secret)    |  - SQLite / PostgreSQL Persistence |
+|  Optional Office PC      |              |        MonsterASP (Backend API)    |
+|  (Self-Hosted Runner)    | -----------> |  - Serves ASP.NET Core & React UI  |
+|  - meta-ads.yml (Weekly) |  (Internal   |  - Runs Shopify, Woo & LB Scraping |
+|  - Egyptian Office IP    |    Token)    |  - Executes Matching, AI & Alerts  |
+|  - Zero impact when off  |              |  - SQLite / PostgreSQL Persistence |
 +--------------------------+              +-----------------+------------------+
                                                             |
                                                             v
@@ -43,8 +43,8 @@ The system is designed for **zero developer maintenance**:
    - Strong Coffee (`strongcoffeeegypt.com`) blocks MonsterASP server IPs (HTTP 403) but succeeds from standard cloud IPs.
    - A dedicated .NET console tool (`LazyBean.CollectorCli`) runs in GitHub Actions (`.github/workflows/daily-run.yml` and `github-collect.yml`), reuses the exact same `WooStoreApiAdapter` and domain rules, and streams product batches back to the backend.
 3. **Ads Intelligence**:
-   - **Google Ads**: Direct in-app sync with transparency SearchSuggestions & SearchCreatives.
-   - **Meta Ads**: Seeded page IDs in PendingApproval state. Can run via Cloudflare Worker (`tools/cloudflare-worker/worker.js`) or local utility.
+   - **Google Ads**: Direct in-app backend sync with transparency `SearchSuggestions` & `SearchCreatives`. Weekly internal trigger + manual button.
+   - **Meta Ads**: Public Meta Ad Library blocks datacenter IPs (MonsterASP, GitHub, Cloudflare). Collection runs optionally via a self-hosted GitHub runner on an office PC (`meta-ads.yml` + `tools/meta-ads/sync.py`) using Egyptian residential/office IP. If the PC is off, nothing breaks: the UI displays "Runner offline - last sync <date>" with no error alerts. Each competitor card also provides a direct "View on Meta Ad Library ↗" button opening the official Egypt library page.
 
 ---
 
@@ -79,13 +79,6 @@ Location: **LazyBean Web App > Settings > Google AI Studio (Gemini)**
 |---|---|---|
 | `Gemini API Key` | Powers AI candidate review triage and attention ranking | Encrypted with ASP.NET Data Protection into DB |
 
-### D. Cloudflare Worker Secrets
-Location: **Cloudflare Dashboard > Workers & Pages > `lazybean-meta` > Settings > Variables**
-
-| Secret Name | Purpose | Notes |
-|---|---|---|
-| `WORKER_SECRET` | Header secret `X-Worker-Secret` for worker endpoints | Prevents unauthorized external use |
-
 ---
 
 ## 3. Scheduled Automations
@@ -100,9 +93,39 @@ Location: **Cloudflare Dashboard > Workers & Pages > `lazybean-meta` > Settings 
   5. Completes competitor run with `POST .../complete`.
   6. MonsterASP automatically executes classification -> matching -> AI triage (if configured) -> alerts.
 
+### Weekly Google Ads Sync
+- Executes inside the backend automatically every 7 days after the daily collection run, or on-demand via the **Sync Google Ads** button in the Ads UI.
+- Direct connection to Google Ads Transparency SearchSuggestions and SearchCreatives.
+
 ---
 
-## 4. Manual Operations & Troubleshooting
+## 4. Optional Meta Ads Office PC Runner (Setup & Maintenance)
+
+Because Meta blocks all datacenter IPs (MonsterASP, GitHub cloud runners, Cloudflare), Meta collection can run optionally from any company office PC via GitHub's free self-hosted runner mechanism:
+
+### Quick Setup Steps (One-time, 5 minutes)
+1. In your GitHub repository, navigate to **Settings > Actions > Runners > New self-hosted runner**.
+2. Select your OS (Windows or Linux).
+3. Download the runner package and run `config.cmd` (or `config.sh`).
+4. When prompted for labels, add: `lazybean-collector`.
+5. Run the runner:
+   - On Windows: Run `run.cmd`, or install as a background service:
+     ```powershell
+     .\svc.bat install
+     .\svc.bat start
+     ```
+   - On Linux/macOS: Run `./run.sh` or `./svc.sh install && ./svc.sh start`.
+
+### How It Operates
+- Workflow: `.github/workflows/meta-ads.yml` runs weekly (Sunday 07:00 UTC) or manually via **Run workflow**.
+- Runs Python (`tools/meta-ads/sync.py`), scrapes approved Meta Page IDs through the Egyptian office IP, and posts ads to `POST /api/internal/ads/meta`.
+- **Runs only when the PC is on**: When the PC is off, GitHub simply queues the job until the PC boots up, or the run can be triggered manually.
+- **Nothing breaks when off**: The LazyBean dashboard displays `"Runner offline - last sync <date>"`. No errors, red alerts, or broken states appear anywhere.
+- **Direct Library Access**: The Ads page provides a direct **"View on Meta Ad Library ↗"** button for each competitor to view live active campaigns at any time without running any scraper.
+
+---
+
+## 5. Manual Operations & Troubleshooting
 
 ### Triggering a Run Manually
 - **From UI**: Click **Start Collection Run** on the Collection Runs page.
@@ -121,7 +144,7 @@ Location: **Cloudflare Dashboard > Workers & Pages > `lazybean-meta` > Settings 
 
 ---
 
-## 5. Deployment / Publishing Instructions
+## 6. Deployment / Publishing Instructions
 
 To produce a new release package:
 ```bash

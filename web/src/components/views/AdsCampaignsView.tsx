@@ -5,6 +5,15 @@ interface AdsCampaignsViewProps {
   onOpenProductDetail?: (productId: string, title?: string) => void;
 }
 
+const SEED_META_PAGE_IDS: Record<string, string> = {
+  'cafelax': '100456846237420',
+  'coffee-and-cream': '109786085108938',
+  'coffee-zone': '110140451538461',
+  'coffee-zone-misr': '110140451538461',
+  'fengany': '833564813655781',
+  'strong-coffee': '102631558265863',
+};
+
 export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProductDetail }) => {
   const [campaigns, setCampaigns] = useState<AdCampaignDto[]>([]);
   const [sources, setSources] = useState<Competitor[]>([]);
@@ -145,10 +154,20 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       // Meta status & ads
       const metaId = storeIdentities.find((i) => (i.platform || '').toLowerCase() === 'meta');
       const metaStatus = metaId ? metaId.status : 'No identity';
+      const metaPageId =
+        metaId?.externalId ||
+        SEED_META_PAGE_IDS[store.key?.toLowerCase() || ''] ||
+        SEED_META_PAGE_IDS[storeName.toLowerCase().replace(/[^a-z0-9]/g, '-')];
       const metaCampaigns = campaigns.filter(
         (c) => (c.competitorName || '').toLowerCase() === storeName.toLowerCase() && (c.platform || '').toLowerCase() === 'meta'
       );
       const metaAdCount = metaCampaigns.reduce((acc, c) => acc + (c.adCount ?? 0), 0);
+      let latestMetaSync: string | null = null;
+      metaCampaigns.forEach((c) => {
+        if (c.lastSeenAt && (!latestMetaSync || c.lastSeenAt > latestMetaSync)) {
+          latestMetaSync = c.lastSeenAt;
+        }
+      });
 
       // Google status & ads
       const googleId = storeIdentities.find((i) => (i.platform || '').toLowerCase() === 'google');
@@ -167,10 +186,28 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
         }
       });
 
+      // Meta display label: "Synced <date>, N ads" or "Runner offline - last sync <date>" (never error/red)
+      const metaFormattedDate = latestMetaSync
+        ? new Date(latestMetaSync).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+        : null;
+
+      let metaLabel = 'Runner offline - not synced yet';
+      let metaBadgeClass = 'badge neutral';
+      if (metaAdCount > 0 && metaFormattedDate) {
+        metaLabel = `Synced ${metaFormattedDate}, ${metaAdCount} ads`;
+        metaBadgeClass = 'badge good';
+      } else if (metaFormattedDate) {
+        metaLabel = `Runner offline - last sync ${metaFormattedDate}`;
+        metaBadgeClass = 'badge neutral';
+      }
+
       return {
         id: store.id,
         name: storeName,
         metaStatus,
+        metaPageId,
+        metaLabel,
+        metaBadgeClass,
         metaAdCount,
         googleStatus,
         googleAdCount,
@@ -304,7 +341,7 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                   <th style={{ padding: '8px 12px' }}>Meta Ad Library</th>
                   <th style={{ padding: '8px 12px' }}>Google Ads Transparency</th>
                   <th style={{ padding: '8px 12px', textAlign: 'center' }}>Total Ads</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Last Seen</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Official Library</th>
                 </tr>
               </thead>
               <tbody>
@@ -312,11 +349,8 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                   <tr key={item.name} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '10px 12px', fontWeight: 600 }}>{item.name}</td>
                     <td style={{ padding: '10px 12px' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        {renderStatusBadge(item.metaStatus)}
-                        {item.metaAdCount > 0 && (
-                          <span style={{ fontSize: '11px', color: 'var(--muted)' }}>({item.metaAdCount} ads)</span>
-                        )}
+                      <span className={item.metaBadgeClass} style={{ fontSize: '11px' }}>
+                        {item.metaLabel}
                       </span>
                     </td>
                     <td style={{ padding: '10px 12px' }}>
@@ -330,8 +364,33 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                     <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>
                       {item.totalAds > 0 ? item.totalAds : '—'}
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)', fontSize: '12px' }}>
-                      {item.latestSync ? new Date(item.latestSync).toLocaleDateString() : 'Not synced yet'}
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                      {item.metaPageId ? (
+                        <a
+                          href={`https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=EG&view_all_page_id=${encodeURIComponent(item.metaPageId)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-xs ghost"
+                          style={{
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontWeight: 600,
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            border: '1px solid var(--line)',
+                            background: '#f8fafc',
+                            color: 'var(--action)',
+                            fontSize: '11px',
+                          }}
+                          title={`View ${item.name} active ads on Meta Ad Library`}
+                        >
+                          View on Meta Ad Library ↗
+                        </a>
+                      ) : (
+                        <span style={{ color: 'var(--muted)', fontSize: '11px' }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -451,11 +510,23 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                     </span>
                   </div>
 
-                  <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                    Last seen:{' '}
-                    {campaign.lastSeenAt
-                      ? new Date(campaign.lastSeenAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-                      : 'Recently'}
+                  <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>
+                      Last seen:{' '}
+                      {campaign.lastSeenAt
+                        ? new Date(campaign.lastSeenAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                        : 'Recently'}
+                    </span>
+                    {campaign.platform === 'Meta' && SEED_META_PAGE_IDS[(campaign.competitorName || '').toLowerCase().replace(/[^a-z0-9]/g, '-')] && (
+                      <a
+                        href={`https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=EG&view_all_page_id=${encodeURIComponent(SEED_META_PAGE_IDS[(campaign.competitorName || '').toLowerCase().replace(/[^a-z0-9]/g, '-')])}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'var(--action)', fontWeight: 600, textDecoration: 'none' }}
+                      >
+                        View on Meta Ad Library ↗
+                      </a>
+                    )}
                   </div>
                 </div>
 

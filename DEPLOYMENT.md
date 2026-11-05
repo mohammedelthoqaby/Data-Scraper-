@@ -161,10 +161,10 @@ Follow these steps when deploying to MonsterASP:
 - **Schedule**: Automatically executed weekly (if >= 7 days elapsed since last sync) following the daily collection run, or triggered on-demand via the Ads dashboard or `POST /api/internal/ads/google/sync`.
 - **Runtime**: Native C# implementation in `GoogleAdsTransparencyClient` & `GoogleAdsSyncService` without external runner or proxies. Caches advertiser AR IDs and backs off for 24h on 429/CAPTCHA.
 
-### 5.3 Meta Ads Sync (Cloudflare Worker Edge)
-- **Architecture**: Runs on Cloudflare Worker (`tools/cloudflare-worker/worker.js`) on Cloudflare's global edge network (Free tier, 100,000 requests/day, zero credit card, zero maintenance).
-- **Diagnostics**: Call `/diagnose?pageId=100456846237420` to verify live Meta Ad Library access for CAFELAX.
-- **Collection**: POSTs verified ads to backend `POST /api/internal/ads/meta`.
+### 5.3 Meta Ads Sync (Optional Self-Hosted Office Runner)
+- **Architecture**: Runs optionally on any company office PC via GitHub Actions self-hosted runner (`.github/workflows/meta-ads.yml` + `tools/meta-ads/sync.py`), using standard Egyptian residential/office IP.
+- **Resilience**: Runs only when the office PC is powered on. If the PC is off, nothing breaks: the Ads page displays "Runner offline - last sync <date>", with no error alerts or red states.
+- **Manual Verification**: Each competitor card provides a direct "View on Meta Ad Library ↗" button opening the official Egypt Ad Library page directly.
 
 ---
 
