@@ -1,0 +1,20 @@
+{
+  "genericTokens": [
+    "coffee", "caffe", "caffè", "cafe", "espresso", "capsules", "capsule", "pods", "pod",
+    "beans", "bean", "whole", "ground", "powder",
+    "tea", "herbal", "infusion", "compatible", "compatibility",
+    "pack", "packs", "packet", "packets", "box", "boxes", "bag", "bags", "tin", "tins",
+    "can", "cans", "bottle", "bottles", "jar", "jars", "piece", "pieces", "pcs", "caps",
+    "cup", "cups", "mug", "mugs", "original", "vertuo", "vertuoline", "dolce", "gusto",
+    "dolcegusto", "nespresso", "caffitaly", "filter", "drip", "machine", "machines",
+    "maker", "makers", "system", "by", "for", "with", "in", "of", "and", "the", "a", "an",
+    "at", "to", "from", "gram", "grams", "kg", "g", "gm", "ml", "l", "liter", "liters",
+    "قهوة", "قهوه", "بن", "اسبريسو", "كبسولات", "كبسولة", "كبسوله", "حبوب", "حب",
+    "مطحون", "مطحونة", "مطحونه", "شاي", "شاى", "اعشاب", "أعشاب",
+    "متوافق", "متوافقة", "متوافقه", "مع", "علبة", "علبه",
+    "باكيت", "كيس", "أكياس", "اكياس", "برطمان", "زجاجة", "زجاجه", "حبات", "حبة", "حبه",
+    "قطع", "قطعة", "قطعه", "كوب", "أكواب", "اكواب", "اوريجينال", "فيرتو", "دولتشي", "جوستو",
+    "نسبريسو", "كافيتالي", "ماكينة", "ماكينه", "الة", "آلة", "صانعة", "نظام", "من", "في",
+    "فى", "على", "و", "جرام", "جم", "غرام", "كجم", "كيلو", "مل", "لتر"
+  ]
+}

@@ -1,0 +1,56 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lazybean
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_DB: postgres
+        ports:
+          - 15432:5432
+          - 16432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Build Web Frontend
+        run: |
+          cd web
+          npm ci
+          npm run build
+          cd ..
+
+      - name: Restore dependencies
+        run: dotnet restore backend/LazyBean.slnx
+
+      - name: Build solution
+        run: dotnet build backend/LazyBean.slnx --no-restore -c Release
+
+      - name: Run Tests
+        run: dotnet test backend/LazyBean.slnx --no-build -c Release

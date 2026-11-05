@@ -13,9 +13,13 @@ appsettings.*.local.json
 META-API.txt
 *-API.txt
 *API*.txt
-*token*
+*token*.txt
 *cookie*.txt
-*secret*
+*secret*.txt
+*.token
+*.secret
+*.pem
+*.key
 *.env*
 *.env
 *.env.local
