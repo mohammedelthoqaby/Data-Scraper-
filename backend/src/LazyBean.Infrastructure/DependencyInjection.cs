@@ -87,6 +87,11 @@ public static class DependencyInjection
         services.AddScoped<ICompetitorProductIngestionService, CompetitorProductIngestionService>();
 
         services.AddScoped<ICollectionRunExecutor, CollectionRunExecutor>();
+        services.Configure<GitHubOptions>(configuration.GetSection(GitHubOptions.SectionName));
+        services.AddHttpClient<IGitHubWorkflowDispatcher, GitHubWorkflowDispatcher>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
         services.AddHttpClient<IMetaAdLibraryClient, MetaAdLibraryClient>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(60);

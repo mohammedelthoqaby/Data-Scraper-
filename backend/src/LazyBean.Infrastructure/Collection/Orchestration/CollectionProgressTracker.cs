@@ -126,7 +126,7 @@ public class CollectionProgressTracker : ICollectionProgressTracker
                 var prev = previousSizes.GetValueOrDefault(c.Id, c.IsReference ? 1500 : 3000);
                 sum += Math.Max(prev, 100);
 
-                _competitors[c.Id] = new CompetitorState(c.Id, c.Key, c.Name, c.IsReference);
+                _competitors[c.Id] = new CompetitorState(c.Id, c.Key, c.Name, c.IsReference, c.CollectionHost ?? "server");
             }
 
             _totalCatalogExpected = sum > 0 ? sum : competitors.Count * 2500.0;
@@ -177,7 +177,11 @@ public class CollectionProgressTracker : ICollectionProgressTracker
         public RunProgressDto ToDto()
         {
             var now = DateTimeOffset.UtcNow;
-            var isStalled = (Status == "Running" || Status == "Queued") && (now - LastProgressAt > TimeSpan.FromMinutes(3));
+            var anyGithubWaiting = _competitors.Values.Any(c =>
+                string.Equals(c.CollectionHost, "github", StringComparison.OrdinalIgnoreCase) &&
+                (c.Status == "Running" || c.Status == "Queued"));
+
+            var isStalled = !anyGithubWaiting && (Status == "Running" || Status == "Queued") && (now - LastProgressAt > TimeSpan.FromMinutes(3));
 
             var compDtos = _competitors.Values.Select(c => c.ToDto()).ToList();
 
@@ -261,12 +265,13 @@ public class CollectionProgressTracker : ICollectionProgressTracker
         }
     }
 
-    private sealed class CompetitorState(Guid competitorId, string key, string name, bool isReference)
+    private sealed class CompetitorState(Guid competitorId, string key, string name, bool isReference, string collectionHost = "server")
     {
         public Guid CompetitorId { get; } = competitorId;
         public string CompetitorKey { get; } = key;
         public string CompetitorName { get; } = name;
         public bool IsReference { get; } = isReference;
+        public string CollectionHost { get; } = collectionHost;
         public string Status { get; set; } = "Queued";
         public int CurrentPage { get; set; }
         public int? TotalPages { get; set; }
@@ -284,6 +289,7 @@ public class CollectionProgressTracker : ICollectionProgressTracker
             TotalPages,
             ProductsSaved,
             LastUpdated,
-            LastMessage);
+            LastMessage,
+            CollectionHost);
     }
 }

@@ -12,6 +12,11 @@ on:
         required: false
         default: 'strong-coffee'
         type: string
+      slugs:
+        description: 'Competitor slugs (comma-separated or single)'
+        required: false
+        default: 'strong-coffee'
+        type: string
   workflow_dispatch:
     inputs:
       run_id:
@@ -20,6 +25,11 @@ on:
         type: string
       slug:
         description: 'Competitor slug (e.g. strong-coffee)'
+        required: false
+        default: 'strong-coffee'
+        type: string
+      slugs:
+        description: 'Competitor slugs (comma-separated or single)'
         required: false
         default: 'strong-coffee'
         type: string
@@ -39,7 +49,7 @@ jobs:
       - name: Run Collector CLI (Max 2 Attempts)
         env:
           RUN_ID: ${{ inputs.run_id }}
-          SLUG: ${{ inputs.slug || 'strong-coffee' }}
+          SLUG: ${{ inputs.slug || inputs.slugs || 'strong-coffee' }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
         run: |

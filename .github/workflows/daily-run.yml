@@ -48,32 +48,4 @@ jobs:
           RUN_ID=$(echo "$HTTP_BODY" | jq -r '.runId // .id // empty')
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "Initiated collection run with ID: $RUN_ID"
-
-      - name: Run Strong Coffee Collector (GitHub Hosted)
-        if: steps.trigger.outputs.run_id != ''
-        env:
-          RUN_ID: ${{ steps.trigger.outputs.run_id }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
-          INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
-        run: |
-          echo "Starting GitHub Actions collector for strong-coffee (Run ID: $RUN_ID)..."
-          SUCCESS=0
-          for attempt in 1 2; do
-            echo "=== Attempt $attempt of 2 ==="
-            if dotnet run --project backend/src/LazyBean.CollectorCli -- \
-                --run-id "$RUN_ID" \
-                --slug "strong-coffee" \
-                --api-url "$API_BASE_URL" \
-                --token "$INTERNAL_TOKEN"; then
-              echo "Collector completed successfully on attempt $attempt."
-              SUCCESS=1
-              break
-            fi
-            echo "Attempt $attempt failed. Waiting 10s before retry..."
-            sleep 10
-          done
-
-          if [ "$SUCCESS" -ne 1 ]; then
-            echo "::error::Strong Coffee collector failed after 2 attempts."
-            exit 1
-          fi
+          echo "Server will automatically dispatch github-collect.yml for GitHub-hosted competitors (strong-coffee)."

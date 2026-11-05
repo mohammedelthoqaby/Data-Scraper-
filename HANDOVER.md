@@ -71,6 +71,35 @@ Location: **MonsterASP Control Panel > Website Settings > Environment Variables*
 | `Admin__Username` | Initial administrator login username | e.g. `admin` |
 | `Admin__Password` | Initial administrator login password | Strong password |
 | `Gemini__ApiKey` | (Optional) Gemini API Key fallback | Better to configure via UI with encryption |
+| `GitHub__DispatchToken` | Fine-grained PAT for Actions dispatch | **Actions: Read and write** on this repo (see guide below) |
+| `GitHub__Repo` | Target GitHub repository | `mohammedelthoqaby/Data-Scraper-` |
+| `GitHub__Ref` | Git branch to trigger workflow on | `main` |
+
+---
+
+### Step-by-Step GitHub Fine-Grained Personal Access Token (PAT) Setup
+
+To allow MonsterASP to automatically dispatch `github-collect.yml` whenever a manual or scheduled collection run starts:
+
+1. Log into your GitHub account and go to **Settings** (top right profile icon > Settings).
+2. In the left sidebar, click **Developer settings** (at the bottom).
+3. Under **Personal access tokens**, click **Fine-grained tokens** > **Generate new token**.
+4. Configure the token fields:
+   - **Token name**: `LazyBean-MonsterASP-Dispatch`
+   - **Expiration**: Select `90 days` or `1 year` (set a calendar reminder to renew before expiration).
+   - **Resource owner**: `mohammedelthoqaby`
+   - **Repository access**: Select **Only select repositories**, then choose `mohammedelthoqaby/Data-Scraper-`.
+   - **Permissions > Repository permissions**:
+     - Find **Actions**: change access from *No access* to **Read and write**.
+     - All other permissions should remain *No access*.
+5. Click **Generate token** and copy the generated token (`github_pat_...`).
+6. Go to **MonsterASP Control Panel > Website Settings > Environment Variables**:
+   - Add `GitHub__DispatchToken` with the copied token value.
+   - Add `GitHub__Repo` with value `mohammedelthoqaby/Data-Scraper-`.
+   - Add `GitHub__Ref` with value `main`.
+7. **Security Guarantee**: The backend never logs this token in console logs, exception traces, or HTTP responses. If dispatch fails, the backend only surfaces the sanitized HTTP status code (e.g. HTTP 401 / 403) to the UI.
+
+---
 
 ### C. In-App Encrypted Secrets (Settings UI)
 Location: **LazyBean Web App > Settings > Google AI Studio (Gemini)**
@@ -81,17 +110,27 @@ Location: **LazyBean Web App > Settings > Google AI Studio (Gemini)**
 
 ---
 
-## 3. Scheduled Automations
+## 3. Scheduled Automations & Automated Dispatch
 
 ### Daily Run (05:00 UTC / 07:00 Egypt Time)
 - File: `.github/workflows/daily-run.yml`
 - Workflow:
   1. Calls `POST /api/internal/runs` on MonsterASP with `X-Internal-Token`.
   2. Receives the `runId`.
-  3. Launches `LazyBean.CollectorCli` for `strong-coffee` on GitHub runner.
-  4. Posts product batches to `POST /api/internal/runs/{runId}/competitors/strong-coffee/products`.
-  5. Completes competitor run with `POST .../complete`.
-  6. MonsterASP automatically executes classification -> matching -> AI triage (if configured) -> alerts.
+  3. The server immediately initiates collection:
+     - Scrapes server-hosted competitors (`cafelax`, `coffee-and-cream`, `coffee-zone`, `fengany`).
+     - Automatically calls GitHub REST API `workflow_dispatch` for `github-collect.yml` for any competitor configured with `collectionHost = "github"` (`strong-coffee`).
+  4. GitHub Actions runner executes `LazyBean.CollectorCli` on `ubuntu-latest`:
+     - Posts product batches to `POST /api/internal/runs/{runId}/competitors/strong-coffee/products`.
+     - Completes competitor run with `POST .../complete`.
+  5. The server waits up to 30 minutes with a live countdown: `Waiting for GitHub collector (mm:ss / 30:00)`.
+  6. MonsterASP automatically executes the post-processing pipeline: classification -> matching -> AI triage (if configured) -> alerts.
+
+### Manual Collection Runs (Dashboard)
+- When clicking **Start Collection Run** in the web dashboard, the exact same automated dispatch occurs:
+  - The backend dispatches `github-collect.yml` automatically via GitHub API.
+  - The dashboard displays a direct link **View GitHub Actions ↗** and a **↻ Re-dispatch** button on the Strong Coffee row.
+  - The false "Scraper appears stalled" warning is suppressed while waiting for external collectors.
 
 ### Weekly Google Ads Sync
 - Executes inside the backend automatically every 7 days after the daily collection run, or on-demand via the **Sync Google Ads** button in the Ads UI.

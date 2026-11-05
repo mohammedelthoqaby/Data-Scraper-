@@ -4,6 +4,7 @@ import {
   fetchRunProgress,
   fetchActiveRun,
   triggerMatchingNow,
+  redispatchGithubCollector,
   type RunDto,
   type AuthenticatedUser,
   type RunProgress,
@@ -32,6 +33,25 @@ export const RunsView: React.FC<RunsViewProps> = ({
   const [matchNotice, setMatchNotice] = useState<string | null>(null);
   const [activeProgress, setActiveProgress] = useState<RunProgress | null>(null);
   const [expandedRunIds, setExpandedRunIds] = useState<Set<string>>(new Set());
+  const [redispatchingSlug, setRedispatchingSlug] = useState<string | null>(null);
+  const [redispatchNotice, setRedispatchNotice] = useState<string | null>(null);
+
+  const handleRedispatch = async (runId: string, slug: string) => {
+    setRedispatchingSlug(slug);
+    setRedispatchNotice(null);
+    try {
+      const res = await redispatchGithubCollector(runId, slug);
+      if (res.success) {
+        setRedispatchNotice(`Workflow dispatched to GitHub Actions for ${slug}.`);
+      } else {
+        alert(res.message || 'Failed to re-dispatch.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error re-dispatching GitHub Actions collector.');
+    } finally {
+      setRedispatchingSlug(null);
+    }
+  };
 
   const fetchRunsList = async () => {
     setIsLoading(true);
@@ -272,27 +292,52 @@ export const RunsView: React.FC<RunsViewProps> = ({
             </button>
           </div>
 
-          {/* Stalled Alert if no progress for > 3 minutes */}
-          {activeProgress.isStalled && (
+          {/* Stalled Alert if no progress for > 3 minutes (suppressed if waiting on GitHub collector) */}
+          {(() => {
+            const isAnyGithubCollectorWaiting = activeProgress.competitors?.some(
+              (c) => (c.collectionHost === 'github' || (c.lastMessage || '').includes('GitHub collector')) &&
+                     ((c.status || '').toLowerCase() === 'running' || (c.status || '').toLowerCase() === 'queued')
+            );
+            return activeProgress.isStalled && !isAnyGithubCollectorWaiting ? (
+              <div
+                className="warning-banner"
+                style={{
+                  background: '#fff3cd',
+                  borderColor: '#ffeeba',
+                  color: '#856404',
+                  marginTop: '12px',
+                  marginBottom: '12px',
+                }}
+              >
+                <span>⚠️</span>
+                <span>
+                  <strong>Scraper appears stalled:</strong> No progress updates received for &gt; 3 minutes.
+                  {activeProgress.lastLogMessage && (
+                    <span style={{ display: 'block', fontSize: '11px', marginTop: '4px' }}>
+                      Last activity: <em>{activeProgress.lastLogMessage}</em>
+                    </span>
+                  )}
+                </span>
+              </div>
+            ) : null;
+          })()}
+
+          {/* Redispatch notification */}
+          {redispatchNotice && (
             <div
-              className="warning-banner"
+              className="success-banner"
               style={{
-                background: '#fff3cd',
-                borderColor: '#ffeeba',
-                color: '#856404',
+                background: '#d4edda',
+                borderColor: '#c3e6cb',
+                color: '#155724',
+                padding: '8px 12px',
+                borderRadius: '6px',
                 marginTop: '12px',
                 marginBottom: '12px',
+                fontSize: '13px',
               }}
             >
-              <span>⚠️</span>
-              <span>
-                <strong>Scraper appears stalled:</strong> No progress updates received for &gt; 3 minutes.
-                {activeProgress.lastLogMessage && (
-                  <span style={{ display: 'block', fontSize: '11px', marginTop: '4px' }}>
-                    Last activity: <em>{activeProgress.lastLogMessage}</em>
-                  </span>
-                )}
-              </span>
+              ✓ {redispatchNotice}
             </div>
           )}
 
@@ -352,6 +397,11 @@ export const RunsView: React.FC<RunsViewProps> = ({
                               Reference
                             </span>
                           )}
+                          {c.collectionHost === 'github' && (
+                            <span className="badge info" style={{ fontSize: '9px', marginLeft: '6px', background: '#e9ecef', color: '#495057' }}>
+                              GitHub Actions
+                            </span>
+                          )}
                         </td>
                         <td style={{ padding: '8px 12px' }}>
                           <span className={`badge ${badgeClass}`} style={{ fontSize: '10px' }}>
@@ -365,7 +415,30 @@ export const RunsView: React.FC<RunsViewProps> = ({
                           {c.productsSaved} items
                         </td>
                         <td style={{ padding: '8px 12px', color: 'var(--muted)' }}>
-                          {c.lastMessage || '—'}
+                          <div>{c.lastMessage || '—'}</div>
+                          {c.collectionHost === 'github' && (
+                            <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px' }}>
+                              <a
+                                href="https://github.com/mohammedelthoqaby/Data-Scraper-/actions/workflows/github-collect.yml"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: '#0366d6', textDecoration: 'underline' }}
+                              >
+                                View GitHub Actions ↗
+                              </a>
+                              {(st === 'running' || st === 'queued' || st === 'failed' || st === 'waiting') && (
+                                <button
+                                  type="button"
+                                  className="btn-xs"
+                                  style={{ padding: '2px 8px', fontSize: '10px' }}
+                                  disabled={redispatchingSlug === c.competitorKey}
+                                  onClick={() => handleRedispatch(activeProgress.runId, c.competitorKey)}
+                                >
+                                  {redispatchingSlug === c.competitorKey ? 'Dispatching...' : '↻ Re-dispatch'}
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );

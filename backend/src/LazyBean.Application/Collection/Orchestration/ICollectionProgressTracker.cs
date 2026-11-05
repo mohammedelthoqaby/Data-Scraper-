@@ -12,7 +12,8 @@ public record CompetitorProgressDto(
     int? TotalPages,
     int ProductsSaved,
     DateTimeOffset LastUpdated,
-    string? LastMessage);
+    string? LastMessage,
+    string? CollectionHost = "server");
 
 public record PhaseProgressDto(
     string Name,

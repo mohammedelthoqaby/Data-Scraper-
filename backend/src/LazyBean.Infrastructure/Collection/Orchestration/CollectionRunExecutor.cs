@@ -34,6 +34,7 @@ public class CollectionRunExecutor(
     IGoogleAdsSyncService? googleAdsSyncService,
     IServiceScopeFactory? serviceScopeFactory,
     ICollectionProgressTracker? progressTracker,
+    IGitHubWorkflowDispatcher? gitHubWorkflowDispatcher,
     ILogger<CollectionRunExecutor> logger) : ICollectionRunExecutor
 {
     public CollectionRunExecutor(
@@ -41,7 +42,7 @@ public class CollectionRunExecutor(
         ICompetitorAdapterResolver adapters,
         ICacheService cache,
         ILogger<CollectionRunExecutor> logger)
-        : this(dbContextFactory, adapters, cache, new ProductClassifier(), null, null, null, null, null, logger)
+        : this(dbContextFactory, adapters, cache, new ProductClassifier(), null, null, null, null, null, null, logger)
     {
     }
 
@@ -51,7 +52,7 @@ public class CollectionRunExecutor(
         ICacheService cache,
         IProductClassifier classifier,
         ILogger<CollectionRunExecutor> logger)
-        : this(dbContextFactory, adapters, cache, classifier, null, null, null, null, null, logger)
+        : this(dbContextFactory, adapters, cache, classifier, null, null, null, null, null, null, logger)
     {
     }
 
@@ -63,7 +64,7 @@ public class CollectionRunExecutor(
         ICollectorHttpClient? http,
         IConfiguration? configuration,
         ILogger<CollectionRunExecutor> logger)
-        : this(dbContextFactory, adapters, cache, classifier, http, configuration, null, null, null, logger)
+        : this(dbContextFactory, adapters, cache, classifier, http, configuration, null, null, null, null, logger)
     {
     }
 
@@ -76,7 +77,22 @@ public class CollectionRunExecutor(
         IConfiguration? configuration,
         IGoogleAdsSyncService? googleAdsSyncService,
         ILogger<CollectionRunExecutor> logger)
-        : this(dbContextFactory, adapters, cache, classifier, http, configuration, googleAdsSyncService, null, null, logger)
+        : this(dbContextFactory, adapters, cache, classifier, http, configuration, googleAdsSyncService, null, null, null, logger)
+    {
+    }
+
+    public CollectionRunExecutor(
+        IDbContextFactory<LazyBeanDbContext> dbContextFactory,
+        ICompetitorAdapterResolver adapters,
+        ICacheService cache,
+        IProductClassifier classifier,
+        ICollectorHttpClient? http,
+        IConfiguration? configuration,
+        IGoogleAdsSyncService? googleAdsSyncService,
+        IServiceScopeFactory? serviceScopeFactory,
+        ICollectionProgressTracker? progressTracker,
+        ILogger<CollectionRunExecutor> logger)
+        : this(dbContextFactory, adapters, cache, classifier, http, configuration, googleAdsSyncService, serviceScopeFactory, progressTracker, null, logger)
     {
     }
 
@@ -410,6 +426,7 @@ public class CollectionRunExecutor(
             else
             {
                 cr.Status = CompetitorRunStatus.Running;
+                cr.Errors = 0;
                 await db.SaveChangesAsync(ct);
             }
         }
@@ -421,14 +438,41 @@ public class CollectionRunExecutor(
             0,
             null,
             0,
-            "Awaiting external GitHub Actions collector...");
+            "Dispatching GitHub Actions collector...");
+
+        GitHubDispatchResult? dispatchResult = null;
+        if (gitHubWorkflowDispatcher != null)
+        {
+            dispatchResult = await gitHubWorkflowDispatcher.DispatchCollectorAsync(runId, [competitor.Key], ct);
+            if (!dispatchResult.Success)
+            {
+                logger.LogWarning("GitHub workflow dispatch failed for {Competitor}: {Error}", competitor.Key, dispatchResult.ErrorMessage);
+                await using var db = await dbContextFactory.CreateDbContextAsync(ct);
+                var cr = await db.CompetitorRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
+                if (cr != null)
+                {
+                    cr.Status = CompetitorRunStatus.Degraded;
+                    cr.Errors = 1;
+                    await db.SaveChangesAsync(ct);
+                }
+
+                progressTracker?.UpdateCompetitorProgress(
+                    runId,
+                    competitor.Id,
+                    "Degraded",
+                    0,
+                    null,
+                    0,
+                    dispatchResult.ErrorMessage);
+            }
+        }
 
         var start = DateTimeOffset.UtcNow;
         var timeout = TimeSpan.FromMinutes(30);
 
         while (!ct.IsCancellationRequested)
         {
-            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            await Task.Delay(TimeSpan.FromSeconds(3), ct);
 
             await using var db = await dbContextFactory.CreateDbContextAsync(ct);
             var cr = await db.CompetitorRuns.AsNoTracking().FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
@@ -438,7 +482,33 @@ public class CollectionRunExecutor(
                 return;
             }
 
-            if (DateTimeOffset.UtcNow - start > timeout)
+            var elapsed = DateTimeOffset.UtcNow - start;
+
+            if (cr != null && cr.Products > 0)
+            {
+                progressTracker?.UpdateCompetitorProgress(
+                    runId,
+                    competitor.Id,
+                    "Running",
+                    cr.Pages,
+                    null,
+                    cr.Products,
+                    $"Ingesting from GitHub collector ({cr.Products} items saved so far)");
+            }
+            else if (dispatchResult == null || dispatchResult.Success)
+            {
+                var elapsedFormatted = $"{(int)elapsed.TotalMinutes:D2}:{elapsed.Seconds:D2}";
+                progressTracker?.UpdateCompetitorProgress(
+                    runId,
+                    competitor.Id,
+                    "Running",
+                    0,
+                    null,
+                    0,
+                    $"Waiting for GitHub collector ({elapsedFormatted} / 30:00)");
+            }
+
+            if (elapsed > timeout)
             {
                 logger.LogWarning("GitHub Actions collector for {Competitor} timed out after 30 minutes. Marking Skipped.", competitor.Key);
                 var entity = await db.CompetitorRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
@@ -456,7 +526,7 @@ public class CollectionRunExecutor(
                     cr?.Pages ?? 0,
                     null,
                     cr?.Products ?? 0,
-                    "Skipped (collector did not report)");
+                    "Skipped (collector did not report within 30m)");
                 return;
             }
         }
