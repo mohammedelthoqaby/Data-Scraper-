@@ -610,15 +610,27 @@ h2.panel-title {
 }
 
 .matrix-table-wrap {
-  overflow-x: auto;
+  overflow: auto;
   max-width: 100%;
+  max-height: calc(100vh - 220px);
+  min-height: 420px;
+  position: relative;
+  scrollbar-gutter: stable;
+  border-top: 1px solid var(--line);
 }
 
 table.matrix-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
   min-width: 1100px;
+}
+
+table.matrix-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 table.matrix-table th {
@@ -632,11 +644,17 @@ table.matrix-table th {
   border-right: 1px solid #edf0f2;
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: 10;
+  box-shadow: inset 0 -1px 0 var(--line);
 }
 
 table.matrix-table th.sticky-col {
-  z-index: 5;
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  background: #f8fafc;
+  box-shadow: inset 0 -1px 0 var(--line), 2px 0 4px rgba(0, 0, 0, 0.04);
 }
 
 table.matrix-table td {
@@ -644,6 +662,7 @@ table.matrix-table td {
   border-bottom: 1px solid #edf0f2;
   border-right: 1px solid #edf0f2;
   vertical-align: top;
+  background: #ffffff;
 }
 
 table.matrix-table tr:hover td {
@@ -651,13 +670,12 @@ table.matrix-table tr:hover td {
 }
 
 /* Sticky first column */
-table.matrix-table th.sticky-col,
 table.matrix-table td.sticky-col {
   position: sticky;
   left: 0;
   background: #fafcfb;
-  z-index: 2;
-  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.03);
+  z-index: 5;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.04);
 }
 
 table.matrix-table tr:hover td.sticky-col {
@@ -665,7 +683,10 @@ table.matrix-table tr:hover td.sticky-col {
 }
 
 /* Lazy Bean own column */
-table.matrix-table th.matrix-own,
+table.matrix-table th.matrix-own {
+  background: #f4f9f6;
+}
+
 table.matrix-table td.matrix-own {
   background: #f4f9f6;
 }
