@@ -62,7 +62,9 @@ Infrastructure-specific. Application still has no dependency on Postgres, Redis,
   authentication by default (a global `AuthorizeFilter`); `POST /api/auth/login` and
   `POST /api/auth/logout` opt out with `[AllowAnonymous]`. `/health` is a minimal-API endpoint, not
   an MVC action, so the filter never touches it. First boot seeds one admin user from
-  `Admin:Username`/`Admin:Password` (user-secrets only) if the `users` table is empty.
+  `Admin:Username`/`Admin:Password` (user-secrets only) if the `users` table is empty. The password is
+  then changed on the website (**Settings > Account & password**); HANDOVER.md, section 5, covers
+  changing and recovering it.
 - **HTTPS redirection**: off by default (`Security:UseHttpsRedirection`, `appsettings.json`) -
   correct when a reverse proxy (nginx in `docker-compose`) terminates TLS and talks plain HTTP to
   this container; turning it on there would make Kestrel redirect the proxy's own traffic. Set it
@@ -114,9 +116,10 @@ dotnet user-secrets set "Admin:Password" "<pick-a-strong-password>"
 dotnet run
 ```
 
-`Admin:Username`/`Admin:Password` only matter on first boot (empty `users` table); after the
-admin user is seeded once they're unused - log in at `POST /api/auth/login` and call
-`POST /api/auth/logout` to clear the cookie.
+`Admin:Username`/`Admin:Password` create the admin user on first boot. Until the password is changed on
+the website, a changed `Admin:Password` is applied at startup. After that, startup never overwrites
+the stored password. To replace it from configuration, set `Admin:ResetPassword=true` once (HANDOVER.md,
+section 5). Log in at `POST /api/auth/login` and call `POST /api/auth/logout` to clear the cookie.
 
 > **Windows note**: on this machine, Hyper-V/WSL reserves TCP ports in the 5311–6513 range
 > (`netsh interface ipv4 show excludedportrange protocol=tcp`), which blocks the default

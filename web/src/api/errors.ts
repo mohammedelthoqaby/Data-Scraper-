@@ -30,6 +30,24 @@ export function apiErrorMessage(body: unknown, fallback: string): string {
 }
 
 function validationTexts(errors: unknown): string[] {
+  if (errors && typeof errors === 'object' && !Array.isArray(errors)) {
+    // ProblemDetails from the server groups messages by field: { "CurrentPassword": ["..."] }.
+    const grouped: string[] = [];
+    for (const messages of Object.values(errors as Record<string, unknown>)) {
+      if (!Array.isArray(messages)) {
+        continue;
+      }
+
+      for (const message of messages) {
+        if (typeof message === 'string' && message.trim()) {
+          grouped.push(message.trim());
+        }
+      }
+    }
+
+    return grouped;
+  }
+
   if (!Array.isArray(errors)) {
     return [];
   }

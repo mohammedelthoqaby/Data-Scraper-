@@ -10,12 +10,14 @@ using Microsoft.Extensions.Logging;
 
 namespace LazyBean.Infrastructure.Persistence;
 
-// Dev/ops convenience: creates one bootstrap login if the users table is empty, from
-// Admin:Username / Admin:Password (set via user-secrets or environment - never appsettings.json).
-// Syncs/creates bootstrap admin login from Admin:Username / Admin:Password
-// (set via user-secrets or environment - never appsettings.json).
-// If the user exists and the stored hash doesn't verify against Admin:Password,
-// re-hashes and updates the user so environment variables stay the source of truth.
+// Admin:Username / Admin:Password (user-secrets or environment, never appsettings.json) bootstrap the dashboard login.
+//
+// - No user yet: the user is created with Admin:Password.
+// - Until the password is changed on the website (users.PasswordUpdatedAt is null), a changed Admin:Password is
+//   applied at startup, so the environment stays the source of truth during setup.
+// - Once it has been changed on the website, startup never overwrites the stored password.
+// - Admin:ResetPassword=true (with Admin:Password) is the explicit recovery. It applies the configured password once
+//   per distinct value and logs a warning. Remove Admin__ResetPassword after use; see HANDOVER.md.
 public static class DbInitializer
 {
     public static async Task SeedAdminUserAsync(IServiceProvider services, CancellationToken ct = default)
@@ -30,9 +32,15 @@ public static class DbInitializer
 
         var username = configuration["Admin:Username"];
         var password = configuration["Admin:Password"];
+        var resetRequested = string.Equals(configuration["Admin:ResetPassword"], "true", StringComparison.OrdinalIgnoreCase);
 
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
+            if (resetRequested)
+            {
+                logger.LogError("Admin:ResetPassword is true, but Admin:Username and Admin:Password must both be set. No password was reset.");
+            }
+
             if (!await context.Users.AnyAsync(ct))
             {
                 logger.LogWarning(
@@ -45,15 +53,57 @@ public static class DbInitializer
         var adminUser = await context.Users.FirstOrDefaultAsync(u => u.Username == username, ct);
         if (adminUser is null)
         {
-            context.Users.Add(new User { Username = username, PasswordHash = passwordHasher.Hash(password) });
+            adminUser = new User { Username = username, PasswordHash = passwordHasher.Hash(password) };
+            if (resetRequested)
+            {
+                adminUser.RecoveryMarkerHash = passwordHasher.Hash(password);
+            }
+
+            context.Users.Add(adminUser);
             await context.SaveChangesAsync(ct);
             logger.LogInformation("Seeded bootstrap admin user {Username}.", username);
+            return;
         }
-        else if (!passwordHasher.Verify(adminUser.PasswordHash, password))
+
+        if (resetRequested)
         {
+            if (adminUser.RecoveryMarkerHash is not null && passwordHasher.Verify(adminUser.RecoveryMarkerHash, password))
+            {
+                logger.LogWarning(
+                    "Admin:ResetPassword is still set, but it was already applied for this Admin:Password. " +
+                    "Remove Admin__ResetPassword from the environment.");
+                return;
+            }
+
             adminUser.PasswordHash = passwordHasher.Hash(password);
+            adminUser.PasswordUpdatedAt = DateTimeOffset.UtcNow;
+            adminUser.SecurityStamp = User.NewSecurityStamp();
+            adminUser.RecoveryMarkerHash = passwordHasher.Hash(password);
             await context.SaveChangesAsync(ct);
-            logger.LogInformation("admin credential synced from configuration");
+            logger.LogWarning(
+                "Admin:ResetPassword was applied: the password for {Username} was reset from configuration at startup, " +
+                "and its sessions were signed out. Remove Admin__ResetPassword (and Admin__Password) from the environment now.",
+                username);
+            return;
+        }
+
+        if (adminUser.PasswordUpdatedAt is null)
+        {
+            if (!passwordHasher.Verify(adminUser.PasswordHash, password))
+            {
+                adminUser.PasswordHash = passwordHasher.Hash(password);
+                await context.SaveChangesAsync(ct);
+                logger.LogInformation("admin credential synced from configuration");
+            }
+            return;
+        }
+
+        if (!passwordHasher.Verify(adminUser.PasswordHash, password))
+        {
+            logger.LogInformation(
+                "Admin:Password differs from the stored password, which was changed on the website on {ChangedOn:u}. " +
+                "The stored password is kept. To override it, set Admin__ResetPassword=true once.",
+                adminUser.PasswordUpdatedAt);
         }
     }
 

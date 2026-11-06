@@ -113,6 +113,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <>
               <button
                 type="button"
+                aria-current={activeView === 'settings-account' ? 'page' : undefined}
+                onClick={() => onNavigate('settings-account')}
+              >
+                <span>Account & password</span>
+              </button>
+              <button
+                type="button"
                 aria-current={activeView === 'settings-alerts' ? 'page' : undefined}
                 onClick={() => onNavigate('settings-alerts')}
               >

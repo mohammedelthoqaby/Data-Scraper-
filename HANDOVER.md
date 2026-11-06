@@ -87,6 +87,9 @@ Go to **Settings > Collector**, find the device under **Paired devices**, and cl
 ### Checking the connection
 The dashboard header shows **Collector: Connected**, **Collector: Working 2/3** (jobs finished in the current batch), or **Collector: Not running**. A device counts as connected while it has polled within the last 45 seconds.
 
+### Password changes
+A dashboard password change does not sign out paired desktop apps, because each app uses its own device token. To sign them out too, tick **Also sign out all paired desktop apps** on **Settings > Account & password**. Each app then has to be paired again.
+
 ---
 
 ## 4. Installing the Desktop App
@@ -131,7 +134,8 @@ No secret values are stored in the repository. Set them in the MonsterASP contro
 | Variable | Purpose | Notes |
 |---|---|---|
 | `ConnectionStrings__Default` | PostgreSQL connection string | Points at MonsterASP PostgreSQL (PgBouncer transaction mode is supported) |
-| `Admin__Username` / `Admin__Password` | First administrator login | Used when the admin user is first created |
+| `Admin__Username` / `Admin__Password` | First administrator login | Used when the admin user is created, and until its password is first changed on the website |
+| `Admin__ResetPassword` | Password recovery | `true` applies `Admin__Password` once at startup. Remove it after use. See *Recovering the dashboard password*. |
 | `Internal__Token` | Token for the `/api/internal/*` endpoints | Not used by the desktop app and not needed for collection |
 | `Security__UseHttpsRedirection` | HTTPS redirect | `false`; TLS is terminated by the MonsterASP front end |
 
@@ -151,6 +155,34 @@ Nothing below is stored in the repository. Set them in your shell (or the IDE's 
 | `LAZYBEAN_TEST_DB_PASSWORD` | Integration tests | The same password, read by the test fixtures. CI sets it for each run. |
 | `LAZYBEAN_ADMIN_PASSWORD` | `web/scripts/*.mjs` | Dashboard admin password for the local scripts. |
 | `LAZYBEAN_TEST_AI_API_KEY` | `web/scripts/test-pgbouncer-end-to-end.mjs` | A Gemini test key. Use a key you can revoke. |
+
+---
+
+### Changing the dashboard password
+
+Sign in, then open **Settings > Account & password**. Enter the current password, then the new one twice. The new password must be at least 10 characters and different from the current one. The page gives a strength hint as you type.
+
+On success:
+
+- This browser stays signed in. Every other browser session is signed out.
+- Paired desktop apps keep working. Tick **Also sign out all paired desktop apps** to sign them out too.
+- The page shows **Password changed on** with the date and time.
+
+The change is refused unless the current password is right. Five attempts are allowed per client IP address every 15 minutes. The server logs each change and each refused attempt, never with a password.
+
+`Admin__Password` creates the admin user, and until the password is first changed on the website it keeps the stored password in step with it. After that change, a restart never overwrites the stored password, and changing `Admin__Password` has no effect. Use the recovery below to replace it.
+
+### Recovering the dashboard password
+
+Use this only when the password is lost, or when you need to replace it from configuration. It sets the password to `Admin__Password` at the next startup, and it signs out every browser session of that user.
+
+1. In MonsterASP **Website Settings > Environment Variables**, set `Admin__Password` to the new password, and set `Admin__ResetPassword` to `true`.
+2. Restart the site. The log has a warning that the reset was applied.
+3. Sign in with the new password. Then **remove `Admin__ResetPassword` and `Admin__Password`** from the environment, and restart the site again.
+
+The reset is applied once for each value of `Admin__Password`. A restart with the same value does not undo a password changed on the website afterwards, and a different value is applied again. If `Admin__ResetPassword` is `true` but `Admin__Password` is empty, nothing changes, and the log says so.
+
+For a development database, set the same two keys with user-secrets (`dotnet user-secrets set "Admin:Password" "..."` and `dotnet user-secrets set "Admin:ResetPassword" "true"`). Start the API once, then remove `Admin:ResetPassword`.
 
 ---
 
@@ -200,7 +232,7 @@ Work through this in order on the first deploy of this release.
 
 1. **Remove the GitHub variables** from MonsterASP **Website Settings > Environment Variables**: `GitHub__DispatchToken`, `GitHub__Repo`, `GitHub__Ref`. Then revoke the GitHub token in GitHub. Nothing reads these any more.
 2. **Rotate `Internal__Token`.** Set a new random value (64 characters or more) in the same place. Any script that calls `/api/internal/*` (for example `tools/verify-collector.py` with `INTERNAL_TOKEN`) must be given the new value.
-3. **Check the admin login variables.** `Admin__Username` and `Admin__Password` must be set. The admin password is synced from configuration at every startup, so a changed value takes effect on the next restart.
+3. **Check the admin login variables.** `Admin__Username` and `Admin__Password` must be set. Startup sets the admin password from `Admin__Password` only when the admin user is created, and until its password is first changed on the website. After that, use the recovery in section 5 to replace it. **Expect one sign-out:** the first start of this release signs out every open dashboard session, so sign in again after deploying.
 4. **Back up the database** before the first start of this release.
 5. **Deploy the server package.** Extract `lazybean-api-<rev>.zip` into the site folder and restart the site. Startup applies the migrations. The migration `RemoveLegacyCollectionHostHistoryRow` deletes one obsolete history row. No manual SQL is needed.
 6. **Verify the deploy.** `GET /api/version` must return `<rev>`. Settings > Collector must show the installer's SHA-256, and it must match `Get-FileHash` on `LazyBeanCollector-<rev>.exe`.

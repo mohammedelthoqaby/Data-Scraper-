@@ -84,6 +84,8 @@ builder.Services
             ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
             return Task.CompletedTask;
         };
+        // A session from before a password change (another browser) is refused on its next request.
+        options.Events.OnValidatePrincipal = LazyBean.Api.Auth.DashboardSecurityStamp.ValidateAsync;
     });
 
 builder.Services.AddAuthorization(CollectorPolicies.Register);
@@ -142,6 +144,17 @@ builder.Services.AddRateLimiter(options =>
             {
                 Window = TimeSpan.FromMinutes(1),
                 PermitLimit = 60,
+                QueueLimit = 0
+            }));
+
+    // Changing the password takes the current password: at most 5 attempts per 15 minutes per client IP.
+    options.AddPolicy("password-change", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(15),
+                PermitLimit = 5,
                 QueueLimit = 0
             }));
 

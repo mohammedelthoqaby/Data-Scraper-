@@ -27,6 +27,7 @@ import { SettingsAiView } from './views/SettingsAiView';
 import { ActionCenterView } from './views/ActionCenterView';
 import { SettingsAlertsView } from './views/SettingsAlertsView';
 import { SettingsCollectorView } from './views/SettingsCollectorView';
+import { SettingsAccountView } from './views/SettingsAccountView';
 import { CollectorBanner } from './shell/CollectorBanner';
 import { DataQualityView } from './views/DataQualityView';
 import { ProductDetailModal } from './views/ProductDetailModal';
@@ -116,6 +117,7 @@ export const App: React.FC = () => {
           'settings-ai',
           'settings-alerts',
           'settings-collector',
+          'settings-account',
           'data-quality',
           'improve-recommendations',
         ].includes(hash)
@@ -452,6 +454,10 @@ export const App: React.FC = () => {
 
               {activeView === 'settings-alerts' && (
                 <SettingsAlertsView />
+              )}
+
+              {activeView === 'settings-account' && (
+                <SettingsAccountView />
               )}
 
               {activeView === 'settings-collector' && (
