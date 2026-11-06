@@ -10,11 +10,11 @@ namespace LazyBean.IntegrationTests;
 
 public class PgBouncerVerificationTests
 {
-    private const string AdminConnectionString =
-        "Host=localhost;Port=15432;Database=postgres;Username=lazybean;Password=changeme";
+    private static string AdminConnectionString =>
+        $"Host=localhost;Port=15432;Database=postgres;Username=lazybean;Password={TestDb.Password}";
 
-    private const string PgBouncerBaseConnectionString =
-        "Host=localhost;Port=16432;Username=lazybean;Password=changeme;No Reset On Close=true";
+    private static string PgBouncerBaseConnectionString =>
+        $"Host=localhost;Port=16432;Username=lazybean;Password={TestDb.Password};No Reset On Close=true";
 
     [Fact]
     public async Task PgBouncer_DirectConnection_ExecutesQueryInTransactionMode()

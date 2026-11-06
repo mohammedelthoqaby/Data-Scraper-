@@ -170,6 +170,8 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
+builder.Services.AddSingleton<LazyBean.Api.Common.CollectorAppPackage>();
+
 var app = builder.Build();
 
 var redisConfigured = !string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("Redis"));
@@ -208,6 +210,8 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Hash the desktop installer once, so the SHA-256 shown in Settings > Collector is computed at startup.
+_ = app.Services.GetRequiredService<LazyBean.Api.Common.CollectorAppPackage>();
 await DbInitializer.SeedAdminUserAsync(app.Services);
 await DbInitializer.SeedCompetitorsAsync(app.Services);
 await DbInitializer.RecoverInterruptedRunsAsync(app.Services);

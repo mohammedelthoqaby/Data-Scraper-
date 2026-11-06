@@ -186,18 +186,18 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
         }
       });
 
-      // Meta display label: "Synced <date>, N ads" or "Runner offline - last sync <date>" (never error/red)
+      // Meta display label: "Synced <date>, N ads" or "Last sync <date>" (never error/red)
       const metaFormattedDate = latestMetaSync
         ? new Date(latestMetaSync).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
         : null;
 
-      let metaLabel = 'Runner offline - not synced yet';
+      let metaLabel = 'Not synced yet';
       let metaBadgeClass = 'badge neutral';
       if (metaAdCount > 0 && metaFormattedDate) {
         metaLabel = `Synced ${metaFormattedDate}, ${metaAdCount} ads`;
         metaBadgeClass = 'badge good';
       } else if (metaFormattedDate) {
-        metaLabel = `Runner offline - last sync ${metaFormattedDate}`;
+        metaLabel = `Last sync ${metaFormattedDate}`;
         metaBadgeClass = 'badge neutral';
       }
 
@@ -448,7 +448,7 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
         </select>
 
         <div style={{ fontSize: '13px', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-          Showing <strong>{filteredCampaigns.length}</strong> campaigns
+          <span>Showing <strong>{filteredCampaigns.length}</strong> campaigns</span>
         </div>
       </div>
 

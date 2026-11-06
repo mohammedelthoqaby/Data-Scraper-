@@ -16,7 +16,7 @@ async function main() {
   const loginRes = await fetch('http://localhost:5188/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'Dev-Only-P@ssw0rd!' })
+    body: JSON.stringify({ username: 'admin', password: process.env.LAZYBEAN_ADMIN_PASSWORD })
   });
   const cookie = loginRes.headers.get('set-cookie');
 
@@ -74,7 +74,7 @@ async function main() {
   await page.waitForSelector('.unlock-card', { timeout: 10000 });
 
   // Log in via unlock screen
-  await page.type('#unlock-password', 'Dev-Only-P@ssw0rd!');
+  await page.type('#unlock-password', process.env.LAZYBEAN_ADMIN_PASSWORD);
   await page.click('button[type="submit"]');
 
   // Wait for overview, then navigate to price-comparisons hash

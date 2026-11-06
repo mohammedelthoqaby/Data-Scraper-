@@ -64,7 +64,7 @@ async function runTests() {
     console.log('Test 3: Logging in via Unlock Screen and verifying Overview shows real numbers...');
 
     await page.waitForSelector('#unlock-password', { timeout: 5000 });
-    await page.type('#unlock-password', 'Dev-Only-P@ssw0rd!');
+    await page.type('#unlock-password', process.env.LAZYBEAN_ADMIN_PASSWORD);
     
     const submitBtn = await page.$('button[type="submit"]');
     assert.ok(submitBtn, 'Submit button on unlock screen not found');

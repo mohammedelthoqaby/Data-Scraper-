@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+using LazyBean.Api.Common;
 using LazyBean.Application.Collector.Commands.RevokeCollectorDevice;
 using LazyBean.Application.Collector.Contracts;
 using LazyBean.Application.Collector.Dtos;
@@ -19,15 +19,8 @@ namespace LazyBean.Api.Controllers;
 public class CollectorAdminController(
     ISender sender,
     ICollectorJobService jobs,
-    IWebHostEnvironment environment) : ControllerBase
+    CollectorAppPackage appPackage) : ControllerBase
 {
-    private const string AppFileName = "LazyBeanCollector.exe";
-    private const string AppDownloadPath = "/downloads/" + AppFileName;
-
-    private static readonly object HashLock = new();
-    private static CollectorAppInfoResponse? _cachedAppInfo;
-    private static DateTime _cachedStamp;
-    private static long _cachedLength;
 
     [HttpGet("status")]
     [ProducesResponseType(typeof(CollectorStatusDto), StatusCodes.Status200OK)]
@@ -68,32 +61,11 @@ public class CollectorAdminController(
         return Ok(await jobs.GetRunJobsAsync(runId, ct));
     }
 
-    // Whether the desktop installer is published, with the SHA-256 the download page shows.
+    // Whether the desktop installer is published, with the SHA-256 computed at startup.
     [HttpGet("app-info")]
     [ProducesResponseType(typeof(CollectorAppInfoResponse), StatusCodes.Status200OK)]
-    public IActionResult GetAppInfo()
-    {
-        var path = Path.Combine(environment.WebRootPath ?? string.Empty, "downloads", AppFileName);
-        if (!System.IO.File.Exists(path))
-        {
-            return Ok(new CollectorAppInfoResponse(false, null, null, null));
-        }
-
-        var info = new FileInfo(path);
-        lock (HashLock)
-        {
-            if (_cachedAppInfo is null || _cachedStamp != info.LastWriteTimeUtc || _cachedLength != info.Length)
-            {
-                using var stream = System.IO.File.OpenRead(path);
-                var hash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
-                _cachedAppInfo = new CollectorAppInfoResponse(true, AppDownloadPath, info.Length, hash);
-                _cachedStamp = info.LastWriteTimeUtc;
-                _cachedLength = info.Length;
-            }
-
-            return Ok(_cachedAppInfo);
-        }
-    }
+    public IActionResult GetAppInfo() =>
+        Ok(new CollectorAppInfoResponse(appPackage.Available, appPackage.DownloadUrl, appPackage.SizeBytes, appPackage.Sha256));
 }
 
 public sealed record CollectorAppInfoResponse(bool Available, string? DownloadUrl, long? SizeBytes, string? Sha256);

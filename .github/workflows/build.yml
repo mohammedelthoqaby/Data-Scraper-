@@ -10,12 +10,15 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # Throwaway password for this run's Postgres service. The integration tests read it from the environment.
+    env:
+      LAZYBEAN_TEST_DB_PASSWORD: ci-${{ github.run_id }}
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: lazybean
-          POSTGRES_PASSWORD: changeme
+          POSTGRES_PASSWORD: ci-${{ github.run_id }}
           POSTGRES_DB: postgres
         ports:
           - 15432:5432
@@ -49,12 +52,13 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore backend/LazyBean.slnx
 
-      - name: Check for vulnerable packages
+      - name: Check for vulnerable packages (fail on High or Critical)
         run: |
-          output=$(dotnet list backend/LazyBean.slnx package --vulnerable --include-transitive)
-          echo "$output"
-          if echo "$output" | grep -Ei "Critical|High"; then
-            echo "::error::Vulnerable packages detected with Critical or High severity!"
+          set -o pipefail
+          dotnet list backend/LazyBean.slnx package --vulnerable --include-transitive | tee vulnerable.txt
+          # Match only the Severity column, so package names or advisory URLs cannot trigger a failure.
+          if grep -E "[[:space:]](High|Critical)[[:space:]]" vulnerable.txt; then
+            echo "::error::Vulnerable packages with High or Critical severity were found."
             exit 1
           fi
 

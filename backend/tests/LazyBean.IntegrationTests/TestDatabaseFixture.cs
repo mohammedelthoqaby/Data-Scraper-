@@ -12,13 +12,13 @@ namespace LazyBean.IntegrationTests;
 // genuinely empty schema (no cross-test leftovers to clean up by hand).
 public class TestDatabaseFixture : IAsyncLifetime
 {
-    private const string AdminConnectionString =
-        "Host=localhost;Port=15432;Database=postgres;Username=lazybean;Password=changeme";
+    private static string AdminConnectionString =>
+        $"Host=localhost;Port=15432;Database=postgres;Username=lazybean;Password={TestDb.Password}";
 
     private const string TestDatabaseName = "lazybean_test";
 
     public string ConnectionString { get; } =
-        $"Host=localhost;Port=16432;Database={TestDatabaseName};Username=lazybean;Password=changeme;No Reset On Close=true";
+        $"Host=localhost;Port=16432;Database={TestDatabaseName};Username=lazybean;Password={TestDb.Password};No Reset On Close=true";
 
     public async Task InitializeAsync()
     {

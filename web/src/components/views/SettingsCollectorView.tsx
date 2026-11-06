@@ -92,12 +92,14 @@ export const SettingsCollectorView: React.FC = () => {
   return (
     <div className="settings-ai-view">
       <div className="page-heading">
-        <div className="eyebrow">Settings</div>
-        <h2 className="view-title">LazyBean Collector</h2>
-        <p className="subtitle">
-          The desktop app collects Strong Coffee and Meta ads from your PC, which avoids blocks on server addresses.
-          Google ads run on the server when no app is connected.
-        </p>
+        <div>
+          <div className="eyebrow">Settings</div>
+          <h2 className="view-title">LazyBean Collector</h2>
+          <p className="subtitle">
+            The desktop app collects Strong Coffee and Meta ads from your PC, which avoids blocks on server addresses.
+            Google ads run on the server when no app is connected.
+          </p>
+        </div>
       </div>
 
       {error && <div className="warning-banner" style={{ marginBottom: '12px' }}>{error}</div>}

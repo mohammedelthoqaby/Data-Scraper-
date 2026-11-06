@@ -5,7 +5,7 @@ async function main() {
   const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'Dev-Only-P@ssw0rd!' })
+    body: JSON.stringify({ username: 'admin', password: process.env.LAZYBEAN_ADMIN_PASSWORD })
   });
 
   const cookie = loginRes.headers.get('set-cookie');

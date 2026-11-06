@@ -19,6 +19,7 @@ public sealed class PairForm : Form
     {
         _host = host;
         Text = "Pair LazyBean Collector";
+        Icon = AppIcons.Load(new Size(32, 32));
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;

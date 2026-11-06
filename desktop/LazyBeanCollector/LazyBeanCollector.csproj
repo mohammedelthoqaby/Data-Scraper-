@@ -27,7 +27,13 @@
     <Version>1.0.0</Version>
     <Company>LazyBean</Company>
     <Product>LazyBean Collector</Product>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\app.ico" LogicalName="app.ico" />
+    <EmbeddedResource Include="Assets\logo.png" LogicalName="logo.png" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\backend\src\LazyBean.Collectors\LazyBean.Collectors.csproj" />

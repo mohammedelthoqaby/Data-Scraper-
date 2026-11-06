@@ -53,7 +53,7 @@ public sealed class MainForm : Form
         MinimumSize = new Size(760, 600);
         ClientSize = new Size(820, 640);
         StartPosition = FormStartPosition.CenterScreen;
-        Icon = TrayController.CreateIcon();
+        Icon = AppIcons.Load(new Size(32, 32));
 
         BuildLayout();
 

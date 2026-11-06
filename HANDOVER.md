@@ -129,7 +129,20 @@ No secret values are stored in the repository. Set them in the MonsterASP contro
 
 **Removed:** `GitHub__DispatchToken`, `GitHub__Repo`, and `GitHub__Ref`. They are no longer read, and the GitHub access token can be revoked in GitHub.
 
+**Rotate:** `Internal__Token` must be a new random value of 64 characters or more. The development value that was once committed to this repository must never be used in production.
+
 **In the app (encrypted in the database):** the Gemini API key, under **Settings > AI Configuration**.
+
+### Developer environment variables
+
+Nothing below is stored in the repository. Set them in your shell (or the IDE's run configuration) before using the tools.
+
+| Variable | Used by | Purpose |
+|---|---|---|
+| `LAZYBEAN_DB_PASSWORD` | `backend/docker-compose.yml` | Password for the local Postgres `lazybean` user. Compose refuses to start without it. |
+| `LAZYBEAN_TEST_DB_PASSWORD` | Integration tests | The same password, read by the test fixtures. CI sets it for each run. |
+| `LAZYBEAN_ADMIN_PASSWORD` | `web/scripts/*.mjs` | Dashboard admin password for the local scripts. |
+| `LAZYBEAN_TEST_AI_API_KEY` | `web/scripts/test-pgbouncer-end-to-end.mjs` | A Gemini test key. Use a key you can revoke. |
 
 ---
 
@@ -156,17 +169,36 @@ No secret values are stored in the repository. Set them in the MonsterASP contro
 
 ## 8. Publishing a Release
 
+Run this from the repository root, after the release commit is made:
+
 ```powershell
-# 1. Build the server (this also builds web/ and copies it into wwwroot)
-dotnet publish backend/src/LazyBean.Api/LazyBean.Api.csproj -c Release -r win-x86 --self-contained false -o publish
-
-# 2. Remove development settings
-Remove-Item publish/appsettings.Development.json -ErrorAction SilentlyContinue
-
-# 3. Optional: publish the desktop app and place it where the server serves it
-#    publish/wwwroot/downloads/LazyBeanCollector.exe
+powershell -ExecutionPolicy Bypass -File tools/package-release.ps1
 ```
 
-Zip the contents of `publish/` (files at the root of the archive) and extract them into the MonsterASP site folder. The desktop installer is only offered on the Settings page when `wwwroot/downloads/LazyBeanCollector.exe` exists.
+It writes these files to `artifacts/` (git-ignored):
+
+- `LazyBeanCollector-<rev>.exe`: the desktop app, one self-contained win-x64 file.
+- `lazybean-api-<rev>.zip`: the server package. It contains `wwwroot/downloads/LazyBeanCollector.exe`, so the installer is offered on **Settings > Collector**, and it has no `appsettings.Development.json`.
+
+The script copies the exe into `wwwroot/downloads` only for the server publish, then removes the copy. The exe is never committed. Extract the zip into the MonsterASP site folder.
+
+Settings > Collector shows the SHA-256 of the served installer, computed once at startup. Compare it with `Get-FileHash artifacts/LazyBeanCollector-<rev>.exe -Algorithm SHA256`.
+
+---
+
+## 9. Release Checklist
+
+Work through this in order on the first deploy of this release.
+
+1. **Remove the GitHub variables** from MonsterASP **Website Settings > Environment Variables**: `GitHub__DispatchToken`, `GitHub__Repo`, `GitHub__Ref`. Then revoke the GitHub token in GitHub. Nothing reads these any more.
+2. **Rotate `Internal__Token`.** Set a new random value (64 characters or more) in the same place. Any script that calls `/api/internal/*` (for example `tools/verify-collector.py` with `INTERNAL_TOKEN`) must be given the new value.
+3. **Check the admin login variables.** `Admin__Username` and `Admin__Password` must be set. The admin password is synced from configuration at every startup, so a changed value takes effect on the next restart.
+4. **Back up the database** before the first start of this release.
+5. **Deploy the server package.** Extract `lazybean-api-<rev>.zip` into the site folder and restart the site. Startup applies the migrations. The migration `RemoveLegacyCollectionHostHistoryRow` deletes one obsolete history row. No manual SQL is needed.
+6. **Verify the deploy.** `GET /api/version` must return `<rev>`. Settings > Collector must show the installer's SHA-256, and it must match `Get-FileHash` on `LazyBeanCollector-<rev>.exe`.
+7. **First pairing.** On the collecting PC, install the app (section 4, including the SmartScreen steps). Pair it with the dashboard admin username and password. The "No LazyBean Collector is connected" banner must clear within a minute.
+8. **Confirm the first jobs.** Press **Collect ads now** on **Settings > Collector**. The status must show the batch as finished, with the Meta job completed by the app. Strong Coffee must be collected on the next run.
+
+---
 
 Database changes ship as EF Core migrations and are applied at startup. Never write schema changes as raw SQL at startup.

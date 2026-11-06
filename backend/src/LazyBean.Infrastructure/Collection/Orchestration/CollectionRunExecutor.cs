@@ -233,14 +233,18 @@ public class CollectionRunExecutor(
         {
             var run = await db.CollectionRuns.FirstAsync(r => r.Id == runId, CancellationToken.None);
             var compRuns = await db.CompetitorRuns.Where(cr => cr.RunId == runId).ToListAsync(CancellationToken.None);
-            var anyDegradedOrFailed = compRuns.Any(cr => cr.Status == CompetitorRunStatus.Degraded || cr.Status == CompetitorRunStatus.Failed);
+            // A skipped desktop store was not collected, so the run is partial rather than complete.
+            var anyIncomplete = compRuns.Any(cr =>
+                cr.Status == CompetitorRunStatus.Degraded ||
+                cr.Status == CompetitorRunStatus.Failed ||
+                cr.Status == CompetitorRunStatus.Skipped);
             var allFailed = compRuns.Count > 0 && compRuns.All(cr => cr.Status == CompetitorRunStatus.Failed);
 
             if (allFailed)
             {
                 run.Status = CollectionRunStatus.Failed;
             }
-            else if (anyDegradedOrFailed)
+            else if (anyIncomplete)
             {
                 run.Status = CollectionRunStatus.Partial;
             }
