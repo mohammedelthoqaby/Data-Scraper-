@@ -4,6 +4,7 @@ using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Collection.Contracts;
 using LazyBean.Application.Collector;
 using LazyBean.Application.Collector.Commands.PairCollectorDevice;
+using LazyBean.Application.Collector.Commands.RevokeCollectorDevice;
 using LazyBean.Application.Collector.Contracts;
 using LazyBean.Application.Collector.Dtos;
 using LazyBean.Application.Common.Interfaces;
@@ -212,6 +213,25 @@ public class CollectorController(
         }
 
         return Ok(await adsIngestion.IngestGoogleAdvertiserAsync(request, ct));
+    }
+
+    // "Collect ads now" from the desktop app: queues the Meta and Google ads jobs for this batch.
+    [HttpPost("ads-now")]
+    [Authorize(Policy = CollectorPolicies.AnyDevice)]
+    [ProducesResponseType(typeof(CollectorRunPlan), StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> AdsNow(CancellationToken ct)
+    {
+        return Accepted(await jobs.PlanAdsOnlyAsync(ct));
+    }
+
+    // Sign out of the desktop app: revokes this device's own token.
+    [HttpPost("unpair")]
+    [Authorize(Policy = CollectorPolicies.AnyDevice)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Unpair(CancellationToken ct)
+    {
+        await sender.Send(new RevokeCollectorDeviceCommand(CurrentDeviceId), ct);
+        return NoContent();
     }
 
     // A device may only write a competitor's products for the run and competitor it currently claims.

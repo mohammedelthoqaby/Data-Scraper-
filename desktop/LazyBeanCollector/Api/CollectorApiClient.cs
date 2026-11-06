@@ -1,0 +1,246 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Net.Sockets;
+using System.Text.Json;
+using LazyBean.Application.Ads.Dtos;
+using LazyBean.Application.Collection.Contracts;
+using LazyBean.Application.Collector.Dtos;
+
+namespace LazyBean.Collector.App.Api;
+
+// HTTP client for /api/collector/*. Every call except pairing goes through the retry policy, and every
+// failure is classified into a CollectorApiException the app can explain to the user.
+public sealed class CollectorApiClient(HttpClient http, RetryPolicy retry) : ICollectorApi
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    // Set after pairing and when the app starts with a saved token.
+    public string? BearerToken { get; set; }
+
+    public async Task<PairCollectorDeviceResultDto> PairAsync(string username, string password, string deviceName, CancellationToken ct)
+    {
+        // No retries for pairing: a retry after a dropped response could create a second device.
+        try
+        {
+            return await ReadRequiredAsync<PairCollectorDeviceResultDto>(
+                HttpMethod.Post,
+                "api/collector/pair",
+                new { username, password, deviceName },
+                auth: false,
+                ct);
+        }
+        catch (CollectorApiException ex) when (ex.Kind == ApiErrorKind.Unauthorized)
+        {
+            throw new CollectorApiException(ApiErrorKind.Unauthorized, "The username or password is not correct.", ex.StatusCode, inner: ex);
+        }
+        catch (CollectorApiException ex) when (ex.Kind == ApiErrorKind.RateLimited)
+        {
+            throw new CollectorApiException(ApiErrorKind.RateLimited, "Too many attempts. Wait 10 minutes, then try again.", ex.StatusCode, inner: ex);
+        }
+    }
+
+    public Task<CollectorJobDto?> ClaimNextJobAsync(CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var response = await SendAsync(HttpMethod.Get, "api/collector/jobs/next", null, auth: true, c);
+            if (response.StatusCode == HttpStatusCode.NoContent)
+            {
+                return null;
+            }
+
+            return await ReadBodyAsync<CollectorJobDto>(response, c);
+        }, ct);
+
+    public Task HeartbeatAsync(Guid jobId, CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var _ = await SendAsync(HttpMethod.Post, $"api/collector/jobs/{jobId}/heartbeat", null, auth: true, c);
+            return true;
+        }, ct);
+
+    public Task CompleteJobAsync(Guid jobId, CompleteCollectorJobRequest request, CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var _ = await SendAsync(HttpMethod.Post, $"api/collector/jobs/{jobId}/complete", request, auth: true, c);
+            return true;
+        }, ct);
+
+    public Task<CollectorIdentities> GetIdentitiesAsync(CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var response = await SendAsync(HttpMethod.Get, "api/collector/identities", null, auth: true, c);
+            var body = await ReadBodyAsync<IdentitiesBody>(response, c)
+                ?? throw new CollectorApiException(ApiErrorKind.ServerError, "The server returned no identities.");
+            return new CollectorIdentities(body.Meta ?? [], body.Google ?? []);
+        }, ct);
+
+    public Task IngestProductsAsync(Guid runId, string slug, IngestProductsBatchRequest request, CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var _ = await SendAsync(HttpMethod.Post, $"api/collector/runs/{runId}/competitors/{slug}/products", request, auth: true, c);
+            return true;
+        }, ct);
+
+    public Task CompleteCompetitorAsync(Guid runId, string slug, CompleteCompetitorRunRequest request, CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var _ = await SendAsync(HttpMethod.Post, $"api/collector/runs/{runId}/competitors/{slug}/complete", request, auth: true, c);
+            return true;
+        }, ct);
+
+    public Task<AdsIngestResponse> IngestMetaAdsAsync(MetaAdsIngestRequest request, CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var response = await SendAsync(HttpMethod.Post, "api/collector/ads/meta", request, auth: true, c);
+            return await ReadBodyAsync<AdsIngestResponse>(response, c)
+                ?? throw new CollectorApiException(ApiErrorKind.ServerError, "The server returned no ingest result.");
+        }, ct);
+
+    public Task<AdsIngestResponse> IngestGoogleAdsAsync(GoogleAdsIngestRequest request, CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var response = await SendAsync(HttpMethod.Post, "api/collector/ads/google", request, auth: true, c);
+            return await ReadBodyAsync<AdsIngestResponse>(response, c)
+                ?? throw new CollectorApiException(ApiErrorKind.ServerError, "The server returned no ingest result.");
+        }, ct);
+
+    public Task RequestAdsNowAsync(CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var _ = await SendAsync(HttpMethod.Post, "api/collector/ads-now", null, auth: true, c);
+            return true;
+        }, ct);
+
+    public Task UnpairAsync(CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var _ = await SendAsync(HttpMethod.Post, "api/collector/unpair", null, auth: true, c);
+            return true;
+        }, ct);
+
+    private async Task<T> ReadRequiredAsync<T>(HttpMethod method, string path, object? body, bool auth, CancellationToken ct)
+    {
+        using var response = await SendAsync(method, path, body, auth, ct);
+        return await ReadBodyAsync<T>(response, ct)
+            ?? throw new CollectorApiException(ApiErrorKind.ServerError, "The server returned an empty response.");
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? body, bool auth, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        if (auth)
+        {
+            if (string.IsNullOrEmpty(BearerToken))
+            {
+                throw new CollectorApiException(ApiErrorKind.Unauthorized, "This PC is not paired. Pair it again.", HttpStatusCode.Unauthorized);
+            }
+
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", BearerToken);
+        }
+
+        if (body is not null)
+        {
+            request.Content = JsonContent.Create(body, options: Json);
+        }
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await http.SendAsync(request, HttpCompletionOption.ResponseContentRead, ct);
+        }
+        catch (HttpRequestException ex) when (IsNameResolutionFailure(ex))
+        {
+            throw new CollectorApiException(
+                ApiErrorKind.ServerNotFound,
+                "The server address could not be found. Check the server URL in the settings.",
+                inner: ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new CollectorApiException(ApiErrorKind.Offline, "Could not reach the server. Check the internet connection.", inner: ex);
+        }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            throw new CollectorApiException(ApiErrorKind.Timeout, "The server did not answer in time.", inner: ex);
+        }
+
+        if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NoContent)
+        {
+            return response;
+        }
+
+        var retryAfter = response.Headers.RetryAfter?.Delta;
+        var detail = await ReadDetailAsync(response, ct);
+        var status = response.StatusCode;
+        response.Dispose();
+        throw Classify(status, detail, retryAfter);
+    }
+
+    private static bool IsNameResolutionFailure(HttpRequestException ex) =>
+        ex.InnerException is SocketException socket &&
+        socket.SocketErrorCode is SocketError.HostNotFound or SocketError.TryAgain or SocketError.NoData;
+
+    private static CollectorApiException Classify(HttpStatusCode status, string detail, TimeSpan? retryAfter) => status switch
+    {
+        HttpStatusCode.Unauthorized => new CollectorApiException(
+            ApiErrorKind.Unauthorized,
+            "The server no longer accepts this PC's token. Pair the app again.",
+            status),
+        HttpStatusCode.Forbidden => new CollectorApiException(ApiErrorKind.Forbidden, $"The server refused this request: {detail}", status),
+        HttpStatusCode.Conflict => new CollectorApiException(
+            ApiErrorKind.Conflict,
+            "This job is no longer claimed by this PC. It will be picked up again.",
+            status),
+        HttpStatusCode.NotFound => new CollectorApiException(ApiErrorKind.NotFound, $"Not found on the server: {detail}", status),
+        HttpStatusCode.TooManyRequests => new CollectorApiException(
+            ApiErrorKind.RateLimited,
+            "Too many requests. The server or the source asked to slow down.",
+            status,
+            retryAfter),
+        _ when (int)status >= 500 => new CollectorApiException(
+            ApiErrorKind.ServerError,
+            $"The server reported an error ({(int)status}). Try again shortly.",
+            status),
+        _ => new CollectorApiException(ApiErrorKind.BadRequest, $"The server rejected the request ({(int)status}): {detail}", status),
+    };
+
+    private static async Task<T?> ReadBodyAsync<T>(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<T>(Json, ct);
+        }
+        catch (JsonException ex)
+        {
+            throw new CollectorApiException(ApiErrorKind.ServerError, "The server sent a response the app does not understand.", inner: ex);
+        }
+    }
+
+    private static async Task<string> ReadDetailAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            var text = await response.Content.ReadAsStringAsync(ct);
+            if (text.Length == 0)
+            {
+                return response.ReasonPhrase ?? string.Empty;
+            }
+
+            using var document = JsonDocument.Parse(text);
+            if (document.RootElement.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String)
+            {
+                return error.GetString() ?? string.Empty;
+            }
+
+            return text.Length > 200 ? text[..200] : text;
+        }
+        catch (JsonException)
+        {
+            return response.ReasonPhrase ?? string.Empty;
+        }
+    }
+
+    // Shape of GET api/collector/identities.
+    private sealed record IdentitiesBody(IReadOnlyList<MetaIdentityDto>? Meta, IReadOnlyList<GoogleIdentityDto>? Google);
+}

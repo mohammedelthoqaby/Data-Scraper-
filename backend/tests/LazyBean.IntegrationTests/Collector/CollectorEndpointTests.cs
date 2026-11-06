@@ -205,6 +205,28 @@ public class CollectorEndpointTests(TestDatabaseFixture testDb) : IAsyncLifetime
         Assert.Contains(job.ClaimedByDeviceId, new[] { (Guid?)first.DeviceId, second.DeviceId });
     }
 
+    [Fact]
+    public async Task AdsNow_FromADevice_QueuesTheAdsJobs()
+    {
+        var device = await PairAsync("Office PC");
+
+        var response = await SendAsync(HttpMethod.Post, "/api/collector/ads-now", device.Token);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Unpair_RevokesTheCallingDevice()
+    {
+        var device = await PairAsync("Office PC");
+
+        var unpair = await SendAsync(HttpMethod.Post, "/api/collector/unpair", device.Token);
+        var afterwards = await SendAsync(HttpMethod.Get, "/api/collector/jobs/next", device.Token);
+
+        Assert.Equal(HttpStatusCode.NoContent, unpair.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, afterwards.StatusCode);
+    }
+
     private async Task<PairResponse> PairAsync(string deviceName)
     {
         using var anonymous = _factory.CreateClient();

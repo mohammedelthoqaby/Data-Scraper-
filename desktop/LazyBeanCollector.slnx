@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/app/">
+    <Project Path="LazyBeanCollector/LazyBeanCollector.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="LazyBeanCollector.Tests/LazyBeanCollector.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -98,6 +98,17 @@ The installer is `LazyBeanCollector.exe`. It is served from the dashboard at **S
 
 If the installer is not listed on the page, it has not been published to the server yet.
 
+### Where the app keeps its data
+- `%LOCALAPPDATA%\LazyBeanCollector\settings.json`: server address, device name, and the last sync per source. It holds no secrets.
+- `%LOCALAPPDATA%\LazyBeanCollector\device-token.bin`: the device token, encrypted with Windows DPAPI for the current Windows user. Another Windows account, or another PC, cannot read it.
+- `%LOCALAPPDATA%\LazyBeanCollector\logs\yyyy-MM-dd.log`: the activity log. The window shows the same lines.
+
+### Uninstall
+1. Turn off **Start with Windows** in the app, if it is on.
+2. Click **Sign out** in the app. This revokes the device on the server.
+3. Right-click the tray icon and choose **Exit**.
+4. Delete `LazyBeanCollector.exe` and the `%LOCALAPPDATA%\LazyBeanCollector` folder.
+
 ### App closed or PC off
 - Strong Coffee and Meta jobs wait for the app. After 10 minutes with no app, they are skipped and the run finishes.
 - Google continues on the server, so Google ads are collected whenever the app is closed.
@@ -126,7 +137,7 @@ No secret values are stored in the repository. Set them in the MonsterASP contro
 
 - **Meta identities.** Approved automatically on startup for the seeded Page IDs. To stop collecting a page, reject its identity under **Manage Sources > Advertiser Identities**. A rejection survives restarts.
 - **Google identities.** Click **Discover Google Advertisers** next to a competitor, review the candidates, and approve the right one. The result says either how many advertisers were found, or that none were found.
-- **Collect ads now.** Starts Meta and Google collection without a full run. It is on **Settings > Collector** and the Ads page.
+- **Collect ads now.** Starts Meta and Google collection without a full run. It is on **Settings > Collector**, and in the desktop app (its window and tray menu).
 
 ---
 
