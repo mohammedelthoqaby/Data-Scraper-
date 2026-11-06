@@ -70,6 +70,19 @@ public class CollectorController(
             : Conflict(new { error = "This job is not claimed by this device." });
     }
 
+    // Sent when the app exits while it holds a job (the user chose Exit or signed out). The job goes back to
+    // the queue at once, so another PC or the next poll can take it.
+    [HttpPost("jobs/{jobId:guid}/release")]
+    [Authorize(Policy = CollectorPolicies.AnyDevice)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ReleaseJob(Guid jobId, CancellationToken ct)
+    {
+        return await jobs.ReleaseAsync(CurrentDeviceId, jobId, ct)
+            ? NoContent()
+            : Conflict(new { error = "This job is not claimed by this device." });
+    }
+
     [HttpPost("jobs/{jobId:guid}/complete")]
     [Authorize(Policy = CollectorPolicies.AnyDevice)]
     [ProducesResponseType(StatusCodes.Status200OK)]

@@ -23,6 +23,9 @@ public sealed class JobRunner(
     public static readonly TimeSpan IdlePoll = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan DefaultHeartbeat = TimeSpan.FromSeconds(30);
 
+    // How long an exit waits for the server to take the claim back. Past this, the lease expires on its own.
+    public static readonly TimeSpan ReleaseTimeout = TimeSpan.FromSeconds(10);
+
     private readonly TimeSpan _heartbeat = heartbeatInterval ?? DefaultHeartbeat;
 
     public async Task RunAsync(CancellationToken ct)
@@ -63,6 +66,7 @@ public sealed class JobRunner(
         using var jobCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var keepAlive = KeepAliveAsync(job.Id, jobCts);
         var title = TitleFor(job);
+        state.SetBatch(job.BatchTotal > 0 ? new BatchProgress(job.BatchPosition, job.BatchTotal) : null);
         state.SetJob(new JobProgress(title, "Starting…", 0, null, DateTimeOffset.Now));
         log.Info($"Started: {title}.");
 
@@ -91,7 +95,8 @@ public sealed class JobRunner(
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // The app is shutting down or the user signed out. The claim expires on the server.
+            // The app is exiting or the user signed out. Hand the job back now instead of letting the lease expire.
+            await ReleaseOnExitAsync(job.Id);
             throw;
         }
         catch (Exception ex) when (ex is not PairingRequiredException)
@@ -115,6 +120,22 @@ public sealed class JobRunner(
             }
 
             state.SetJob(null);
+            state.SetBatch(null);
+        }
+    }
+
+    // Best effort: a dead connection just lets the lease expire on the server, as it did before this existed.
+    private async Task ReleaseOnExitAsync(Guid jobId)
+    {
+        using var timeout = new CancellationTokenSource(ReleaseTimeout);
+        try
+        {
+            await api.ReleaseJobAsync(jobId, timeout.Token);
+            log.Info("Handed the unfinished job back to the server.");
+        }
+        catch (Exception ex) when (ex is CollectorApiException or OperationCanceledException)
+        {
+            log.Warn("Could not hand the unfinished job back. The server will reassign it when its lease expires.");
         }
     }
 

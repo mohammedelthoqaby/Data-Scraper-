@@ -11,11 +11,20 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace LazyBean.Collector.App.Host;
 
-// Owns the pairing, the device token, the API client and the worker loop. The window and the headless
-// mode both drive the app through this class.
+// Seams for tests. The app passes none of them and gets the real server, the real handlers and real timings.
+public sealed record CollectorHostOptions(
+    Func<string, ICollectorApi>? ApiFactory = null,
+    IMetaPageCollector? MetaCollector = null,
+    IGoogleAdsTransparencyClient? GoogleClient = null,
+    TimeSpan? Heartbeat = null,
+    Func<TimeSpan, CancellationToken, Task>? Delay = null);
+
+// Owns the pairing, the device token, the API client and the worker loop. The window and the headless mode
+// both drive the app through this class. Nothing here depends on a window: the loop runs on its own task, so
+// closing or disposing the window never stops collection.
 public sealed class CollectorHost : IAsyncDisposable
 {
-    private static readonly Func<TimeSpan, CancellationToken, Task> Delay = (duration, ct) => Task.Delay(duration, ct);
+    private static readonly Func<TimeSpan, CancellationToken, Task> DefaultDelay = (duration, ct) => Task.Delay(duration, ct);
 
     private readonly SettingsStore _settingsStore;
     private readonly TokenStore _tokenStore;
@@ -23,19 +32,24 @@ public sealed class CollectorHost : IAsyncDisposable
     private readonly CollectorState _state;
     private readonly ServiceProvider _services;
     private readonly WooStoreApiAdapter _woo;
-    private readonly IMetaPageCollector _metaCollector = new MetaPageCollector();
+    private readonly CollectorHostOptions _options;
+    private readonly IMetaPageCollector _metaCollector;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly object _gate = new();
     private readonly CollectorSettings _settings;
 
-    private CollectorApiClient? _api;
+    private ICollectorApi? _api;
     private HttpClient? _apiHttp;
     private CancellationTokenSource? _loopCts;
     private Task? _loop;
 
-    public CollectorHost(AppPaths paths, ActivityLog log, CollectorState state)
+    public CollectorHost(AppPaths paths, ActivityLog log, CollectorState state, CollectorHostOptions? options = null)
     {
         _log = log;
         _state = state;
+        _options = options ?? new CollectorHostOptions();
+        _delay = _options.Delay ?? DefaultDelay;
+        _metaCollector = _options.MetaCollector ?? new MetaPageCollector();
         _settingsStore = new SettingsStore(paths.SettingsFile);
         _tokenStore = new TokenStore(paths.TokenFile);
         _settings = _settingsStore.Load();
@@ -117,9 +131,17 @@ public sealed class CollectorHost : IAsyncDisposable
         _log.Info("Queued Meta and Google ads collection.");
     }
 
+    // Stops the worker loop. A job in progress is handed back to the server first.
     public Task StopAsync() => StopLoopAsync();
 
-    private CollectorApiClient RequireApi() =>
+    // Remembers that the first-time "still running in the background" hint has been shown.
+    public void MarkTrayHintShown()
+    {
+        _settings.TrayHintShown = true;
+        SaveSettings();
+    }
+
+    private ICollectorApi RequireApi() =>
         _api ?? throw new CollectorApiException(ApiErrorKind.Unauthorized, "This PC is not paired. Pair it first.");
 
     private void StartLoop()
@@ -138,7 +160,7 @@ public sealed class CollectorHost : IAsyncDisposable
                 }
                 catch (OperationCanceledException)
                 {
-                    // Stopped by the user, by sign-out, or by the app closing.
+                    // Stopped by the user, by sign-out, or by the app exiting.
                 }
                 catch (PairingRequiredException ex)
                 {
@@ -191,25 +213,31 @@ public sealed class CollectorHost : IAsyncDisposable
         }
     }
 
-    private JobRunner CreateRunner(CollectorApiClient api)
+    private JobRunner CreateRunner(ICollectorApi api)
     {
-        var google = _services.GetRequiredService<IGoogleAdsTransparencyClient>();
+        var google = _options.GoogleClient ?? _services.GetRequiredService<IGoogleAdsTransparencyClient>();
         return new JobRunner(
             api,
             new StoreJobHandler(api, _woo, _log, _state),
-            new MetaJobHandler(api, _metaCollector, _log, _state, Delay),
-            new GoogleJobHandler(api, google, _log, _state, Delay),
+            new MetaJobHandler(api, _metaCollector, _log, _state, _delay),
+            new GoogleJobHandler(api, google, _log, _state, _delay),
             _log,
             _state,
-            Delay);
+            _delay,
+            _options.Heartbeat);
     }
 
-    private CollectorApiClient CreateApi(string serverUrl)
+    private ICollectorApi CreateApi(string serverUrl)
     {
         var trimmed = serverUrl.Trim().TrimEnd('/');
         if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
         {
             throw new CollectorApiException(ApiErrorKind.BadRequest, "The server URL must start with https://.");
+        }
+
+        if (_options.ApiFactory is { } factory)
+        {
+            return factory(trimmed);
         }
 
         _apiHttp?.Dispose();
@@ -218,7 +246,7 @@ public sealed class CollectorHost : IAsyncDisposable
             BaseAddress = new Uri(trimmed + "/"),
             Timeout = TimeSpan.FromSeconds(60),
         };
-        return new CollectorApiClient(_apiHttp, new RetryPolicy(maxRetries: 2, delay: Delay));
+        return new CollectorApiClient(_apiHttp, new RetryPolicy(maxRetries: 2, delay: _delay));
     }
 
     private void SaveLastSync(IReadOnlyDictionary<string, SourceSync> snapshot)

@@ -15,6 +15,9 @@ public sealed class CollectorSettings
 
     public string? PairedBy { get; set; }
 
+    // Set once the first-time "still running in the background" hint has been shown.
+    public bool TrayHintShown { get; set; }
+
     // Keyed by source: "store:<slug>", "meta" or "google".
     public Dictionary<string, SourceSync> LastSync { get; set; } = new(StringComparer.Ordinal);
 }

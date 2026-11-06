@@ -59,6 +59,12 @@ public sealed class CollectorApiClient(HttpClient http, RetryPolicy retry) : ICo
             return true;
         }, ct);
 
+    // Used on the way out, so it makes one attempt and no retries: exiting must not wait on retry delays.
+    public async Task ReleaseJobAsync(Guid jobId, CancellationToken ct)
+    {
+        using var _ = await SendAsync(HttpMethod.Post, $"api/collector/jobs/{jobId}/release", null, auth: true, ct);
+    }
+
     public Task CompleteJobAsync(Guid jobId, CompleteCollectorJobRequest request, CancellationToken ct) =>
         retry.ExecuteAsync(async c =>
         {

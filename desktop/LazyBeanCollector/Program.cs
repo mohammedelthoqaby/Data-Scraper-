@@ -9,6 +9,7 @@ namespace LazyBean.Collector.App;
 internal static class Program
 {
     private const string SingleInstanceName = "LazyBean.Collector.SingleInstance.v1";
+    private const string ShowRequestName = "LazyBean.Collector.Show.v1";
 
     [STAThread]
     private static int Main(string[] args)
@@ -24,17 +25,17 @@ internal static class Program
         using var singleInstance = new Mutex(initiallyOwned: true, SingleInstanceName, out var first);
         if (!first)
         {
-            MessageBox.Show(
-                "LazyBean Collector is already running. Look for its icon in the system tray.",
-                "LazyBean Collector",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            // The app is already running. Ask it to show its window, and leave without a message.
+            AskRunningInstanceToShow();
             return 0;
         }
 
         System.Windows.Forms.Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         System.Windows.Forms.Application.EnableVisualStyles();
         System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+
+        // The tray and the window marshal their updates from background threads through this context.
+        SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
 
         var paths = AppPaths.Default;
         paths.EnsureDirectories();
@@ -45,7 +46,9 @@ internal static class Program
         host.StartAsync().GetAwaiter().GetResult();
         try
         {
-            System.Windows.Forms.Application.Run(new MainForm(host, log, state, paths, startHidden: options.Background));
+            using var showRequests = new EventWaitHandle(initialState: false, EventResetMode.AutoReset, ShowRequestName);
+            using var context = new TrayApplicationContext(host, log, state, paths, showRequests, startInBackground: options.Background);
+            System.Windows.Forms.Application.Run(context);
         }
         finally
         {
@@ -53,6 +56,19 @@ internal static class Program
         }
 
         return 0;
+    }
+
+    private static void AskRunningInstanceToShow()
+    {
+        try
+        {
+            using var showRequests = EventWaitHandle.OpenExisting(ShowRequestName);
+            showRequests.Set();
+        }
+        catch (WaitHandleCannotBeOpenedException)
+        {
+            // The first instance has not created its signal yet, or it has already exited. Nothing to show.
+        }
     }
 }
 

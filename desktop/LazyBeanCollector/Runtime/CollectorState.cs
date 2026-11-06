@@ -14,6 +14,9 @@ public enum ConnectionState
 
 public sealed record JobProgress(string Title, string Message, int Done, int? Total, DateTimeOffset StartedAt);
 
+// Where the running job sits in its batch: the place (1-based) and the batch's size.
+public sealed record BatchProgress(int Position, int Total);
+
 // What the window shows. Background threads update it and raise Changed; the UI marshals to its own thread.
 public sealed class CollectorState
 {
@@ -29,6 +32,9 @@ public sealed class CollectorState
     public string ConnectionDetail { get; private set; } = "Starting…";
 
     public JobProgress? CurrentJob { get; private set; }
+
+    // The running job's batch, or null when nothing is running.
+    public BatchProgress? Batch { get; private set; }
 
     public void LoadLastSync(IReadOnlyDictionary<string, SourceSync> saved)
     {
@@ -66,6 +72,16 @@ public sealed class CollectorState
         lock (_gate)
         {
             CurrentJob = job;
+        }
+
+        Changed?.Invoke();
+    }
+
+    public void SetBatch(BatchProgress? batch)
+    {
+        lock (_gate)
+        {
+            Batch = batch;
         }
 
         Changed?.Invoke();

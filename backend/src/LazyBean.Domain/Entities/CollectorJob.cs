@@ -77,6 +77,20 @@ public class CollectorJob : BaseEntity, IAggregateRoot
         }
     }
 
+    // The app is shutting down on purpose (Exit, or sign-out) while it holds this job. The job goes back to
+    // the queue with a fresh claim window. A voluntary release is not a failed attempt, so the claim it
+    // gives back does not count toward MaxAttempts.
+    public void ReleaseByDevice(DateTimeOffset now)
+    {
+        Status = CollectorJobStatus.Queued;
+        ClaimedByDeviceId = null;
+        ClaimedAt = null;
+        LastHeartbeatAt = null;
+        Attempts = Math.Max(0, Attempts - 1);
+        QueuedAt = now;
+        UpdatedAt = now;
+    }
+
     public void Complete(DateTimeOffset now, string? summary, string? resultJson)
     {
         Status = CollectorJobStatus.Completed;

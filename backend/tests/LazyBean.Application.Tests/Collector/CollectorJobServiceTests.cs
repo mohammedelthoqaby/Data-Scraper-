@@ -300,6 +300,58 @@ public class CollectorJobServiceTests
         Assert.Equal(3, status.ActiveGroupTotal);
     }
 
+    [Fact]
+    public async Task Release_ReturnsTheClaimToTheQueue_WithoutCountingAnAttempt_AndRefusesAnotherDevice()
+    {
+        var clock = new MutableClock(T0);
+        var h = new Harness(NewDbWithPlan(out var device, out var competitor), clock);
+        await using var db = h.Db;
+        var otherPc = await AddConnectedDeviceAsync(db, T0);
+        await h.Jobs.PlanRunAsync(Guid.NewGuid(), [Target(competitor)], CancellationToken.None);
+        db.ChangeTracker.Clear();
+        var store = await h.Jobs.ClaimNextAsync(device.Id, CancellationToken.None);
+        db.ChangeTracker.Clear();
+
+        clock.Now = T0.AddMinutes(1);
+        Assert.False(await h.Jobs.ReleaseAsync(otherPc.Id, store!.Id, CancellationToken.None));
+        db.ChangeTracker.Clear();
+        Assert.True(await h.Jobs.ReleaseAsync(device.Id, store.Id, CancellationToken.None));
+        db.ChangeTracker.Clear();
+
+        var job = await db.CollectorJobs.SingleAsync(j => j.Id == store.Id);
+        Assert.Equal(CollectorJobStatus.Queued, job.Status);
+        Assert.Null(job.ClaimedByDeviceId);
+        Assert.Equal(0, job.Attempts);
+        Assert.Equal(clock.Now, job.QueuedAt);
+        db.ChangeTracker.Clear();
+
+        // The same PC's next poll gets the job back.
+        var again = await h.Jobs.ClaimNextAsync(device.Id, CancellationToken.None);
+        Assert.Equal(store.Id, again!.Id);
+    }
+
+    [Fact]
+    public async Task ClaimNext_ReportsTheJobsPlaceInItsBatch()
+    {
+        var h = NewHarness();
+        await using var db = h.Db;
+        var device = await AddConnectedDeviceAsync(db, T0);
+        var competitor = await AddStrongCoffeeAsync(db);
+        await h.Jobs.PlanRunAsync(Guid.NewGuid(), [Target(competitor)], CancellationToken.None);
+        db.ChangeTracker.Clear();
+
+        var store = await h.Jobs.ClaimNextAsync(device.Id, CancellationToken.None);
+        db.ChangeTracker.Clear();
+        Assert.Equal((1, 3), (store!.BatchPosition, store.BatchTotal));
+
+        await h.Jobs.CompleteAsync(device.Id, store.Id, new CompleteCollectorJobRequest("Completed", "done", null), CancellationToken.None);
+        db.ChangeTracker.Clear();
+
+        var meta = await h.Jobs.ClaimNextAsync(device.Id, CancellationToken.None);
+        Assert.Equal("MetaAds", meta!.Kind);
+        Assert.Equal((2, 3), (meta.BatchPosition, meta.BatchTotal));
+    }
+
     private static LazyBeanDbContext NewDbWithPlan(out CollectorDevice device, out Competitor competitor, bool connected = true)
     {
         var options = new DbContextOptionsBuilder<LazyBeanDbContext>()

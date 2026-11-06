@@ -7,7 +7,8 @@ using LazyBean.Collector.App.Startup;
 
 namespace LazyBean.Collector.App.UI;
 
-// The window. Closing it hides the app to the tray; collection keeps running. Exit is in the tray menu.
+// The window: status, the current job, last sync, actions and the activity log. It is created on demand and
+// disposed when closed. The app keeps running from its tray context (TrayApplicationContext), not from here.
 public sealed class MainForm : Form
 {
     private const int MaxLogLines = 500;
@@ -17,8 +18,8 @@ public sealed class MainForm : Form
     private readonly CollectorState _state;
     private readonly AppPaths _paths;
     private readonly string _exePath;
-    private readonly bool _startHidden;
-    private readonly TrayController _tray;
+    private readonly Action _stateChanged;
+    private readonly Action<LogEntry> _logAdded;
 
     private readonly Panel _dot = new();
     private readonly Label _status = new();
@@ -34,17 +35,14 @@ public sealed class MainForm : Form
     private readonly Button _openLogs = new();
     private readonly CheckBox _startWithWindows = new();
 
-    private bool _hiddenOnce;
     private bool _suppressStartupToggle;
-    private bool _exitRequested;
 
-    public MainForm(CollectorHost host, ActivityLog log, CollectorState state, AppPaths paths, bool startHidden)
+    public MainForm(CollectorHost host, ActivityLog log, CollectorState state, AppPaths paths)
     {
         _host = host;
         _log = log;
         _state = state;
         _paths = paths;
-        _startHidden = startHidden;
         _exePath = Environment.ProcessPath ?? System.Windows.Forms.Application.ExecutablePath;
 
         Text = "LazyBean Collector";
@@ -57,13 +55,10 @@ public sealed class MainForm : Form
 
         BuildLayout();
 
-        _tray = new TrayController(
-            openWindow: ShowWindow,
-            adsNow: () => _ = RunAdsNowAsync(),
-            exit: ExitApplication);
-
-        _state.Changed += () => OnUi(RefreshState);
-        _log.Added += entry => OnUi(() => AppendLog(entry));
+        _stateChanged = () => OnUi(RefreshState);
+        _logAdded = entry => OnUi(() => AppendLog(entry));
+        _state.Changed += _stateChanged;
+        _log.Added += _logAdded;
 
         _suppressStartupToggle = true;
         _startWithWindows.Checked = StartupRegistry.IsEnabled();
@@ -72,49 +67,13 @@ public sealed class MainForm : Form
         RefreshState();
     }
 
-    public void ExitApplication()
-    {
-        _exitRequested = true;
-        Close();
-    }
-
-    public void ShowWindow()
-    {
-        Show();
-        WindowState = FormWindowState.Normal;
-        Activate();
-    }
-
-    protected override void SetVisibleCore(bool value)
-    {
-        // Started with --background (Windows sign-in): live in the tray without showing the window.
-        if (_startHidden && !_hiddenOnce)
-        {
-            _hiddenOnce = true;
-            value = false;
-        }
-
-        base.SetVisibleCore(value);
-    }
-
-    protected override void OnFormClosing(FormClosingEventArgs e)
-    {
-        if (!_exitRequested && e.CloseReason == CloseReason.UserClosing)
-        {
-            e.Cancel = true;
-            Hide();
-            _tray.ShowHiddenHint();
-            return;
-        }
-
-        base.OnFormClosing(e);
-    }
-
+    // Unsubscribes from the app-wide events: a disposed window must not keep receiving updates.
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            _tray.Dispose();
+            _state.Changed -= _stateChanged;
+            _log.Added -= _logAdded;
         }
 
         base.Dispose(disposing);
@@ -217,7 +176,6 @@ public sealed class MainForm : Form
         };
         var device = settings.DeviceName is null ? string.Empty : $"   ·   This PC: {settings.DeviceName}";
         _server.Text = $"{_state.ConnectionDetail}   ·   Server: {settings.ServerUrl}{device}";
-        _tray.UpdateText($"LazyBean Collector: {_status.Text}");
 
         var job = _state.CurrentJob;
         if (job is null)

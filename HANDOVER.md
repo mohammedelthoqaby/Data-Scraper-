@@ -109,6 +109,12 @@ If the installer is not listed on the page, it has not been published to the ser
 3. Right-click the tray icon and choose **Exit**.
 4. Delete `LazyBeanCollector.exe` and the `%LOCALAPPDATA%\LazyBeanCollector` folder.
 
+### Window, tray and exit
+- **X closes the window; collection keeps running** in the tray. The first time, a balloon says so. The window is simply closed; the work does not depend on it.
+- **Double-click the tray icon** to open the window. Its menu has **Open**, **Collect ads now**, a status line (for example "Connected" or "Working 2/3"), and **Exit**. The tooltip shows the same status, and the icon has a green dot while a job runs.
+- **Exit** (tray menu only) is the way out. If a job is running, the app asks first. The unfinished job is handed back to the server at once, so another PC or the next poll can take it.
+- **Starting the app again** shows the running window instead of opening a second copy.
+
 ### App closed or PC off
 - Strong Coffee and Meta jobs wait for the app. After 10 minutes with no app, they are skipped and the run finishes.
 - Google continues on the server, so Google ads are collected whenever the app is closed.

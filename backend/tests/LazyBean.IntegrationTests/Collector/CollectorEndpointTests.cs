@@ -227,6 +227,27 @@ public class CollectorEndpointTests(TestDatabaseFixture testDb) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, afterwards.StatusCode);
     }
 
+    [Fact]
+    public async Task Release_HandsTheClaimBack_ForTheClaimingDeviceOnly()
+    {
+        var device = await PairAsync("Office PC");
+        var other = await PairAsync("Other PC");
+        await QueueStoreJobAsync();
+
+        // The job id comes from the claim itself: the shared test database may hold other queued jobs.
+        var claim = await SendAsync(HttpMethod.Get, "/api/collector/jobs/next", device.Token);
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        using var claimed = System.Text.Json.JsonDocument.Parse(await claim.Content.ReadAsStringAsync());
+        var jobId = claimed.RootElement.GetProperty("id").GetGuid();
+
+        var refused = await SendAsync(HttpMethod.Post, $"/api/collector/jobs/{jobId}/release", other.Token);
+        var released = await SendAsync(HttpMethod.Post, $"/api/collector/jobs/{jobId}/release", device.Token);
+
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+        Assert.Equal(CollectorJobStatus.Queued, (await ReadJobAsync(jobId)).Status);
+    }
+
     private async Task<PairResponse> PairAsync(string deviceName)
     {
         using var anonymous = _factory.CreateClient();

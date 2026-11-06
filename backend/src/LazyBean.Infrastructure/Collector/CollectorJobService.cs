@@ -173,6 +173,22 @@ public class CollectorJobService(
         return true;
     }
 
+    public async Task<bool> ReleaseAsync(Guid deviceId, Guid jobId, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
+        var job = (await unitOfWork.CollectorJobs.FindAsync(
+            j => j.Id == jobId && j.ClaimedByDeviceId == deviceId && j.Status == CollectorJobStatus.Claimed, ct)).FirstOrDefault();
+        if (job is null)
+        {
+            return false;
+        }
+
+        job.ReleaseByDevice(now);
+        unitOfWork.CollectorJobs.Update(job);
+        await SaveAsync(ct);
+        return true;
+    }
+
     public async Task<CollectorCompletionResult> CompleteAsync(
         Guid deviceId,
         Guid jobId,
@@ -489,7 +505,10 @@ public class CollectorJobService(
                 .FirstOrDefaultAsync(ct);
         }
 
-        return new CollectorJobDto(job.Id, job.Kind.ToString(), job.RunId, job.Attempts, competitor);
+        var batch = (await unitOfWork.CollectorJobs.FindAsync(j => j.GroupId == job.GroupId, ct)).ToList();
+        var finished = batch.Count(j => j.IsTerminal);
+
+        return new CollectorJobDto(job.Id, job.Kind.ToString(), job.RunId, job.Attempts, competitor, finished + 1, batch.Count);
     }
 
     private static string BuildSummary(IReadOnlyList<CollectorPageReport>? pages)

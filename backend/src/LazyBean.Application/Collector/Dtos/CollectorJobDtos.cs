@@ -11,7 +11,11 @@ public sealed record CollectorJobDto(
     string Kind,
     Guid? RunId,
     int Attempt,
-    CollectorJobCompetitorDto? Competitor);
+    CollectorJobCompetitorDto? Competitor,
+    // The job's place in its batch (the jobs of one run or one "Collect ads now" press): finished jobs + 1,
+    // out of the batch's total. Zero when unknown.
+    int BatchPosition = 0,
+    int BatchTotal = 0);
 
 public sealed record CollectorJobCompetitorDto(
     Guid Id,

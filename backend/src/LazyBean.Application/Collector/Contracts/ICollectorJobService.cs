@@ -18,6 +18,10 @@ public interface ICollectorJobService
 
     Task<bool> HeartbeatAsync(Guid deviceId, Guid jobId, CancellationToken ct);
 
+    // The app is exiting while it holds a claim: the job goes back to the queue at once. False when the
+    // device does not hold the claim (it already finished, or the lease expired and someone else took it).
+    Task<bool> ReleaseAsync(Guid deviceId, Guid jobId, CancellationToken ct);
+
     Task<CollectorCompletionResult> CompleteAsync(Guid deviceId, Guid jobId, CompleteCollectorJobRequest request, CancellationToken ct);
 
     Task<CollectorStoreJobState?> GetStoreJobStateAsync(Guid runId, Guid competitorId, CancellationToken ct);

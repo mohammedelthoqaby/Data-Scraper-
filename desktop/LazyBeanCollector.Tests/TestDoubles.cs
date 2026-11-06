@@ -38,6 +38,10 @@ public sealed class FakeCollectorApi : ICollectorApi
 
     public int Heartbeats { get; private set; }
 
+    public string? BearerToken { get; set; }
+
+    public List<Guid> Releases { get; } = [];
+
     public Task<PairCollectorDeviceResultDto> PairAsync(string username, string password, string deviceName, CancellationToken ct) =>
         Task.FromResult(new PairCollectorDeviceResultDto(Guid.NewGuid(), deviceName, "token", ["ads:ingest", "store:ingest"]));
 
@@ -50,6 +54,12 @@ public sealed class FakeCollectorApi : ICollectorApi
     public Task HeartbeatAsync(Guid jobId, CancellationToken ct)
     {
         Heartbeats++;
+        return Task.CompletedTask;
+    }
+
+    public Task ReleaseJobAsync(Guid jobId, CancellationToken ct)
+    {
+        Releases.Add(jobId);
         return Task.CompletedTask;
     }
 
