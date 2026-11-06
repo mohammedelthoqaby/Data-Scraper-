@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Quartz;
 
 namespace LazyBean.Infrastructure;
@@ -87,7 +88,10 @@ public static class DependencyInjection
         services.AddScoped<ICompetitorProductIngestionService, CompetitorProductIngestionService>();
 
         services.AddScoped<ICollectionRunExecutor, CollectionRunExecutor>();
-        services.Configure<GitHubOptions>(configuration.GetSection(GitHubOptions.SectionName));
+        services.AddOptions<GitHubOptions>()
+            .Bind(configuration.GetSection(GitHubOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<GitHubOptions>, GitHubOptionsValidator>();
         services.AddHttpClient<IGitHubWorkflowDispatcher, GitHubWorkflowDispatcher>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);

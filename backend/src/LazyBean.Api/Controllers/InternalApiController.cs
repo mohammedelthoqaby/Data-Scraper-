@@ -14,8 +14,11 @@ using LazyBean.Domain.Interfaces;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using LazyBean.Api.Common;
+using LazyBean.Application.Collection.Orchestration;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace LazyBean.Api.Controllers;
 
@@ -131,6 +134,30 @@ public class InternalApiController(
         }
 
         return Accepted(result);
+    }
+
+    [HttpGet("diagnostics")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult GetDiagnostics([FromServices] IOptions<GitHubOptions> github)
+    {
+        if (!IsAuthorized())
+        {
+            return Unauthorized(new { error = "Invalid or missing Internal:Token header." });
+        }
+
+        var gh = github.Value;
+        return Ok(new
+        {
+            config = new
+            {
+                githubDispatchTokenPresent = !string.IsNullOrWhiteSpace(gh.DispatchToken),
+                githubRepo = gh.Repo,
+                githubRef = gh.Ref,
+                buildVersion = typeof(InternalApiController).Assembly.GetName().Version?.ToString() ?? "unknown",
+                commitHash = BuildInfoHelper.GetCommitHash(configuration)
+            }
+        });
     }
 
     [HttpGet("diagnostics/last-errors")]

@@ -21,17 +21,13 @@ public static class BuildInfoHelper
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion;
 
-        if (!string.IsNullOrWhiteSpace(infoVersion))
+        var plusIdx = infoVersion?.IndexOf('+') ?? -1;
+        if (infoVersion is not null && plusIdx >= 0 && plusIdx < infoVersion.Length - 1)
         {
-            var plusIdx = infoVersion.IndexOf('+');
-            if (plusIdx >= 0 && plusIdx < infoVersion.Length - 1)
-            {
-                var commit = infoVersion[(plusIdx + 1)..];
-                return commit.Length > 7 ? commit[..7] : commit;
-            }
-            return infoVersion.Length > 7 ? infoVersion[..7] : infoVersion;
+            var commit = infoVersion[(plusIdx + 1)..];
+            return commit.Length > 7 ? commit[..7] : commit;
         }
 
-        return "2053f2f";
+        return "unknown";
     }
 }
