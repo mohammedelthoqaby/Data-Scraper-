@@ -271,4 +271,53 @@ public class AdsIntegrationTests(TestDatabaseFixture testDb) : IAsyncLifetime
         await db.SaveChangesAsync();
         return competitor.Id;
     }
+
+    [Fact]
+    public async Task LazyBeanGoogleAds_ShowInOurAds_AndStayOutOfTheDefaultAdList()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var options = new DbContextOptionsBuilder<LazyBeanDbContext>().UseNpgsql(testDb.ConnectionString).Options;
+
+        Guid referenceId;
+        Guid referenceIdentityId;
+        await using (var db = new LazyBeanDbContext(options))
+        {
+            var reference = new Competitor { Key = $"ref-ads-{suffix}", Name = "Lazy Bean (ads test)", IsReference = true };
+            db.Competitors.Add(reference);
+            var identity = new AdvertiserIdentity
+            {
+                CompetitorId = reference.Id,
+                Platform = AdPlatform.Google,
+                ExternalId = "AR82000000000000000001",
+                Name = "Lazy Bean (ads test)",
+                Status = AdvertiserIdentityStatus.Approved,
+            };
+            db.AdvertiserIdentities.Add(identity);
+            db.Ads.Add(new Ad
+            {
+                CompetitorId = reference.Id,
+                IdentityId = identity.Id,
+                ExternalAdId = $"CROURS{suffix}",
+                Platform = AdPlatform.Google,
+                Title = "Lazy Bean Google ad",
+                FirstSeenAt = DateTimeOffset.UtcNow.AddDays(-1),
+                LastSeenAt = DateTimeOffset.UtcNow,
+                Status = AdStatus.Active,
+                CreativeHash = "ourads0000000000",
+            });
+            await db.SaveChangesAsync();
+            referenceId = reference.Id;
+            referenceIdentityId = identity.Id;
+        }
+
+        // Without a competitor filter, a reference store's ads are left out of the competitors' list.
+        var defaultList = await _client.GetFromJsonAsync<GetAdsResponseDto>($"/api/ads?identityId={referenceIdentityId}");
+        Assert.NotNull(defaultList);
+        Assert.Equal(0, defaultList.TotalCount);
+
+        // Asked for by the reference store itself, they are shown: that is the Our ads section.
+        var ourAds = await _client.GetFromJsonAsync<GetAdsResponseDto>($"/api/ads?competitorId={referenceId}&identityId={referenceIdentityId}");
+        Assert.NotNull(ourAds);
+        Assert.Equal($"CROURS{suffix}", Assert.Single(ourAds.Ads).ExternalAdId);
+    }
 }
