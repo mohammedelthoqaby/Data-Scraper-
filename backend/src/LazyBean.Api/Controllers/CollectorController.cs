@@ -228,6 +228,26 @@ public class CollectorController(
         return Ok(await adsIngestion.IngestGoogleAdvertiserAsync(request, ct));
     }
 
+    // The creative details the desktop app read (LookupService/GetCreativeById), for one advertiser's creatives.
+    [HttpPost("google/creative-details")]
+    [Authorize(Policy = CollectorPolicies.AdsIngest)]
+    [ProducesResponseType(typeof(GoogleCreativeDetailsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> IngestGoogleCreativeDetails([FromBody] GoogleCreativeDetailsRequest request, CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.AdvertiserId))
+        {
+            return BadRequest(new { error = "AdvertiserId is required." });
+        }
+
+        if (request.Items is null)
+        {
+            return BadRequest(new { error = "Items is required." });
+        }
+
+        return Ok(await adsIngestion.ApplyGoogleCreativeDetailsAsync(request, ct));
+    }
+
     // "Collect ads now" from the desktop app: queues the Meta and Google ads jobs for this batch.
     [HttpPost("ads-now")]
     [Authorize(Policy = CollectorPolicies.AnyDevice)]

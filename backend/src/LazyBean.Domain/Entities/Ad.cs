@@ -35,6 +35,14 @@ public class Ad : BaseEntity, IAggregateRoot
     // recomputed by the backfill.
     public int LinkVersion { get; set; }
 
+    // The creative's own copy and variations, read from its detail (Google). Null until a detail is read or when the detail
+    // does not carry them. DetailFetchedAt is when the detail was read; DetailLastShownAt is the last-shown time it reported.
+    public string? Headline { get; set; }
+    public string? Description { get; set; }
+    public DateTimeOffset? DetailFetchedAt { get; set; }
+    public DateTimeOffset? DetailLastShownAt { get; set; }
+    public string? PreviewVariationsJson { get; set; }
+
     // Why an ad is not linked to a product (AdLinkReasons), or null when it is linked.
     public string? LinkReason { get; set; }
 

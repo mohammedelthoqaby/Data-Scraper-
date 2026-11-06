@@ -104,6 +104,16 @@ public sealed class CollectorApiClient(HttpClient http, RetryPolicy retry) : ICo
                 ?? throw new CollectorApiException(ApiErrorKind.ServerError, "The server returned no ingest result.");
         }, ct);
 
+    // A batch of creative details that the server does not store is not retried here: the creatives keep their missing detail,
+    // so the next run reads them again.
+    public Task<GoogleCreativeDetailsResponse> IngestGoogleCreativeDetailsAsync(GoogleCreativeDetailsRequest request, CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var response = await SendAsync(HttpMethod.Post, "api/collector/google/creative-details", request, auth: true, c);
+            return await ReadBodyAsync<GoogleCreativeDetailsResponse>(response, c)
+                ?? throw new CollectorApiException(ApiErrorKind.ServerError, "The server returned no creative detail result.");
+        }, ct);
+
     // Server errors are not retried here: GoogleJobHandler retries the upload once, after 30 seconds, with the same ads.
     public Task<AdsIngestResponse> IngestGoogleAdsAsync(GoogleAdsIngestRequest request, CancellationToken ct) =>
         retry.ExecuteAsync(async c =>

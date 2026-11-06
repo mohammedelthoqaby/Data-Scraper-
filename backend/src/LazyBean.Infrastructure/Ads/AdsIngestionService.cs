@@ -180,7 +180,7 @@ public class AdsIngestionService(
 
                     await unitOfWork.SaveChangesAsync(ct);
                     touched.Add(saved);
-                    results.Add(new AdsIngestItemResult(ad.ExternalAdId, outcome));
+                    results.Add(new AdsIngestItemResult(ad.ExternalAdId, outcome, null, GoogleCreativeDetailApplier.NeedsDetail(saved)));
                 }
                 catch (DbUpdateException ex) when (ex.InnerException is PostgresException)
                 {
@@ -223,6 +223,57 @@ public class AdsIngestionService(
             Message: skippedCount == 0 ? null : $"{skippedCount} creative(s) skipped; see items for the reason.",
             IngestedCount: createdCount,
             Items: results);
+    }
+
+    // Stores the details the desktop app read for one advertiser's creatives. A creative the server does not hold for that
+    // advertiser is counted as NotFound. Each stored creative is re-linked from its copy and its landing link.
+    public async Task<GoogleCreativeDetailsResponse> ApplyGoogleCreativeDetailsAsync(GoogleCreativeDetailsRequest request, CancellationToken ct = default)
+    {
+        const int maxItems = 100;
+        var items = request.Items.Take(maxItems).ToList();
+
+        var identity = await readContext.Query<AdvertiserIdentity>()
+            .FirstOrDefaultAsync(i => i.Platform == AdPlatform.Google && i.ExternalId == request.AdvertiserId, ct);
+        if (identity is null)
+        {
+            return new GoogleCreativeDetailsResponse(0, items.Count);
+        }
+
+        var ids = items.Select(i => i.ExternalAdId).Distinct(StringComparer.Ordinal).ToList();
+        var ads = ids.Count == 0
+            ? new List<Ad>()
+            : await readContext.Query<Ad>()
+                .Where(a => a.IdentityId == identity.Id && a.Platform == AdPlatform.Google && ids.Contains(a.ExternalAdId))
+                .ToListAsync(ct);
+        var byExternalId = new Dictionary<string, Ad>(StringComparer.Ordinal);
+        foreach (var ad in ads)
+        {
+            byExternalId.TryAdd(ad.ExternalAdId, ad);
+        }
+
+        var catalog = await LoadCatalogAsync(identity.CompetitorId, ct);
+        var now = DateTimeOffset.UtcNow;
+        var updated = 0;
+        var notFound = 0;
+        foreach (var item in items)
+        {
+            if (!byExternalId.TryGetValue(item.ExternalAdId, out var ad))
+            {
+                notFound++;
+                continue;
+            }
+
+            GoogleCreativeDetailApplier.Apply(ad, item, now, catalog);
+            unitOfWork.Ads.Update(ad);
+            updated++;
+        }
+
+        await unitOfWork.SaveChangesAsync(ct);
+        logger.LogInformation(
+            "Google creative details for '{Name}' ({AdvertiserId}): stored {Updated}, not found {NotFound}.",
+            identity.Name, identity.ExternalId, updated, notFound);
+
+        return new GoogleCreativeDetailsResponse(updated, notFound);
     }
 
     public async Task<AdsIngestResponse> IngestMetaPageAsync(MetaAdsIngestRequest request, CancellationToken ct = default)

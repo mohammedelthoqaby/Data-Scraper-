@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using LazyBean.Application.Ads.Common;
 using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Ads.Exceptions;
 using LazyBean.Application.Common.Interfaces;
@@ -378,6 +379,54 @@ public partial class GoogleAdsTransparencyClient(
             logger.LogError(ex, "Failed to parse Google Ads SearchCreatives JSON response for advertiser '{AdvertiserId}'.", advertiserId);
             return new GoogleCreativesPageResult([], null);
         }
+    }
+
+    // The same request the Ads Transparency page sends for one creative: advertiser, creative, and the region (EG).
+    public async Task<GoogleCreativeDetailDto?> GetCreativeDetailAsync(string advertiserId, string creativeId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(advertiserId) || string.IsNullOrWhiteSpace(creativeId))
+        {
+            throw new ArgumentException("Advertiser ID and creative ID must not be empty.");
+        }
+
+        var rpcUrl = $"{BaseUrl}/anji/_/rpc/LookupService/GetCreativeById?authuser=0";
+        var payload = new Dictionary<string, object>
+        {
+            ["1"] = advertiserId,
+            ["2"] = creativeId,
+            ["5"] = new Dictionary<string, object> { ["1"] = 1, ["2"] = 20, ["3"] = RegionEgypt },
+        };
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["f.req"] = JsonSerializer.Serialize(payload),
+            }),
+        };
+        ApplyStandardHeaders(req);
+
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await httpClient.SendAsync(req, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogError(ex, "Failed to reach Google Ads GetCreativeById for creative '{CreativeId}'.", creativeId);
+            throw;
+        }
+
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        EnsureNotBlocked(resp.StatusCode, body, resp.Headers.Location?.ToString());
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Google Ads GetCreativeById returned HTTP {StatusCode} for creative '{CreativeId}'.", (int)resp.StatusCode, creativeId);
+            return null;
+        }
+
+        return GoogleCreativeDetailParser.Parse(body, creativeId);
     }
 
     private static string? ExtractImageUrl(JsonElement adItem)

@@ -7,4 +7,6 @@ public interface IAdsIngestionService
     Task<AdsIngestResponse> IngestMetaPageAsync(MetaAdsIngestRequest request, CancellationToken ct = default);
 
     Task<AdsIngestResponse> IngestGoogleAdvertiserAsync(GoogleAdsIngestRequest request, CancellationToken ct = default);
+
+    Task<GoogleCreativeDetailsResponse> ApplyGoogleCreativeDetailsAsync(GoogleCreativeDetailsRequest request, CancellationToken ct = default);
 }

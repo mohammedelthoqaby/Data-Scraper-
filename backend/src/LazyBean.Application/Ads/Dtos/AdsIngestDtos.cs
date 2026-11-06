@@ -69,4 +69,5 @@ public sealed record AdsIngestResponse(
 
 // Outcome of one creative in a Google ads batch: created, updated, duplicate (repeated in the batch) or skipped
 // (with the reason). Reasons are short and safe to show in the desktop app.
-public sealed record AdsIngestItemResult(string ExternalAdId, string Outcome, string? Reason = null);
+// NeedsDetail: the creative's detail should be read now (it was never read, or the listing shows it again since).
+public sealed record AdsIngestItemResult(string ExternalAdId, string Outcome, string? Reason = null, bool NeedsDetail = false);

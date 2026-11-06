@@ -31,6 +31,8 @@ public interface ICollectorApi
 
     Task<AdsIngestResponse> IngestGoogleAdsAsync(GoogleAdsIngestRequest request, CancellationToken ct);
 
+    Task<GoogleCreativeDetailsResponse> IngestGoogleCreativeDetailsAsync(GoogleCreativeDetailsRequest request, CancellationToken ct);
+
     Task RequestAdsNowAsync(CancellationToken ct);
 
     Task UnpairAsync(CancellationToken ct);

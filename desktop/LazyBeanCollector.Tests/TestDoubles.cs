@@ -32,6 +32,9 @@ public sealed class FakeCollectorApi : ICollectorApi
 
     public List<GoogleAdsIngestRequest> GoogleIngests { get; } = [];
 
+    // Per-creative results the server returns for an upload (for example, which creatives need their detail).
+    public Func<GoogleAdsIngestRequest, IReadOnlyList<AdsIngestItemResult>?>? GoogleItemResults { get; set; }
+
     public Func<MetaAdsIngestRequest, Exception?>? MetaIngestFailure { get; set; }
 
     public Func<GoogleAdsIngestRequest, Exception?>? GoogleIngestFailure { get; set; }
@@ -117,7 +120,24 @@ public sealed class FakeCollectorApi : ICollectorApi
         }
 
         GoogleIngests.Add(request);
-        return Task.FromResult(new AdsIngestResponse(request.Status ?? "Success"));
+        var items = GoogleItemResults?.Invoke(request);
+        return Task.FromResult(new AdsIngestResponse(request.Status ?? "Success", Items: items?.ToList()));
+    }
+
+    public List<GoogleCreativeDetailsRequest> GoogleDetailIngests { get; } = [];
+
+    public Func<GoogleCreativeDetailsRequest, Exception?>? GoogleDetailFailure { get; set; }
+
+    public Task<GoogleCreativeDetailsResponse> IngestGoogleCreativeDetailsAsync(GoogleCreativeDetailsRequest request, CancellationToken ct)
+    {
+        Calls.Add($"google-details:{request.AdvertiserId}:{request.Items.Count}");
+        if (GoogleDetailFailure?.Invoke(request) is { } failure)
+        {
+            throw failure;
+        }
+
+        GoogleDetailIngests.Add(request);
+        return Task.FromResult(new GoogleCreativeDetailsResponse(request.Items.Count, 0));
     }
 
     public Task RequestAdsNowAsync(CancellationToken ct) => Task.CompletedTask;
@@ -164,6 +184,26 @@ public sealed class FakeGoogleClient : IGoogleAdsTransparencyClient
     public Func<string, Exception?>? Failure { get; set; }
 
     public List<string> Requested { get; } = [];
+
+    // Creative details by creative ID. A creative with no entry gets an empty detail (no copy, no landing link, no variations).
+    public Dictionary<string, GoogleCreativeDetailDto?> Details { get; } = new();
+
+    public List<string> DetailsRequested { get; } = [];
+
+    public Func<string, Exception?>? DetailFailure { get; set; }
+
+    public Task<GoogleCreativeDetailDto?> GetCreativeDetailAsync(string advertiserId, string creativeId, CancellationToken ct = default)
+    {
+        DetailsRequested.Add(creativeId);
+        if (DetailFailure?.Invoke(creativeId) is { } failure)
+        {
+            throw failure;
+        }
+
+        return Task.FromResult(Details.TryGetValue(creativeId, out var detail)
+            ? detail
+            : new GoogleCreativeDetailDto(creativeId, null, null, null, null, [], null));
+    }
 
     public Task<string?> SearchAdvertiserIdAsync(string query, CancellationToken ct = default) => Task.FromResult<string?>(null);
 

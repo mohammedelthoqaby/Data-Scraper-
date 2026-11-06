@@ -20,17 +20,46 @@ public class AdDerivedFieldsTests
         AdDerivedFields.Apply(ad, [Product("Lazy Bean")]);
 
         Assert.Null(ad.ProductId);
-        Assert.Equal(AdLinkReasons.NoProductInfo, ad.LinkReason);
+        // Its copy has not been read yet, so the reason is pending rather than "no product info".
+        Assert.Equal(AdLinkReasons.Pending, ad.LinkReason);
     }
 
     [Fact]
-    public void GoogleAd_WithNoCopyAndNoLandingLink_IsNoProductInfo()
+    public void GoogleAd_WithNoCopyAndNoLandingLink_AfterItsDetail_IsNoProductInfo()
     {
         var ad = GoogleAd(title: null);
+        ad.DetailFetchedAt = DateTimeOffset.UtcNow;
 
         AdDerivedFields.Apply(ad, []);
 
         Assert.Equal(AdLinkReasons.NoProductInfo, ad.LinkReason);
+    }
+
+    [Fact]
+    public void GoogleAd_HeadlineFromTheDetailNamesAProduct_IsLinkedByTitle()
+    {
+        var productId = Guid.NewGuid();
+        var ad = GoogleAd(title: "Lazy Bean");
+        ad.Headline = "Lazy Bean";
+        ad.DetailFetchedAt = DateTimeOffset.UtcNow;
+
+        AdDerivedFields.Apply(ad, [new LinkableProduct(productId, "Lazy Bean", null, null)]);
+
+        Assert.Equal(productId, ad.ProductId);
+        Assert.Equal("title", ad.LinkMethod);
+        Assert.Null(ad.LinkReason);
+    }
+
+    [Fact]
+    public void GoogleAd_DetailLandingIsTheHomepage_IsLinksToHomepage()
+    {
+        var ad = GoogleAd(title: null);
+        ad.LinkUrl = "https://strongcoffee-eg.com/";
+        ad.DetailFetchedAt = DateTimeOffset.UtcNow;
+
+        AdDerivedFields.Apply(ad, [Product("Lazy Bean")]);
+
+        Assert.Equal(AdLinkReasons.LinksToHomepage, ad.LinkReason);
     }
 
     [Fact]
@@ -115,9 +144,9 @@ public class AdDerivedFieldsTests
     }
 
     [Fact]
-    public void CurrentVersion_IsFour_SoTheBackfillRecomputesTheReasons()
+    public void CurrentVersion_IsFive_SoTheBackfillRecomputesTheReasons()
     {
-        Assert.Equal(4, AdDerivedFields.CurrentVersion);
+        Assert.Equal(5, AdDerivedFields.CurrentVersion);
     }
 
     private static LinkableProduct Product(string title, string? url = null) =>

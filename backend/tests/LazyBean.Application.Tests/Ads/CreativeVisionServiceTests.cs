@@ -110,6 +110,7 @@ public class CreativeVisionServiceTests
     {
         var (db, sut, _) = Setup(enabled: true, cap: 5, reading: new CreativeImageReading(null, null));
         var ad = NewAd(db, "blank", AdPlatform.Google, GoogleCreativeFormat.Image, Preview);
+        ad.DetailFetchedAt = Now;
         await db.SaveChangesAsync();
 
         await sut.ApplyAsync(new[] { ad }, Catalog(), CancellationToken.None);

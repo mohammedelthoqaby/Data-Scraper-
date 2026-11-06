@@ -74,6 +74,16 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("DeliveryStopDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTimeOffset?>("DetailFetchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DetailLastShownAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ExternalAdId")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -81,6 +91,10 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("FirstSeenAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Headline")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<Guid>("IdentityId")
                         .HasColumnType("uuid");
@@ -118,6 +132,9 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.Property<string>("PreviewUrl")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("PreviewVariationsJson")
+                        .HasColumnType("text");
 
                     b.Property<Guid?>("ProductId")
                         .HasColumnType("uuid");

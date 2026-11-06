@@ -3,18 +3,19 @@ using LazyBean.Domain.Enums;
 
 namespace LazyBean.Application.Ads.Common;
 
-// The fields an ad gets from its own text and landing link: the advertised price, the bundle quantity, the product it
-// is linked to, how the link was made, why it is not linked, and (Google) the format. Ingest and the backfill both use
-// these rules. Bump CurrentVersion when the rules change, so the backfill recomputes existing ads.
+// The fields an ad gets from its own text and landing link: the advertised price, the bundle quantity, the product it is
+// linked to, how the link was made, why it is not linked, and (Google) the format. Ingest, the detail step and the backfill
+// all use these rules. Bump CurrentVersion when the rules change, so the backfill recomputes existing ads.
 public static class AdDerivedFields
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
 
     public static void Apply(Ad ad, IReadOnlyList<LinkableProduct> catalog)
     {
-        // A Google ad's title is the advertiser's name, not the copy of the ad, so it never describes a product.
+        // A Google ad's title is the advertiser's name, not its copy. The copy comes from the creative's detail (headline and
+        // description). Until a detail is read, a Google ad has no copy to link from.
         var (title, body) = ad.Platform == AdPlatform.Google
-            ? ((string?)null, (string?)null)
+            ? (ad.Headline, ad.Description)
             : (ad.Title, ad.Body);
 
         var offer = AdPriceParser.ParseOffer(title, body);
@@ -38,7 +39,9 @@ public static class AdDerivedFields
         ad.AdvertisedQuantity = offer?.Quantity;
         ad.ProductId = productId;
         ad.LinkMethod = method;
-        ad.LinkReason = productId is null ? AdLinkReasons.Classify(ad.LinkUrl, title, body, hasAiName) : null;
+        ad.LinkReason = productId is null
+            ? IsAwaitingDetail(ad) ? AdLinkReasons.Pending : AdLinkReasons.Classify(ad.LinkUrl, title, body, hasAiName)
+            : null;
 
         if (ad.Platform == AdPlatform.Google)
         {
@@ -47,4 +50,8 @@ public static class AdDerivedFields
 
         ad.LinkVersion = CurrentVersion;
     }
+
+    // A Google ad with no detail read yet is not "no product info": its copy has not been read.
+    private static bool IsAwaitingDetail(Ad ad) =>
+        ad.Platform == AdPlatform.Google && ad.DetailFetchedAt is null && string.IsNullOrWhiteSpace(ad.AiReadName);
 }
