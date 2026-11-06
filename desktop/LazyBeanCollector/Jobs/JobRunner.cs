@@ -18,7 +18,8 @@ public sealed class JobRunner(
     ActivityLog log,
     CollectorState state,
     Func<TimeSpan, CancellationToken, Task> delay,
-    TimeSpan? heartbeatInterval = null)
+    TimeSpan? heartbeatInterval = null,
+    MetaPageResolveJobHandler? resolve = null)
 {
     public static readonly TimeSpan IdlePoll = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan DefaultHeartbeat = TimeSpan.FromSeconds(30);
@@ -86,6 +87,9 @@ public sealed class JobRunner(
                 "StoreCollection" => await store.HandleAsync(job, jobCts.Token),
                 "MetaAds" => await meta.HandleAsync(jobCts.Token),
                 "GoogleAds" => await google.HandleAsync(jobCts.Token),
+                "ResolveMetaPage" => resolve is null
+                    ? throw new NotSupportedException("This app cannot look up Facebook pages.")
+                    : await resolve.HandleAsync(job, jobCts.Token),
                 _ => throw new NotSupportedException($"This app does not know the job kind '{job.Kind}'."),
             };
 
@@ -201,6 +205,7 @@ public sealed class JobRunner(
         "StoreCollection" => $"Store {job.Competitor?.Name ?? "catalog"}",
         "MetaAds" => "Meta ads",
         "GoogleAds" => "Google ads",
+        "ResolveMetaPage" => $"Facebook page {job.PageSlug}",
         _ => job.Kind,
     };
 

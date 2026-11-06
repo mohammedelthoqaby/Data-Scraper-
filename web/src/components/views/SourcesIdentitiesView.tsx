@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api, type Competitor, type AdvertiserIdentity } from '../../api/client';
+import { addIdentityFromUrl } from '../../api/ownAds';
 
 export const SourcesIdentitiesView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'sources' | 'identities'>('sources');
@@ -21,6 +22,8 @@ export const SourcesIdentitiesView: React.FC = () => {
   const [newCompId, setNewCompId] = useState<string>('');
   const [newPlatform, setNewPlatform] = useState<string>('Meta');
   const [newExternalId, setNewExternalId] = useState<string>('');
+  const [newFacebookUrl, setNewFacebookUrl] = useState<string>('');
+  const [isAddingFromLink, setIsAddingFromLink] = useState<boolean>(false);
   const [newName, setNewName] = useState<string>('');
   const [isSubmittingNew, setIsSubmittingNew] = useState<boolean>(false);
 
@@ -135,6 +138,28 @@ export const SourcesIdentitiesView: React.FC = () => {
   };
 
   // Create manual advertiser identity
+  // Adds a Meta page from a Facebook link. A page name is looked up by the desktop app before it is listed.
+  const handleAddFromLink = async () => {
+    if (!newCompId || !newFacebookUrl.trim()) {
+      alert('Choose a competitor and paste a Facebook page link.');
+      return;
+    }
+    setIsAddingFromLink(true);
+    try {
+      const result = await addIdentityFromUrl(newCompId, newFacebookUrl.trim());
+      setActionNotice(result.message);
+      setNewFacebookUrl('');
+      if (result.status === 'pending' || result.status === 'exists') {
+        setShowAddModal(false);
+      }
+      await fetchIdentities();
+    } catch (err: any) {
+      alert(err?.message || 'Could not add the Facebook page.');
+    } finally {
+      setIsAddingFromLink(false);
+    }
+  };
+
   const handleCreateManualIdentity = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCompId || !newExternalId.trim()) {
@@ -382,6 +407,32 @@ export const SourcesIdentitiesView: React.FC = () => {
                     style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff' }}
                   />
                 </div>
+
+                {newPlatform === 'Meta' && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--muted)' }}>
+                      Or paste a Facebook page link
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        type="url"
+                        placeholder="https://www.facebook.com/yourpage"
+                        value={newFacebookUrl}
+                        onChange={(e) => setNewFacebookUrl(e.target.value)}
+                        style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff' }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={isAddingFromLink || !newCompId}
+                        onClick={handleAddFromLink}
+                        style={{ padding: '8px 12px', fontSize: '13px' }}
+                      >
+                        {isAddingFromLink ? 'Adding…' : 'Add from link'}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <button

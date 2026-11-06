@@ -224,7 +224,11 @@ public sealed class CollectorHost : IAsyncDisposable
             _log,
             _state,
             _delay,
-            _options.Heartbeat);
+            _options.Heartbeat,
+            new MetaPageResolveJobHandler(
+                new FacebookPageSource(new HttpClient { Timeout = TimeSpan.FromSeconds(30) }),
+                _log,
+                _state));
     }
 
     private ICollectorApi CreateApi(string serverUrl)

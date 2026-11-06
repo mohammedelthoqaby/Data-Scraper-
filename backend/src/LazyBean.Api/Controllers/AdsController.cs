@@ -45,6 +45,14 @@ public class AdsController(ISender sender) : ControllerBase
         return Ok(result);
     }
 
+    // Our own ads (the reference competitor) compared with competitor ads for the same matched product.
+    [HttpGet("our-comparison")]
+    [ProducesResponseType(typeof(IReadOnlyList<LazyBean.Application.Ads.Comparison.OwnAdComparisonRow>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<LazyBean.Application.Ads.Comparison.OwnAdComparisonRow>>> GetOurComparison(CancellationToken ct)
+    {
+        return Ok(await sender.Send(new LazyBean.Application.Ads.Queries.GetOurAdsComparison.GetOurAdsComparisonQuery(), ct));
+    }
+
     [HttpGet("campaigns")]
     [ProducesResponseType(typeof(IReadOnlyList<AdCampaignDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<AdCampaignDto>>> GetCampaigns(

@@ -26,6 +26,11 @@ public class GetCampaignsQueryHandler(IReadDbContext readContext, ISender sender
         {
             campaignQuery = campaignQuery.Where(x => x.Campaign.CompetitorId == request.CompetitorId.Value);
         }
+        else
+        {
+            // Our own (reference) campaigns are not competitor campaigns.
+            campaignQuery = campaignQuery.Where(x => !x.Competitor.IsReference);
+        }
 
         if (!string.IsNullOrWhiteSpace(request.Platform) &&
             Enum.TryParse<AdPlatform>(request.Platform, true, out var platform))

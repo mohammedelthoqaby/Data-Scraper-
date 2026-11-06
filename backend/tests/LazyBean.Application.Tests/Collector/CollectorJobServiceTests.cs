@@ -417,6 +417,49 @@ public class CollectorJobServiceTests
         Assert.Equal(10, job.ProgressTotal);
     }
 
+    [Fact]
+    public async Task ResolveMetaPage_Completed_ListsTheFoundPageForApproval_AndFailsWithoutAnId()
+    {
+        var clock = new MutableClock(T0);
+        var h = new Harness(NewDbWithPlan(out var device, out var competitor), clock);
+        var found = await h.Jobs.PlanResolveMetaPageAsync(competitor.Id, "lazybeanonline", CancellationToken.None);
+        h.Db.ChangeTracker.Clear();
+
+        var claimed = await h.Jobs.ClaimNextAsync(device.Id, CancellationToken.None);
+        Assert.NotNull(claimed);
+        Assert.Equal("ResolveMetaPage", claimed!.Kind);
+        Assert.Equal("lazybeanonline", claimed.PageSlug);
+        h.Db.ChangeTracker.Clear();
+
+        var completion = await h.Jobs.CompleteAsync(
+            device.Id,
+            found,
+            new CompleteCollectorJobRequest("Completed", null, [new CollectorPageReport("61565792458339", "Resolved", 0, null)]),
+            CancellationToken.None);
+        Assert.Equal(CollectorCompletionResult.Completed, completion);
+        h.Db.ChangeTracker.Clear();
+
+        var identity = await h.Db.AdvertiserIdentities.AsNoTracking().SingleAsync(i => i.ExternalId == "61565792458339");
+        Assert.Equal(AdvertiserIdentityStatus.Pending, identity.Status);
+        Assert.Equal(competitor.Id, identity.CompetitorId);
+        var resolved = await h.Db.CollectorJobs.AsNoTracking().SingleAsync(j => j.Id == found);
+        Assert.Equal(CollectorJobStatus.Completed, resolved.Status);
+        Assert.Contains("61565792458339", resolved.Summary);
+
+        // A lookup that finds no ID fails: nothing is added.
+        var second = await h.Jobs.PlanResolveMetaPageAsync(competitor.Id, "nopagehere", CancellationToken.None);
+        h.Db.ChangeTracker.Clear();
+        await h.Jobs.ClaimNextAsync(device.Id, CancellationToken.None);
+        h.Db.ChangeTracker.Clear();
+        await h.Jobs.CompleteAsync(device.Id, second, new CompleteCollectorJobRequest("Completed", null, []), CancellationToken.None);
+        h.Db.ChangeTracker.Clear();
+
+        var failed = await h.Db.CollectorJobs.AsNoTracking().SingleAsync(j => j.Id == second);
+        Assert.Equal(CollectorJobStatus.Failed, failed.Status);
+        Assert.Contains("Could not find a Meta page ID", failed.Summary);
+        Assert.Equal(1, await h.Db.AdvertiserIdentities.CountAsync(i => i.ExternalId == "61565792458339"));
+    }
+
     private static LazyBeanDbContext NewDbWithPlan(out CollectorDevice device, out Competitor competitor, bool connected = true)
     {
         var options = new DbContextOptionsBuilder<LazyBeanDbContext>()

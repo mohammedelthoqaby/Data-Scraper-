@@ -222,10 +222,23 @@ public class CollectorJobService(
             return CollectorCompletionResult.NotClaimedByDevice;
         }
 
-        var summary = request.Summary ?? BuildSummary(request.Pages);
         var pagesJson = request.Pages is null ? null : JsonSerializer.Serialize(request.Pages);
+        var failed = string.Equals(request.Status, "Failed", StringComparison.OrdinalIgnoreCase);
 
-        if (string.Equals(request.Status, "Failed", StringComparison.OrdinalIgnoreCase))
+        // A page lookup that found no page ID fails with a readable reason; it adds nothing.
+        var resolvedPageId = job.Kind == CollectorJobKind.ResolveMetaPage ? FirstPageId(request.Pages) : null;
+        if (job.Kind == CollectorJobKind.ResolveMetaPage && !failed && resolvedPageId is null)
+        {
+            failed = true;
+        }
+
+        var summary = job.Kind == CollectorJobKind.ResolveMetaPage
+            ? resolvedPageId is not null
+                ? $"Resolved {job.CompetitorSlug} to Meta page ID {resolvedPageId}."
+                : request.Summary ?? $"Could not find a Meta page ID for {job.CompetitorSlug}."
+            : request.Summary ?? BuildSummary(request.Pages);
+
+        if (failed)
         {
             job.Fail(now, summary, pagesJson);
         }
@@ -235,6 +248,11 @@ public class CollectorJobService(
         }
 
         unitOfWork.CollectorJobs.Update(job);
+        if (!failed && resolvedPageId is not null && job.CompetitorId is { } competitorId)
+        {
+            await EnsurePendingMetaIdentityAsync(competitorId, resolvedPageId, ct);
+        }
+
         await SaveAsync(ct);
         await ReleaseSuccessorsAsync(job, now, ct);
 
@@ -455,6 +473,54 @@ public class CollectorJobService(
         return pending.Count;
     }
 
+    public async Task<Guid> PlanResolveMetaPageAsync(Guid competitorId, string slug, CancellationToken ct)
+    {
+        var job = new CollectorJob
+        {
+            GroupId = Guid.NewGuid(),
+            Kind = CollectorJobKind.ResolveMetaPage,
+            Sequence = 1,
+            CompetitorId = competitorId,
+            CompetitorSlug = slug,
+            QueuedAt = clock.GetUtcNow(),
+        };
+        await unitOfWork.CollectorJobs.AddAsync(job, ct);
+        await SaveAsync(ct);
+        return job.Id;
+    }
+
+    // The first numeric page ID the app reported for a lookup.
+    private static string? FirstPageId(IReadOnlyList<CollectorPageReport>? pages) =>
+        pages?.Select(p => p.PageId).FirstOrDefault(id => !string.IsNullOrEmpty(id) && id.All(char.IsAsciiDigit));
+
+    // Lists a resolved page for approval, unless some identity already has that page ID.
+    private async Task EnsurePendingMetaIdentityAsync(Guid competitorId, string pageId, CancellationToken ct)
+    {
+        var exists = await readContext.Query<AdvertiserIdentity>()
+            .AnyAsync(i => i.Platform == AdPlatform.Meta && i.ExternalId == pageId, ct);
+        if (exists)
+        {
+            return;
+        }
+
+        var competitor = await unitOfWork.Competitors.GetByIdAsync(competitorId, ct);
+        if (competitor is null)
+        {
+            return;
+        }
+
+        await unitOfWork.AdvertiserIdentities.AddAsync(new AdvertiserIdentity
+        {
+            CompetitorId = competitor.Id,
+            Platform = AdPlatform.Meta,
+            ExternalId = pageId,
+            Name = competitor.Name,
+            Status = AdvertiserIdentityStatus.Pending,
+            LibraryUrl = $"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=EG&view_all_page_id={pageId}",
+            Notes = "Found by the desktop app from a Facebook link; awaiting approval",
+        }, ct);
+    }
+
     public async Task<bool> IsCollectorConnectedAsync(CancellationToken ct)
     {
         var cutoff = clock.GetUtcNow() - ConnectedWindow;
@@ -559,7 +625,15 @@ public class CollectorJobService(
         var batch = (await unitOfWork.CollectorJobs.FindAsync(j => j.GroupId == job.GroupId, ct)).ToList();
         var finished = batch.Count(j => j.IsTerminal);
 
-        return new CollectorJobDto(job.Id, job.Kind.ToString(), job.RunId, job.Attempts, competitor, finished + 1, batch.Count);
+        return new CollectorJobDto(
+            job.Id,
+            job.Kind.ToString(),
+            job.RunId,
+            job.Attempts,
+            competitor,
+            finished + 1,
+            batch.Count,
+            job.Kind == CollectorJobKind.ResolveMetaPage ? job.CompetitorSlug : null);
     }
 
     private static string BuildSummary(IReadOnlyList<CollectorPageReport>? pages)

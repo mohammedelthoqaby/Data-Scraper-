@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api, type AdCampaignDto, type AdDto, type Competitor, type AdvertiserIdentity } from '../../api/client';
+import { OurAdsSection } from './OurAdsSection';
 
 interface AdsCampaignsViewProps {
   onOpenProductDetail?: (productId: string, title?: string) => void;
@@ -266,6 +267,8 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
           {isSyncing ? 'Syncing Google Ads...' : 'Sync Google Ads'}
         </button>
       </div>
+
+      <OurAdsSection />
 
       {syncMessage && (
         <div style={{ padding: '12px 16px', borderRadius: '6px', background: syncErrors.length > 0 ? '#fffbeb' : '#eef2ff', color: syncErrors.length > 0 ? '#92400e' : '#3730a3', border: `1px solid ${syncErrors.length > 0 ? '#fde68a' : '#c7d2fe'}`, marginBottom: '20px', fontSize: '13px' }}>

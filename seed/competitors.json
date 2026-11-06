@@ -7,7 +7,8 @@
     "isReference": true,
     "minDelayMs": 3000,
     "collectionHost": "server",
-    "metaPageIds": []
+    "metaPageIds": [],
+    "pendingMetaPageIds": ["433792133147901"]
   },
   {
     "key": "coffee-zone",

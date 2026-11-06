@@ -24,6 +24,9 @@ public interface ICollectorJobService
     // Skips a run's unfinished desktop ads jobs with the given reason. Returns how many were skipped.
     Task<int> SkipUnfinishedAdsJobsAsync(Guid runId, string reason, CancellationToken ct);
 
+    // Queues a lookup of a Facebook page name on the desktop app. The app returns the numeric page ID.
+    Task<Guid> PlanResolveMetaPageAsync(Guid competitorId, string slug, CancellationToken ct);
+
     // The app is exiting while it holds a claim: the job goes back to the queue at once. False when the
     // device does not hold the claim (it already finished, or the lease expired and someone else took it).
     Task<bool> ReleaseAsync(Guid deviceId, Guid jobId, CancellationToken ct);

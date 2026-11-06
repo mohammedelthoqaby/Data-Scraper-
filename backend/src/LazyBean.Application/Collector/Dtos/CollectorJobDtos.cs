@@ -15,7 +15,9 @@ public sealed record CollectorJobDto(
     // The job's place in its batch (the jobs of one run or one "Collect ads now" press): finished jobs + 1,
     // out of the batch's total. Zero when unknown.
     int BatchPosition = 0,
-    int BatchTotal = 0);
+    int BatchTotal = 0,
+    // For a ResolveMetaPage job: the Facebook page name the app should look up.
+    string? PageSlug = null);
 
 public sealed record CollectorJobCompetitorDto(
     Guid Id,

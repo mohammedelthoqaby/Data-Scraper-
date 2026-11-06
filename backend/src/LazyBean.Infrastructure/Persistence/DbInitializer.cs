@@ -65,7 +65,8 @@ public static class DbInitializer
         bool IsReference,
         int MinDelayMs,
         List<string>? MetaPageIds = null,
-        string? CollectionHost = null);
+        string? CollectionHost = null,
+        List<string>? PendingMetaPageIds = null);
 
     public static async Task SeedCompetitorsAsync(IServiceProvider services, CancellationToken ct = default)
     {
@@ -266,6 +267,38 @@ public static class DbInitializer
                     existingMetaById[cleanPageId] = newIdentity;
                     identitiesAdded++;
                 }
+            }
+        }
+
+        // Our own Meta pages: seeded as Pending, so an admin approves them before they are collected.
+        // An identity that already exists keeps its status.
+        foreach (var item in items)
+        {
+            if (item.PendingMetaPageIds == null || item.PendingMetaPageIds.Count == 0)
+                continue;
+
+            if (!allCompetitorsByKey.TryGetValue(item.Key, out var comp))
+                continue;
+
+            foreach (var pageId in item.PendingMetaPageIds)
+            {
+                var cleanPageId = pageId.Trim();
+                if (string.IsNullOrWhiteSpace(cleanPageId) || existingMetaById.ContainsKey(cleanPageId))
+                    continue;
+
+                var pending = new AdvertiserIdentity
+                {
+                    CompetitorId = comp.Id,
+                    Platform = AdPlatform.Meta,
+                    ExternalId = cleanPageId,
+                    Name = comp.Name,
+                    Status = AdvertiserIdentityStatus.Pending,
+                    LibraryUrl = $"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=EG&view_all_page_id={cleanPageId}",
+                    Notes = "Seeded from competitors.json; awaiting approval"
+                };
+                context.AdvertiserIdentities.Add(pending);
+                existingMetaById[cleanPageId] = pending;
+                identitiesAdded++;
             }
         }
 

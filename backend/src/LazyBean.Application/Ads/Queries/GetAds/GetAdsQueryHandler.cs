@@ -28,6 +28,11 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
         {
             query = query.Where(x => x.Ad.CompetitorId == request.CompetitorId.Value);
         }
+        else
+        {
+            // Our own (reference) ads are shown in their own section, not among the competitors' ads.
+            query = query.Where(x => !x.Competitor.IsReference);
+        }
 
         if (request.IdentityId.HasValue)
         {
