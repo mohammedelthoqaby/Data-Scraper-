@@ -52,7 +52,14 @@ public class ExceptionHandlingMiddleware(
             ? id?.ToString()
             : context.TraceIdentifier;
 
-        if (statusCode == HttpStatusCode.InternalServerError)
+        if (exception is InvalidCredentialsException credEx)
+        {
+            logger.LogWarning(
+                "[CorrelationId: {CorrelationId}] Failed login attempt for user '{Username}'.",
+                correlationId,
+                credEx.Username ?? "unknown");
+        }
+        else if (statusCode == HttpStatusCode.InternalServerError)
         {
             logger.LogError(
                 exception,

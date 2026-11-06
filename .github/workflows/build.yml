@@ -49,6 +49,15 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore backend/LazyBean.slnx
 
+      - name: Check for vulnerable packages
+        run: |
+          output=$(dotnet list backend/LazyBean.slnx package --vulnerable --include-transitive)
+          echo "$output"
+          if echo "$output" | grep -Ei "Critical|High"; then
+            echo "::error::Vulnerable packages detected with Critical or High severity!"
+            exit 1
+          fi
+
       - name: Build solution
         run: dotnet build backend/LazyBean.slnx --no-restore -c Release
 

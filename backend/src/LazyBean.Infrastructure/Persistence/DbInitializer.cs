@@ -12,7 +12,10 @@ namespace LazyBean.Infrastructure.Persistence;
 
 // Dev/ops convenience: creates one bootstrap login if the users table is empty, from
 // Admin:Username / Admin:Password (set via user-secrets or environment - never appsettings.json).
-// Does nothing once at least one user exists.
+// Syncs/creates bootstrap admin login from Admin:Username / Admin:Password
+// (set via user-secrets or environment - never appsettings.json).
+// If the user exists and the stored hash doesn't verify against Admin:Password,
+// re-hashes and updates the user so environment variables stay the source of truth.
 public static class DbInitializer
 {
     public static async Task SeedAdminUserAsync(IServiceProvider services, CancellationToken ct = default)
@@ -25,26 +28,33 @@ public static class DbInitializer
         var passwordHasher = provider.GetRequiredService<IPasswordHasher>();
         var logger = provider.GetRequiredService<ILoggerFactory>().CreateLogger("DbInitializer");
 
-        if (await context.Users.AnyAsync(ct))
-        {
-            return;
-        }
-
         var username = configuration["Admin:Username"];
         var password = configuration["Admin:Password"];
 
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
-            logger.LogWarning(
-                "No users exist and Admin:Username/Admin:Password are not configured - " +
-                "set them via user-secrets to bootstrap the first login.");
+            if (!await context.Users.AnyAsync(ct))
+            {
+                logger.LogWarning(
+                    "No users exist and Admin:Username/Admin:Password are not configured - " +
+                    "set them via user-secrets to bootstrap the first login.");
+            }
             return;
         }
 
-        context.Users.Add(new User { Username = username, PasswordHash = passwordHasher.Hash(password) });
-        await context.SaveChangesAsync(ct);
-
-        logger.LogInformation("Seeded bootstrap admin user {Username}.", username);
+        var adminUser = await context.Users.FirstOrDefaultAsync(u => u.Username == username, ct);
+        if (adminUser is null)
+        {
+            context.Users.Add(new User { Username = username, PasswordHash = passwordHasher.Hash(password) });
+            await context.SaveChangesAsync(ct);
+            logger.LogInformation("Seeded bootstrap admin user {Username}.", username);
+        }
+        else if (!passwordHasher.Verify(adminUser.PasswordHash, password))
+        {
+            adminUser.PasswordHash = passwordHasher.Hash(password);
+            await context.SaveChangesAsync(ct);
+            logger.LogInformation("admin credential synced from configuration");
+        }
     }
 
     private sealed record SeedCompetitorItem(

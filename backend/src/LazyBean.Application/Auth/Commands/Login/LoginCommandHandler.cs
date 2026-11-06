@@ -17,7 +17,7 @@ public class LoginCommandHandler(IUnitOfWork unitOfWork, IPasswordHasher passwor
 
         if (user is null || !passwordHasher.Verify(user.PasswordHash, request.Password))
         {
-            throw new InvalidCredentialsException();
+            throw new InvalidCredentialsException(request.Username);
         }
 
         return new AuthenticatedUserDto(user.Id, user.Username);
