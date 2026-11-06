@@ -47,6 +47,10 @@ export interface CollectorJobSummary {
   summary: string | null;
   queuedAt: string;
   finishedAt: string | null;
+  // What the app last reported for the job: for example "Meta page 4/5: Fengany", with its place in the work.
+  progressLabel: string | null;
+  progressDone: number | null;
+  progressTotal: number | null;
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {

@@ -52,10 +52,11 @@ public sealed class CollectorApiClient(HttpClient http, RetryPolicy retry) : ICo
             return await ReadBodyAsync<CollectorJobDto>(response, c);
         }, ct);
 
-    public Task HeartbeatAsync(Guid jobId, CancellationToken ct) =>
+    // Sends what the app is doing with the job, so the dashboard can show it ("Meta page 4/5: Fengany").
+    public Task HeartbeatAsync(Guid jobId, CollectorHeartbeatRequest? progress, CancellationToken ct) =>
         retry.ExecuteAsync(async c =>
         {
-            using var _ = await SendAsync(HttpMethod.Post, $"api/collector/jobs/{jobId}/heartbeat", null, auth: true, c);
+            using var _ = await SendAsync(HttpMethod.Post, $"api/collector/jobs/{jobId}/heartbeat", progress, auth: true, c);
             return true;
         }, ct);
 

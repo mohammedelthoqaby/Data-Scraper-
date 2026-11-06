@@ -19,6 +19,31 @@ const STATUS_LABELS: Record<string, { text: string; tone: string }> = {
   Skipped: { text: 'Skipped', tone: 'warn' },
 };
 
+// What this PC's app must still do for the run, in the words the user needs. Null when no desktop work is involved.
+function desktopBanner(jobs: CollectorJobSummary[]): { text: string; tone: 'open' | 'done' } | null {
+  const desktop = jobs.filter((job) => job.source === 'desktop');
+  if (desktop.length === 0) {
+    return null;
+  }
+
+  const working = desktop.find((job) => job.status === 'Claimed') ?? desktop.find((job) => job.status === 'Queued');
+  if (working) {
+    const what =
+      working.kind === 'MetaAds' ? 'Meta ads' : working.kind === 'GoogleAds' ? 'Google ads' : 'the store catalog';
+    const progress =
+      working.progressDone != null && working.progressTotal != null
+        ? ` (${working.progressDone}/${working.progressTotal})`
+        : '';
+    const verb = working.status === 'Claimed' ? 'collecting' : 'waiting to collect';
+    return { text: `Keep LazyBean Collector open - ${verb} ${what}${progress}`, tone: 'open' };
+  }
+
+  const finished = desktop.every(
+    (job) => job.status === 'Completed' || job.status === 'Failed' || job.status === 'Skipped'
+  );
+  return finished ? { text: 'Run complete - you can close the collector.', tone: 'done' } : null;
+}
+
 // Per-source status for a run: which jobs ran, whether the desktop app or the server ran them, and how each ended.
 export const RunSourcesPanel: React.FC<RunSourcesPanelProps> = ({ runId }) => {
   const [jobs, setJobs] = useState<CollectorJobSummary[]>([]);
@@ -45,7 +70,15 @@ export const RunSourcesPanel: React.FC<RunSourcesPanelProps> = ({ runId }) => {
     return null;
   }
 
+  const banner = desktopBanner(jobs);
+
   return (
+    <>
+    {banner && (
+      <div className={banner.tone === 'done' ? 'success-banner' : 'warning-banner'} style={{ marginBottom: '12px' }}>
+        {banner.text}
+      </div>
+    )}
     <div className="panel" style={{ marginBottom: '12px', padding: '12px 16px' }}>
       <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '8px' }}>Sources for this run</div>
       <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
@@ -80,5 +113,6 @@ export const RunSourcesPanel: React.FC<RunSourcesPanelProps> = ({ runId }) => {
         </tbody>
       </table>
     </div>
+    </>
   );
 };

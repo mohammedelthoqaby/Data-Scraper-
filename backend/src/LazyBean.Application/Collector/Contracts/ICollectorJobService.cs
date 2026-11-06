@@ -16,7 +16,13 @@ public interface ICollectorJobService
     // Returns the next job for this device (its current claim, or a newly claimed job), or null.
     Task<CollectorJobDto?> ClaimNextAsync(Guid deviceId, CancellationToken ct);
 
-    Task<bool> HeartbeatAsync(Guid deviceId, Guid jobId, CancellationToken ct);
+    Task<bool> HeartbeatAsync(Guid deviceId, Guid jobId, CollectorHeartbeatRequest? progress, CancellationToken ct);
+
+    // Skips a run's unfinished desktop ads jobs once no app has been seen for the given time. Returns how many were skipped.
+    Task<int> SkipAdsJobsIfDisconnectedAsync(Guid runId, TimeSpan disconnectedFor, CancellationToken ct);
+
+    // Skips a run's unfinished desktop ads jobs with the given reason. Returns how many were skipped.
+    Task<int> SkipUnfinishedAdsJobsAsync(Guid runId, string reason, CancellationToken ct);
 
     // The app is exiting while it holds a claim: the job goes back to the queue at once. False when the
     // device does not hold the claim (it already finished, or the lease expired and someone else took it).

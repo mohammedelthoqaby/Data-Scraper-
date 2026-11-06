@@ -30,6 +30,7 @@ public sealed class JobRunner(
 
     public async Task RunAsync(CancellationToken ct)
     {
+        var finishedWork = false;
         while (!ct.IsCancellationRequested)
         {
             CollectorJobDto? job;
@@ -52,12 +53,20 @@ public sealed class JobRunner(
 
             if (job is null)
             {
+                // The queue is empty for this PC: the work it did is done.
+                if (finishedWork)
+                {
+                    state.MarkAllDone();
+                    finishedWork = false;
+                }
+
                 state.SetConnection(ConnectionState.Connected, "Connected. Waiting for work.");
                 await delay(IdlePoll, ct);
                 continue;
             }
 
             await ProcessAsync(job, ct);
+            finishedWork = true;
         }
     }
 
@@ -124,6 +133,13 @@ public sealed class JobRunner(
         }
     }
 
+    // What the server shows for the job in progress: the step's label and its place in the work.
+    public static CollectorHeartbeatRequest? ProgressFor(CollectorState state)
+    {
+        var current = state.CurrentJob;
+        return current is null ? null : new CollectorHeartbeatRequest(current.Message, current.Done, current.Total);
+    }
+
     // Best effort: a dead connection just lets the lease expire on the server, as it did before this existed.
     private async Task ReleaseOnExitAsync(Guid jobId)
     {
@@ -161,7 +177,7 @@ public sealed class JobRunner(
                 await Task.Delay(_heartbeat, jobCts.Token);
                 try
                 {
-                    await api.HeartbeatAsync(jobId, jobCts.Token);
+                    await api.HeartbeatAsync(jobId, ProgressFor(state), jobCts.Token);
                 }
                 catch (CollectorApiException ex) when (ex.Kind == ApiErrorKind.Conflict)
                 {

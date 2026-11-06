@@ -63,9 +63,9 @@ public class CollectorController(
     [Authorize(Policy = CollectorPolicies.AnyDevice)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> Heartbeat(Guid jobId, CancellationToken ct)
+    public async Task<IActionResult> Heartbeat(Guid jobId, [FromBody] CollectorHeartbeatRequest? progress, CancellationToken ct)
     {
-        return await jobs.HeartbeatAsync(CurrentDeviceId, jobId, ct)
+        return await jobs.HeartbeatAsync(CurrentDeviceId, jobId, progress, ct)
             ? NoContent()
             : Conflict(new { error = "This job is not claimed by this device." });
     }

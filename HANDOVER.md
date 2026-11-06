@@ -58,13 +58,15 @@ A collection run creates these jobs, in this order:
 2. **Meta ads** for the approved Meta identities.
 3. **Google ads** for the approved Google identities.
 
-Within a run, each job starts only after the job before it has finished. The run does not wait for Meta or Google: once the store jobs are done, the run continues to matching, AI triage, and alerts, and the ads jobs settle on their own. Ad alerts are recalculated when an ads job completes.
+Within a run, each job starts only after the job before it has finished. If a desktop app is connected when the run starts, the run waits for its Meta and Google jobs before matching, AI triage, and alerts. The progress shows the app's current step, for example "Meta page 4/5: Fengany". If no app is connected, the Meta job is skipped at once and the run carries on, and the Google job runs on the server as before. If the app disconnects for 5 minutes while the run waits, its unfinished ads jobs are skipped and the run carries on. Ad alerts are computed in the alerts phase, after the ads jobs.
 
 **Claims and leases.** The app claims a job by polling. A claim stays with that app as long as it sends heartbeats. If the app stops for 5 minutes, the job returns to the queue. After 3 attempts the job fails.
 
 **The skip rule.** A desktop job that nobody claims within 10 minutes of becoming available is marked **Skipped (collector not running)**. A skipped store job is never treated as missing products: nothing is marked Missing or Removed, and the run carries on. Skipped ads jobs simply leave the existing ads as they were.
 
-**Statuses on the Collection Runs page.** Each competitor and each ads source shows where it ran (Desktop app or Server) and how it ended (Running, Completed, Failed, Skipped). The run stays **Running** until collection, matching, AI triage, and alerts have all finished, and progress only reaches 100% at that point.
+**Statuses on the Collection Runs page.** Each competitor and each ads source shows where it ran (Desktop app or Server) and how it ended (Running, Completed, Failed, Skipped). The run stays **Running** until collection, the desktop ads jobs, matching, AI triage, and alerts have all finished. A run is **Partial** when a store or ads job was skipped or failed. It is **Completed** only when every source has finished and post-processing has recorded its phases.
+
+**What the user sees.** While the desktop app has work for a run, the Collection Runs page shows "Keep LazyBean Collector open - collecting Meta ads (4/5)". When the app has nothing left, the page shows "Run complete - you can close the collector." The app itself shows "All done for this run - you can close the app" in its window and as a tray balloon.
 
 ---
 

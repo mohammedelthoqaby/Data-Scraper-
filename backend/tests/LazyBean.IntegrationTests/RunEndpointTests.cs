@@ -151,6 +151,15 @@ public class RunEndpointTests(TestDatabaseFixture testDb) : IAsyncLifetime
         var targetId = Guid.NewGuid();
         using var cts = new CancellationTokenSource();
 
+        // The run must start with no app connected. Other tests in this collection pair one, and a connected app
+        // makes the run wait for its ads jobs, so revoke any device left over.
+        await using (var setup = new LazyBeanDbContext(new DbContextOptionsBuilder<LazyBeanDbContext>().UseNpgsql(testDb.ConnectionString).Options))
+        {
+            await setup.CollectorDevices
+                .Where(d => d.RevokedAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(d => d.RevokedAt, DateTimeOffset.UtcNow));
+        }
+
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/runs")
         {
             Content = JsonContent.Create(new StartRunRequest([targetId]))
@@ -171,7 +180,7 @@ public class RunEndpointTests(TestDatabaseFixture testDb) : IAsyncLifetime
         var options = new DbContextOptionsBuilder<LazyBeanDbContext>().UseNpgsql(testDb.ConnectionString).Options;
         CollectionRun? run = null;
 
-        for (int i = 0; i < 50; i++)
+        for (int i = 0; i < 300; i++)
         {
             await Task.Delay(200);
             await using var db = new LazyBeanDbContext(options);

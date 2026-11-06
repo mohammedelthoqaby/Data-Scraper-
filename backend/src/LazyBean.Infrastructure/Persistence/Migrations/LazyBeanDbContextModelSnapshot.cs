@@ -706,6 +706,15 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastHeartbeatAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("ProgressDone")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProgressLabel")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("ProgressTotal")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset>("QueuedAt")
                         .HasColumnType("timestamp with time zone");
 

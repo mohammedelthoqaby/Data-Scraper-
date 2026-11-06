@@ -14,7 +14,7 @@ public interface ICollectorApi
 
     Task<CollectorJobDto?> ClaimNextJobAsync(CancellationToken ct);
 
-    Task HeartbeatAsync(Guid jobId, CancellationToken ct);
+    Task HeartbeatAsync(Guid jobId, CollectorHeartbeatRequest? progress, CancellationToken ct);
 
     // Gives the claim back when the app exits mid-job. The server returns the job to the queue.
     Task ReleaseJobAsync(Guid jobId, CancellationToken ct);

@@ -35,7 +35,7 @@ public sealed class GoogleJobHandler(
         {
             ct.ThrowIfCancellationRequested();
             var identity = identities[index];
-            state.UpdateJob($"Google advertiser {index + 1} of {identities.Count}: {identity.CompetitorName}", index, identities.Count);
+            state.UpdateJob($"Google advertiser {index + 1}/{identities.Count}: {identity.CompetitorName}", index + 1, identities.Count);
 
             if (!identity.ExternalId.StartsWith("AR", StringComparison.OrdinalIgnoreCase))
             {

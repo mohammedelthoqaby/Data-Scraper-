@@ -146,6 +146,68 @@ public sealed class JobRunnerTests : IDisposable
 
     private static string[] Sources(FakeCollectorApi api) => api.JobCompletions.Select(j => j.Request.Summary!.Split(':')[0]).ToArray();
 
+    [Fact]
+    public async Task AllDone_IsRaisedOnce_WhenTheQueueRunsDryAfterWork()
+    {
+        var api = new FakeCollectorApi();
+        Enqueue(api, Builders.StoreJob(Guid.NewGuid()));
+        using var cts = new CancellationTokenSource();
+        var state = new CollectorState();
+        var raised = 0;
+        state.AllDone += () => raised++;
+        var runner = Runner(api, cts, state, new FakeMetaCollector(), new FakeGoogleClient());
+
+        await runner.RunAsync(cts.Token);
+
+        Assert.Equal(1, raised);
+        Assert.True(state.IsAllDone);
+    }
+
+    [Fact]
+    public async Task AllDone_IsNotRaised_WhenNoWorkWasDone()
+    {
+        var api = new FakeCollectorApi();
+        using var cts = new CancellationTokenSource();
+        var state = new CollectorState();
+        var raised = 0;
+        state.AllDone += () => raised++;
+        var runner = Runner(api, cts, state, new FakeMetaCollector(), new FakeGoogleClient());
+
+        await runner.RunAsync(cts.Token);
+
+        Assert.Equal(0, raised);
+        Assert.False(state.IsAllDone);
+    }
+
+    [Fact]
+    public void AllDone_ClearsWhenNewWorkStarts_AndIsRaisedAgainLater()
+    {
+        var state = new CollectorState();
+        var raised = 0;
+        state.AllDone += () => raised++;
+
+        state.MarkAllDone();
+        state.MarkAllDone();
+        Assert.Equal(1, raised);
+
+        state.SetJob(new JobProgress("Meta ads", "Starting…", 0, null, DateTimeOffset.Now));
+        Assert.False(state.IsAllDone);
+
+        state.MarkAllDone();
+        Assert.Equal(2, raised);
+    }
+
+    [Fact]
+    public void Heartbeat_ReportsTheJobInProgress_AndNothingWhenIdle()
+    {
+        var state = new CollectorState();
+        Assert.Null(JobRunner.ProgressFor(state));
+
+        state.SetJob(new JobProgress("Meta ads", "Meta page 4/5: Fengany", 4, 5, DateTimeOffset.Now));
+
+        Assert.Equal(new CollectorHeartbeatRequest("Meta page 4/5: Fengany", 4, 5), JobRunner.ProgressFor(state));
+    }
+
     private JobRunner Runner(
         FakeCollectorApi api,
         CancellationTokenSource cts,

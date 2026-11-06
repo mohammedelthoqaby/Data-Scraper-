@@ -29,12 +29,13 @@ public class CollectorJobService(
     public static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(5);
 
     // An app is "connected" while it has polled within this window (it polls every 10 seconds).
-    public static readonly TimeSpan ConnectedWindow = TimeSpan.FromSeconds(45);
+    public static readonly TimeSpan ConnectedWindow = TimeSpan.FromSeconds(60);
 
     // A server-run job that never reports back is failed after this long.
     public static readonly TimeSpan ServerJobTimeout = TimeSpan.FromMinutes(30);
 
     public const string SkippedNotRunning = "Skipped (collector not running)";
+    public const string DisconnectedSummary = "Skipped (collector disconnected for 5 minutes)";
 
     public async Task<CollectorRunPlan> PlanRunAsync(Guid runId, IReadOnlyList<CollectorStoreTarget> stores, CancellationToken ct)
     {
@@ -65,14 +66,21 @@ public class CollectorJobService(
             }, ct);
         }
 
-        await unitOfWork.CollectorJobs.AddAsync(new CollectorJob
+        // With no app connected, the run does not wait for Meta ads: the job is skipped at once.
+        var meta = new CollectorJob
         {
             GroupId = runId,
             RunId = runId,
             Kind = CollectorJobKind.MetaAds,
             Sequence = 2,
             QueuedAt = now,
-        }, ct);
+        };
+        if (!connected)
+        {
+            meta.Skip(now, SkippedNotRunning);
+        }
+
+        await unitOfWork.CollectorJobs.AddAsync(meta, ct);
 
         var google = BuildGoogleJob(runId, runId, sequence: 3, now, connected);
         await unitOfWork.CollectorJobs.AddAsync(google, ct);
@@ -157,7 +165,7 @@ public class CollectorJobService(
         return null;
     }
 
-    public async Task<bool> HeartbeatAsync(Guid deviceId, Guid jobId, CancellationToken ct)
+    public async Task<bool> HeartbeatAsync(Guid deviceId, Guid jobId, CollectorHeartbeatRequest? progress, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
         var job = (await unitOfWork.CollectorJobs.FindAsync(
@@ -168,6 +176,7 @@ public class CollectorJobService(
         }
 
         job.Heartbeat(now);
+        job.ReportProgress(progress?.ProgressLabel, progress?.ProgressDone, progress?.ProgressTotal, now);
         unitOfWork.CollectorJobs.Update(job);
         await SaveAsync(ct);
         return true;
@@ -400,8 +409,50 @@ public class CollectorJobService(
                 j.CompetitorSlug,
                 j.Summary,
                 j.QueuedAt,
-                j.FinishedAt))
+                j.FinishedAt,
+                j.ProgressLabel,
+                j.ProgressDone,
+                j.ProgressTotal))
             .ToList();
+    }
+
+    public async Task<int> SkipAdsJobsIfDisconnectedAsync(Guid runId, TimeSpan disconnectedFor, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
+        var lastSeen = await readContext.Query<CollectorDevice>()
+            .Where(d => d.RevokedAt == null && d.LastSeenAt != null)
+            .MaxAsync(d => d.LastSeenAt, ct);
+
+        // Still connected recently enough: keep waiting.
+        if (lastSeen is not null && lastSeen > now - disconnectedFor)
+        {
+            return 0;
+        }
+
+        return await SkipUnfinishedAdsJobsAsync(runId, DisconnectedSummary, ct);
+    }
+
+    public async Task<int> SkipUnfinishedAdsJobsAsync(Guid runId, string reason, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
+        var pending = await unitOfWork.CollectorJobs.FindAsync(
+            j => j.RunId == runId
+                 && j.Source == CollectorJob.DesktopSource
+                 && (j.Kind == CollectorJobKind.MetaAds || j.Kind == CollectorJobKind.GoogleAds)
+                 && (j.Status == CollectorJobStatus.Queued || j.Status == CollectorJobStatus.Claimed), ct);
+
+        foreach (var job in pending)
+        {
+            job.Skip(now, reason);
+            unitOfWork.CollectorJobs.Update(job);
+        }
+
+        if (pending.Count > 0)
+        {
+            await SaveAsync(ct);
+        }
+
+        return pending.Count;
     }
 
     public async Task<bool> IsCollectorConnectedAsync(CancellationToken ct)

@@ -47,7 +47,7 @@ public sealed class MetaJobHandler(
         {
             ct.ThrowIfCancellationRequested();
             var identity = identities[index];
-            state.UpdateJob($"Meta page {index + 1} of {identities.Count}: {identity.CompetitorName}", index, identities.Count);
+            state.UpdateJob($"Meta page {index + 1}/{identities.Count}: {identity.CompetitorName}", index + 1, identities.Count);
 
             if (identity.BlockedUntil is { } blockedUntil && blockedUntil > DateTimeOffset.UtcNow)
             {

@@ -51,9 +51,12 @@ public sealed class FakeCollectorApi : ICollectorApi
         return Claims.Count == 0 ? Task.FromResult<CollectorJobDto?>(null) : Claims.Dequeue()(ct);
     }
 
-    public Task HeartbeatAsync(Guid jobId, CancellationToken ct)
+    public List<CollectorHeartbeatRequest?> HeartbeatProgress { get; } = [];
+
+    public Task HeartbeatAsync(Guid jobId, CollectorHeartbeatRequest? progress, CancellationToken ct)
     {
         Heartbeats++;
+        HeartbeatProgress.Add(progress);
         return Task.CompletedTask;
     }
 

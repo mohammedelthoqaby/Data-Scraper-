@@ -72,9 +72,34 @@ public sealed class CollectorState
         lock (_gate)
         {
             CurrentJob = job;
+            if (job is not null)
+            {
+                IsAllDone = false;
+            }
         }
 
         Changed?.Invoke();
+    }
+
+    // Raised once, when this PC has no more work for what it just did. Cleared when new work starts.
+    public event Action? AllDone;
+
+    public bool IsAllDone { get; private set; }
+
+    public void MarkAllDone()
+    {
+        lock (_gate)
+        {
+            if (IsAllDone)
+            {
+                return;
+            }
+
+            IsAllDone = true;
+        }
+
+        Changed?.Invoke();
+        AllDone?.Invoke();
     }
 
     public void SetBatch(BatchProgress? batch)

@@ -40,6 +40,11 @@ public class CollectorJob : BaseEntity, IAggregateRoot
 
     public bool IsTerminal => Status is CollectorJobStatus.Completed or CollectorJobStatus.Failed or CollectorJobStatus.Skipped;
 
+    // What the app reports while it works the job, for example "Meta page 4/5: Fengany" (4 of 5).
+    public string? ProgressLabel { get; set; }
+    public int? ProgressDone { get; set; }
+    public int? ProgressTotal { get; set; }
+
     public void Claim(Guid deviceId, DateTimeOffset now)
     {
         Status = CollectorJobStatus.Claimed;
@@ -106,6 +111,19 @@ public class CollectorJob : BaseEntity, IAggregateRoot
         FinishedAt = now;
         Summary = summary;
         ResultJson = resultJson;
+        UpdatedAt = now;
+    }
+
+    // Records the app's progress on a claimed job. Null values leave the previous progress in place.
+    public void ReportProgress(string? label, int? done, int? total, DateTimeOffset now)
+    {
+        if (label is not null)
+        {
+            ProgressLabel = label.Length > 200 ? label[..200] : label;
+        }
+
+        ProgressDone = done ?? ProgressDone;
+        ProgressTotal = total ?? ProgressTotal;
         UpdatedAt = now;
     }
 

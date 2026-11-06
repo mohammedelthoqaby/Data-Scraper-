@@ -177,7 +177,7 @@ public class CollectorJobServiceTests
         db.ChangeTracker.Clear();
 
         clock.Now = T0.AddMinutes(4);
-        Assert.True(await h.Jobs.HeartbeatAsync(device.Id, store!.Id, CancellationToken.None));
+        Assert.True(await h.Jobs.HeartbeatAsync(device.Id, store!.Id, null, CancellationToken.None));
         db.ChangeTracker.Clear();
 
         clock.Now = T0.AddMinutes(8);
@@ -231,10 +231,10 @@ public class CollectorJobServiceTests
         Assert.Equal(CollectorJobStatus.Skipped, store.Status);
         Assert.Equal(CollectorJobService.SkippedNotRunning, store.Summary);
 
-        // Meta was waiting behind the store job. It now starts its own claim window instead of being skipped.
+        // With no app connected at plan time, the run's Meta job was skipped at once. Maintenance leaves it alone.
         var meta = await db.CollectorJobs.SingleAsync(j => j.Kind == CollectorJobKind.MetaAds);
-        Assert.Equal(CollectorJobStatus.Queued, meta.Status);
-        Assert.Equal(clock.Now, meta.QueuedAt);
+        Assert.Equal(CollectorJobStatus.Skipped, meta.Status);
+        Assert.Equal(CollectorJobService.SkippedNotRunning, meta.Summary);
     }
 
     [Fact]
@@ -350,6 +350,71 @@ public class CollectorJobServiceTests
         var meta = await h.Jobs.ClaimNextAsync(device.Id, CancellationToken.None);
         Assert.Equal("MetaAds", meta!.Kind);
         Assert.Equal((2, 3), (meta.BatchPosition, meta.BatchTotal));
+    }
+
+    [Fact]
+    public async Task PlanRun_WithoutApp_SkipsTheRunsMetaJobAtOnce()
+    {
+        var h = NewHarness();
+        var runId = Guid.NewGuid();
+
+        await h.Jobs.PlanRunAsync(runId, [], CancellationToken.None);
+        h.Db.ChangeTracker.Clear();
+
+        // No app is connected, so the run does not wait for Meta ads.
+        var meta = await h.Db.CollectorJobs.AsNoTracking().SingleAsync(j => j.GroupId == runId && j.Kind == CollectorJobKind.MetaAds);
+        Assert.Equal(CollectorJobStatus.Skipped, meta.Status);
+        Assert.Equal(CollectorJobService.SkippedNotRunning, meta.Summary);
+    }
+
+    [Fact]
+    public async Task SkipAdsJobs_WaitsFiveMinutesAfterTheAppWasLastSeen_ThenSkipsWhatIsLeft()
+    {
+        var h = NewHarness(T0);
+        var runId = Guid.NewGuid();
+        await AddConnectedDeviceAsync(h.Db, T0);
+        await h.Jobs.PlanRunAsync(runId, [], CancellationToken.None);
+        h.Db.ChangeTracker.Clear();
+
+        // Four minutes after the app was last seen: still within the window, nothing is skipped.
+        h.Clock.Now = T0.AddMinutes(4);
+        Assert.Equal(0, await h.Jobs.SkipAdsJobsIfDisconnectedAsync(runId, TimeSpan.FromMinutes(5), CancellationToken.None));
+        h.Db.ChangeTracker.Clear();
+
+        // Six minutes: the app is gone. Its Meta and Google jobs are skipped and nothing else is touched.
+        h.Clock.Now = T0.AddMinutes(6);
+        Assert.Equal(2, await h.Jobs.SkipAdsJobsIfDisconnectedAsync(runId, TimeSpan.FromMinutes(5), CancellationToken.None));
+        h.Db.ChangeTracker.Clear();
+
+        var ads = await h.Db.CollectorJobs.AsNoTracking()
+            .Where(j => j.GroupId == runId && (j.Kind == CollectorJobKind.MetaAds || j.Kind == CollectorJobKind.GoogleAds))
+            .ToListAsync();
+        Assert.All(ads, job =>
+        {
+            Assert.Equal(CollectorJobStatus.Skipped, job.Status);
+            Assert.Equal(CollectorJobService.DisconnectedSummary, job.Summary);
+        });
+    }
+
+    [Fact]
+    public async Task Heartbeat_WithProgress_ShowsTheLabelAndCountsOnTheRunsJobs()
+    {
+        var clock = new MutableClock(T0);
+        var h = new Harness(NewDbWithPlan(out var device, out var competitor), clock);
+        await h.Jobs.PlanRunAsync(Guid.NewGuid(), [Target(competitor)], CancellationToken.None);
+        h.Db.ChangeTracker.Clear();
+        var claimed = await h.Jobs.ClaimNextAsync(device.Id, CancellationToken.None);
+        Assert.NotNull(claimed);
+        var runId = claimed!.RunId!.Value;
+        h.Db.ChangeTracker.Clear();
+
+        await h.Jobs.HeartbeatAsync(device.Id, claimed.Id, new CollectorHeartbeatRequest("Store 3/10: Fengany", 3, 10), CancellationToken.None);
+        h.Db.ChangeTracker.Clear();
+
+        var job = (await h.Jobs.GetRunJobsAsync(runId, CancellationToken.None)).Single(j => j.JobId == claimed.Id);
+        Assert.Equal("Store 3/10: Fengany", job.ProgressLabel);
+        Assert.Equal(3, job.ProgressDone);
+        Assert.Equal(10, job.ProgressTotal);
     }
 
     private static LazyBeanDbContext NewDbWithPlan(out CollectorDevice device, out Competitor competitor, bool connected = true)

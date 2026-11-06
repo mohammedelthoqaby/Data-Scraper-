@@ -29,6 +29,9 @@ public sealed record CollectorJobCompetitorDto(
 // Per-page outcome the app reports for an ads job (page ID or advertiser ID, plus counts and errors).
 public sealed record CollectorPageReport(string PageId, string Status, int TotalCollected, string? Error);
 
+// Optional body of a heartbeat: what the app is doing right now.
+public sealed record CollectorHeartbeatRequest(string? ProgressLabel, int? ProgressDone, int? ProgressTotal);
+
 public sealed record CompleteCollectorJobRequest(string Status, string? Summary, IReadOnlyList<CollectorPageReport>? Pages);
 
 public enum CollectorCompletionResult

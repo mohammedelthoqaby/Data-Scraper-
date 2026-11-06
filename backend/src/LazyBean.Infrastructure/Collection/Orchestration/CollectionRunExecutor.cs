@@ -98,6 +98,12 @@ public class CollectionRunExecutor(
     {
     }
 
+    // Desktop ads jobs of a run. Five minutes with no app skips what is left; two hours is the outer limit.
+    private static readonly TimeSpan AdsDisconnectTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan AdsWaitLimit = TimeSpan.FromHours(2);
+    private static readonly TimeSpan AdsPollInterval = TimeSpan.FromSeconds(3);
+    private static readonly string[] PostProcessingPhases = ["classification", "matching", "ai_triage", "alerts"];
+
     public async Task ExecuteAsync(Guid runId, CancellationToken ct)
     {
         await using (var db = await dbContextFactory.CreateDbContextAsync(ct))
@@ -169,6 +175,7 @@ public class CollectionRunExecutor(
                 "Already completed in previous attempt (resumed)");
         }
 
+        object? adsPhase = null;
         try
         {
             var serverCompetitors = competitors
@@ -192,6 +199,9 @@ public class CollectionRunExecutor(
             var desktopTasks = desktopCompetitors.Select(c => WaitForDesktopCompetitorAsync(runId, c, ct));
 
             await Task.WhenAll(serverTasks.Concat(desktopTasks));
+
+            // The run's desktop ads jobs (Meta, then Google) finish before the run does.
+            adsPhase = await WaitForRunAdsAsync(runId, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -228,45 +238,34 @@ public class CollectionRunExecutor(
             return;
         }
 
-        CollectionRunStatus finalStatus;
-        await using (var db = await dbContextFactory.CreateDbContextAsync(CancellationToken.None))
+        // The outcome comes from the competitor runs and the ads jobs, but it is recorded only after post-processing.
+        // Until then the run stays Running: a restart mid-pipeline resumes the run instead of leaving a Completed run
+        // with no phases.
+        var outcome = await DecideOutcomeAsync(runId, CancellationToken.None);
+
+        if (outcome != CollectionRunStatus.Failed)
         {
-            var run = await db.CollectionRuns.FirstAsync(r => r.Id == runId, CancellationToken.None);
-            var compRuns = await db.CompetitorRuns.Where(cr => cr.RunId == runId).ToListAsync(CancellationToken.None);
-            // A skipped desktop store was not collected, so the run is partial rather than complete.
-            var anyIncomplete = compRuns.Any(cr =>
-                cr.Status == CompetitorRunStatus.Degraded ||
-                cr.Status == CompetitorRunStatus.Failed ||
-                cr.Status == CompetitorRunStatus.Skipped);
-            var allFailed = compRuns.Count > 0 && compRuns.All(cr => cr.Status == CompetitorRunStatus.Failed);
-
-            if (allFailed)
+            await RunPostProcessingPipelineAsync(runId, ct, adsPhase);
+        }
+        else
+        {
+            var phases = new List<object>();
+            if (adsPhase is not null)
             {
-                run.Status = CollectionRunStatus.Failed;
-            }
-            else if (anyIncomplete)
-            {
-                run.Status = CollectionRunStatus.Partial;
-            }
-            else
-            {
-                run.Status = CollectionRunStatus.Completed;
+                phases.Add(adsPhase);
             }
 
-            finalStatus = run.Status;
-            run.FinishedAt = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync(CancellationToken.None);
+            await PersistPhasesAsync(runId, phases, null, CancellationToken.None);
         }
 
+        // A stop during post-processing lands here, so the run is marked Interrupted rather than Completed.
+        ct.ThrowIfCancellationRequested();
+
+        await RecordFinalStatusAsync(runId, outcome, CancellationToken.None);
         await cache.RemoveByTagAsync("runs", CancellationToken.None);
         await cache.RemoveByTagAsync("products", CancellationToken.None);
 
-        if (finalStatus != CollectionRunStatus.Failed && serviceScopeFactory != null)
-        {
-            await RunPostProcessingPipelineAsync(runId, ct);
-        }
-
-        progressTracker?.SetCompleted(runId, finalStatus.ToString());
+        progressTracker?.SetCompleted(runId, outcome.ToString());
 
         if (googleAdsSyncService != null)
         {
@@ -281,12 +280,149 @@ public class CollectionRunExecutor(
         }
     }
 
-    private async Task RunPostProcessingPipelineAsync(Guid runId, CancellationToken ct)
+    // The outcome from the competitor runs and the ads jobs. Nothing is written here.
+    private async Task<CollectionRunStatus> DecideOutcomeAsync(Guid runId, CancellationToken ct)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(ct);
+        var compRuns = await db.CompetitorRuns.Where(cr => cr.RunId == runId).ToListAsync(ct);
+
+        var adsJobs = collectorJobs is null
+            ? new List<CollectorJobSummaryDto>()
+            : (await collectorJobs.GetRunJobsAsync(runId, ct)).ToList();
+        var adsIncomplete = adsJobs.Any(j => IsAdsKind(j.Kind) && (j.Status == "Failed" || j.Status == "Skipped"));
+
+        var anyIncomplete = adsIncomplete || compRuns.Any(cr =>
+            cr.Status == CompetitorRunStatus.Degraded ||
+            cr.Status == CompetitorRunStatus.Failed ||
+            cr.Status == CompetitorRunStatus.Skipped);
+        var allFailed = compRuns.Count > 0 && compRuns.All(cr => cr.Status == CompetitorRunStatus.Failed);
+
+        if (allFailed)
+        {
+            return CollectionRunStatus.Failed;
+        }
+
+        return anyIncomplete ? CollectionRunStatus.Partial : CollectionRunStatus.Completed;
+    }
+
+    // Records the outcome. Called only after post-processing has written its phases.
+    private async Task RecordFinalStatusAsync(Guid runId, CollectionRunStatus status, CancellationToken ct)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(ct);
+        var run = await db.CollectionRuns.FirstAsync(r => r.Id == runId, ct);
+        run.Status = status;
+        run.FinishedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    // Writes PhasesJson. Errors propagate: a run must not finish without its phases on record.
+    private async Task PersistPhasesAsync(Guid runId, IReadOnlyList<object> phases, int? totalMatches, CancellationToken ct)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(ct);
+        var run = await db.CollectionRuns.FirstAsync(r => r.Id == runId, ct);
+        run.PhasesJson = JsonSerializer.Serialize(phases);
+        if (totalMatches.HasValue)
+        {
+            run.MatchesCount = totalMatches.Value;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static bool IsAdsKind(string kind) => kind == "MetaAds" || kind == "GoogleAds";
+
+    // Waits for this run's desktop ads jobs (Meta, then Google). The app reports progress on each heartbeat.
+    // Jobs are skipped rather than waited for when no app has been seen for five minutes. Returns the "ads" phase.
+    private async Task<object?> WaitForRunAdsAsync(Guid runId, CancellationToken ct)
+    {
+        if (collectorJobs is null)
+        {
+            return null;
+        }
+
+        var sw = Stopwatch.StartNew();
+        progressTracker?.UpdatePhase(runId, "ads", "Running", "Waiting for the LazyBean Collector app to collect ads...", null);
+
+        IReadOnlyList<CollectorJobSummaryDto> adsJobs;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            adsJobs = (await collectorJobs.GetRunJobsAsync(runId, ct))
+                .Where(j => j.Source == CollectorJob.DesktopSource && IsAdsKind(j.Kind))
+                .ToList();
+
+            var pending = adsJobs.Where(j => j.Status == "Queued" || j.Status == "Claimed").ToList();
+            if (pending.Count == 0)
+            {
+                break;
+            }
+
+            if (await collectorJobs.SkipAdsJobsIfDisconnectedAsync(runId, AdsDisconnectTimeout, ct) > 0)
+            {
+                logger.LogWarning(
+                    "CollectionRun {RunId}: no LazyBean Collector app has been seen for {Minutes} minutes; skipped its unfinished ads jobs.",
+                    runId, AdsDisconnectTimeout.TotalMinutes);
+                continue;
+            }
+
+            if (sw.Elapsed > AdsWaitLimit)
+            {
+                logger.LogWarning("CollectionRun {RunId}: ads collection passed the {Hours}-hour limit; skipping what is left.", runId, AdsWaitLimit.TotalHours);
+                await collectorJobs.SkipUnfinishedAdsJobsAsync(runId, "Skipped (ads collection took longer than 2 hours)", ct);
+                continue;
+            }
+
+            var active = pending.FirstOrDefault(j => j.Status == "Claimed") ?? pending[0];
+            progressTracker?.UpdatePhase(runId, "ads", "Running", DescribeAdsProgress(active), (int)sw.ElapsedMilliseconds);
+            await Task.Delay(AdsPollInterval, ct);
+        }
+
+        var status = adsJobs.Count == 0 ? "skipped"
+            : adsJobs.Any(j => j.Status == "Failed") ? "failed"
+            : adsJobs.Any(j => j.Status == "Skipped") ? "skipped"
+            : "completed";
+        var message = adsJobs.Count == 0
+            ? "No desktop ads jobs in this run."
+            : string.Join("; ", adsJobs.Select(j => $"{(j.Kind == "MetaAds" ? "Meta" : "Google")} ads {j.Status.ToLowerInvariant()}"));
+        var elapsed = (int)sw.ElapsedMilliseconds;
+        progressTracker?.UpdatePhase(runId, "ads", status, message, elapsed);
+        return new { name = "ads", status, durationMs = elapsed, message };
+    }
+
+    private static string DescribeAdsProgress(CollectorJobSummaryDto job)
+    {
+        if (!string.IsNullOrWhiteSpace(job.ProgressLabel))
+        {
+            return $"Collecting ads (desktop): {job.ProgressLabel}";
+        }
+
+        return job.Kind == "MetaAds" ? "Collecting ads (desktop): Meta" : "Collecting ads (desktop): Google";
+    }
+
+    private async Task RunPostProcessingPipelineAsync(Guid runId, CancellationToken ct, object? adsPhase)
     {
         var phases = new List<object>();
         int? totalMatches = null;
 
-        using var scope = serviceScopeFactory!.CreateScope();
+        if (adsPhase is not null)
+        {
+            phases.Add(adsPhase);
+        }
+
+        if (serviceScopeFactory is null)
+        {
+            // Without a service scope the phases cannot run. They are still recorded as skipped, so a Completed run
+            // always says what post-processing did.
+            foreach (var name in PostProcessingPhases)
+            {
+                phases.Add(new { name, status = "skipped", durationMs = 0, message = "Post-processing is not configured on this host." });
+            }
+
+            await PersistPhasesAsync(runId, phases, null, ct);
+            return;
+        }
+
+        using var scope = serviceScopeFactory.CreateScope();
         var sp = scope.ServiceProvider;
 
         // Phase 1: Classification (10 min timeout)
@@ -469,6 +605,7 @@ public class CollectionRunExecutor(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to persist PhasesJson and MatchesCount to CollectionRun {RunId}.", runId);
+            throw;
         }
     }
 

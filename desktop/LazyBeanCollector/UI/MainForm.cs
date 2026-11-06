@@ -174,6 +174,11 @@ public sealed class MainForm : Form
             ConnectionState.Stopped => "Stopped",
             _ => "Starting",
         };
+        if (_state.IsAllDone && _state.CurrentJob is null)
+        {
+            _status.Text = "All done for this run - you can close the app";
+        }
+
         var device = settings.DeviceName is null ? string.Empty : $"   ·   This PC: {settings.DeviceName}";
         _server.Text = $"{_state.ConnectionDetail}   ·   Server: {settings.ServerUrl}{device}";
 

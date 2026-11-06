@@ -27,4 +27,7 @@ public sealed record CollectorJobSummaryDto(
     string? CompetitorSlug,
     string? Summary,
     DateTimeOffset QueuedAt,
-    DateTimeOffset? FinishedAt);
+    DateTimeOffset? FinishedAt,
+    string? ProgressLabel = null,
+    int? ProgressDone = null,
+    int? ProgressTotal = null);

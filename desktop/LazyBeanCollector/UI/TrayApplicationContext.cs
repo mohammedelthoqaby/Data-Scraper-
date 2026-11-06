@@ -44,6 +44,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         _stateChanged = () => _ui.Post(_ => RefreshTray(), null);
         _state.Changed += _stateChanged;
+        _state.AllDone += OnAllDone;
         RefreshTray();
 
         // A second launch sets this event; the window opens here, on the UI thread.
@@ -83,6 +84,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         if (disposing)
         {
             _state.Changed -= _stateChanged;
+            _state.AllDone -= OnAllDone;
             _stopWatching.Set();
             _watcher.Join(TimeSpan.FromSeconds(2));
             _stopWatching.Dispose();
@@ -126,6 +128,10 @@ public sealed class TrayApplicationContext : ApplicationContext
         _host.MarkTrayHintShown();
         _tray.ShowBalloon("LazyBean Collector is still running in the background. Right-click the tray icon > Exit to quit.");
     }
+
+    // Balloon once per finished batch: the app's work for the run is done, so the user may close it.
+    private void OnAllDone() =>
+        _ui.Post(_ => _tray.ShowBalloon("All done for this run - you can close the app."), null);
 
     private void RefreshTray()
     {

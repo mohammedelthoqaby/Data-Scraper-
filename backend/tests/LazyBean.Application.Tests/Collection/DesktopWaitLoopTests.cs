@@ -24,7 +24,7 @@ public class DesktopWaitLoopTests
     public async Task Skipped_WhenNoCollectorPicksUpTheJob_MarksTheCompetitorSkippedWithoutErrors()
     {
         var seeded = await SeedDesktopRunAsync();
-        var jobs = new Mock<ICollectorJobService>();
+        var jobs = NewJobs(seeded.RunId);
         jobs.Setup(j => j.GetStoreJobStateAsync(seeded.RunId, seeded.CompetitorId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(StoreJob("Skipped", "Skipped (collector not running)", claimed: false));
 
@@ -42,7 +42,7 @@ public class DesktopWaitLoopTests
     public async Task Failed_WhenTheCollectorReportsAFailure_MarksTheCompetitorFailed()
     {
         var seeded = await SeedDesktopRunAsync();
-        var jobs = new Mock<ICollectorJobService>();
+        var jobs = NewJobs(seeded.RunId);
         jobs.Setup(j => j.GetStoreJobStateAsync(seeded.RunId, seeded.CompetitorId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(StoreJob("Failed", "Store blocked the collector.", claimed: true));
 
@@ -60,7 +60,7 @@ public class DesktopWaitLoopTests
     public async Task Completed_WhenTheAppFinishedButSavedNothing_MarksTheCompetitorFailed()
     {
         var seeded = await SeedDesktopRunAsync();
-        var jobs = new Mock<ICollectorJobService>();
+        var jobs = NewJobs(seeded.RunId);
         jobs.Setup(j => j.GetStoreJobStateAsync(seeded.RunId, seeded.CompetitorId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(StoreJob("Completed", null, claimed: false));
 
@@ -77,7 +77,7 @@ public class DesktopWaitLoopTests
     public async Task Finished_WhenTheCollectorAppCompletesTheCompetitor_KeepsItCompleted()
     {
         var seeded = await SeedDesktopRunAsync();
-        var jobs = new Mock<ICollectorJobService>();
+        var jobs = NewJobs(seeded.RunId);
         jobs.Setup(j => j.GetStoreJobStateAsync(seeded.RunId, seeded.CompetitorId, It.IsAny<CancellationToken>()))
             .Callback(() => MarkCompetitorCompletedLikeTheAppDoes(seeded))
             .ReturnsAsync(StoreJob("Claimed", null, claimed: true));
@@ -89,6 +89,15 @@ public class DesktopWaitLoopTests
         Assert.Equal(12, competitorRun.Products);
         Assert.Equal(0, competitorRun.Errors);
         Assert.Equal(CollectionRunStatus.Completed, run.Status);
+    }
+
+    // A run with no ads jobs: the executor reads them after the store jobs finish.
+    private static Mock<ICollectorJobService> NewJobs(Guid runId)
+    {
+        var jobs = new Mock<ICollectorJobService>();
+        jobs.Setup(j => j.GetRunJobsAsync(runId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<CollectorJobSummaryDto>());
+        return jobs;
     }
 
     private sealed class DesktopRun
