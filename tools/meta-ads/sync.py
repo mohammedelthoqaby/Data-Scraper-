@@ -135,10 +135,12 @@ def main():
             time.sleep(delay)
 
     print("\n" + "=" * 65)
+    print("=" * 65)
     print("Meta Ads Sync Pass Finished")
     print("Summary:")
     for r in results_summary:
-        print(f" - {r['name']} ({r['pageId']}): Status={r['status']}, Ads={r['count']}")
+        err_str = f" | Error: {r['error']}" if r.get("error") else ""
+        print(f" - {r['name']} ({r['pageId']}): Status={r['status']}, Ads={r['count']}{err_str}")
     print("=" * 65)
 
 

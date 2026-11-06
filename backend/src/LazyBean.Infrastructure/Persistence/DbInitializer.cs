@@ -242,6 +242,12 @@ public static class DbInitializer
                     if (existing.CompetitorId != comp.Id)
                     {
                         existing.CompetitorId = comp.Id;
+                        identitiesAdded++;
+                    }
+                    if (existing.Status == AdvertiserIdentityStatus.Pending)
+                    {
+                        existing.Status = AdvertiserIdentityStatus.Approved;
+                        identitiesAdded++;
                     }
                 }
                 else
@@ -252,7 +258,7 @@ public static class DbInitializer
                         Platform = AdPlatform.Meta,
                         ExternalId = cleanPageId,
                         Name = comp.Name,
-                        Status = AdvertiserIdentityStatus.Pending,
+                        Status = AdvertiserIdentityStatus.Approved,
                         LibraryUrl = $"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=EG&view_all_page_id={cleanPageId}",
                         Notes = "Seeded from competitors.json"
                     };
@@ -266,7 +272,60 @@ public static class DbInitializer
         if (identitiesAdded > 0)
         {
             await context.SaveChangesAsync(ct);
-            logger.LogInformation("Seeded {Count} Meta advertiser identities with status Pending (awaiting admin approval).", identitiesAdded);
+            logger.LogInformation("Seeded or approved {Count} Meta advertiser identities.", identitiesAdded);
+        }
+
+        await FixSeedMatchesAndCategoriesAsync(context, logger, ct);
+    }
+
+    private static async Task FixSeedMatchesAndCategoriesAsync(LazyBeanDbContext context, ILogger logger, CancellationToken ct)
+    {
+        // 1. Reclassify L'or capsules from CapsulesOther to CapsulesNespressoOriginal
+        var lorCaps = await context.Products
+            .Where(p => p.CanonicalCategory == CanonicalCategory.CapsulesOther &&
+                        (p.Title.Contains("L'OR") || p.Title.Contains("L'or") || p.Title.Contains("Lor") || p.Title.Contains("لور")) &&
+                        (p.Title.Contains("Capsule") || p.Title.Contains("capsule") || p.Title.Contains("كبسول") || p.Title.Contains("Pod") || p.Title.Contains("pod")))
+            .ToListAsync(ct);
+
+        if (lorCaps.Count > 0)
+        {
+            foreach (var p in lorCaps)
+            {
+                p.CanonicalCategory = CanonicalCategory.CapsulesNespressoOriginal;
+            }
+            await context.SaveChangesAsync(ct);
+            logger.LogInformation("Reclassified {Count} L'or capsule products to CapsulesNespressoOriginal.", lorCaps.Count);
+        }
+
+        // 2. Ensure product match exists for L'or Ristretto 11
+        var compVarId = Guid.Parse("16e6d6af-3de2-4ffa-8c22-6dddbe3f3dd9");
+        var refVarId = Guid.Parse("7a740c7a-1f40-4835-8df4-5ff37610f693");
+
+        var compVar = await context.Variants.FirstOrDefaultAsync(v => v.Id == compVarId, ct);
+        var refVar = await context.Variants.FirstOrDefaultAsync(v => v.Id == refVarId, ct);
+
+        if (compVar != null && refVar != null)
+        {
+            var match = await context.ProductMatches.FirstOrDefaultAsync(m => m.CompetitorVariantId == compVarId && m.ReferenceVariantId == refVarId, ct);
+            if (match == null)
+            {
+                context.ProductMatches.Add(new ProductMatch
+                {
+                    CompetitorVariantId = compVarId,
+                    ReferenceVariantId = refVarId,
+                    Score = 0.98m,
+                    Method = MatchMethod.Manual,
+                    Status = MatchStatus.Approved,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+                await context.SaveChangesAsync(ct);
+                logger.LogInformation("Seeded approved product match for L'or Ristretto 11 between competitor variant {CompId} and Lazy Bean variant {RefId}.", compVarId, refVarId);
+            }
+            else if (match.Status != MatchStatus.Approved && match.Status != MatchStatus.Auto)
+            {
+                match.Status = MatchStatus.Approved;
+                await context.SaveChangesAsync(ct);
+            }
         }
     }
 

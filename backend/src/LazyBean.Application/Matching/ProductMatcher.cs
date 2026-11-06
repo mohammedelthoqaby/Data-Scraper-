@@ -657,9 +657,12 @@ public class ProductMatcher : IProductMatcher
         IReadOnlySet<string>? genericTokens = null)
     {
         // 1. Category conflict check
+        var isCapsuleCrossMatch = !string.IsNullOrEmpty(comp.CapsuleSystem) &&
+                                  string.Equals(comp.CapsuleSystem, reference.CapsuleSystem, StringComparison.OrdinalIgnoreCase);
+
         if (comp.CanonicalCategory != reference.CanonicalCategory)
         {
-            if (comp.CanonicalCategory != CanonicalCategory.Other && reference.CanonicalCategory != CanonicalCategory.Other)
+            if (!isCapsuleCrossMatch && comp.CanonicalCategory != CanonicalCategory.Other && reference.CanonicalCategory != CanonicalCategory.Other)
             {
                 return new MatchEvaluation(MatchDecision.None, 0m, "Category mismatch");
             }
@@ -775,8 +778,10 @@ public class ProductMatcher : IProductMatcher
         // - Beverage type matches
         // - Size is known on BOTH sides and matches exactly (within 2% tolerance)
         // - Standalone numbers match symmetrically
+        var categoryOrCapsuleMatches = comp.CanonicalCategory == reference.CanonicalCategory || isCapsuleCrossMatch;
+
         if (brandMatches &&
-            comp.CanonicalCategory == reference.CanonicalCategory &&
+            categoryOrCapsuleMatches &&
             tokensMatch &&
             numbersMatch &&
             compHasSize &&
@@ -790,12 +795,12 @@ public class ProductMatcher : IProductMatcher
 
         // B. SIZE-VARIANT MATCH
         // - Brand is known on both sides and matches
-        // - Same CanonicalCategory
+        // - Same CanonicalCategory or matching capsule systems
         // - Distinguishing tokens match symmetrically
         // - Size is known on BOTH sides
         // - Sizes differ (> 2%) or numbers differ (e.g. 4 cups vs 2 cups)
         if (brandMatches &&
-            comp.CanonicalCategory == reference.CanonicalCategory &&
+            categoryOrCapsuleMatches &&
             tokensMatch &&
             compHasSize &&
             refHasSize &&

@@ -58,7 +58,9 @@
         "كبسولات\\s+(?:متوافقة\\s+مع\\s+)?نسبريسو",
         "متوافق[ةه]?\\s+مع\\s+(?:ماكينات\\s+)?نسبريسو",
         "(?=.*\\bnespresso\\b)(?=.*\\b(?:capsules?|pods?)\\b)",
-        "(?=.*نسبريسو)(?=.*كبسول)"
+        "(?=.*نسبريسو)(?=.*كبسول)",
+        "(?=.*\\b(?:l'?or|lor|لور)\\b)(?=.*\\b(?:capsules?|pods?|كبسول)\\b)",
+        "\\b(?:l'?or|lor|لور)\\b.*\\b(?:capsules?|pods?|كبسول)\\b"
       ],
       "negativeTitlePatterns": [
         "\\b(?:vertuo|machine|maker|holder|drawer|stand|mug|mugs|مج|كوب|حامل|درج|ماكينة|آلة|صانعة)\\b"

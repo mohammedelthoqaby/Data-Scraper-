@@ -116,11 +116,17 @@ export const SourcesIdentitiesView: React.FC = () => {
       const res = await api.POST('/api/competitors/{id}/discover-google-advertisers', {
         params: { path: { id: source.id } },
       });
-      const discovered = res.data ?? [];
+      const result = res.data;
       await fetchIdentities();
-      setActionNotice(
-        `Discovered ${discovered.length} Google advertiser candidates for ${source.name}. Review and approve them in the Advertiser Identities tab.`
-      );
+      if (!result || result.status === 'none') {
+        setActionNotice(`No Google advertiser found for ${source.name}.`);
+      } else if (result.status === 'found') {
+        setActionNotice(
+          `Discovered ${result.candidatesFound} Google advertiser candidate(s) for ${source.name}. Review and approve them in the Advertiser Identities tab.`
+        );
+      } else {
+        setActionNotice(result.message ?? `Google discovery did not complete for ${source.name}.`);
+      }
     } catch (err: any) {
       alert(err?.message || `Failed to discover Google advertisers for ${source.name}`);
     } finally {

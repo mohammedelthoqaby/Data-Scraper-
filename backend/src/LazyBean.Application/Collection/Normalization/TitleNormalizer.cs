@@ -155,8 +155,10 @@ public static partial class TitleNormalizer
         if (Regex.IsMatch(normalized, @"\b(?:e\.?s\.?e\.?|44\s*mm)\b", RegexOptions.IgnoreCase))
             return "EsePods";
 
-        if (Regex.IsMatch(normalized, @"\b(?:nespresso)\b|نسبريسو", RegexOptions.IgnoreCase) &&
-            Regex.IsMatch(normalized, @"\b(?:capsules?|caps?|pods?|compatible)\b|كبسول|متوافق", RegexOptions.IgnoreCase))
+        if ((Regex.IsMatch(normalized, @"\b(?:nespresso)\b|نسبريسو", RegexOptions.IgnoreCase) &&
+             Regex.IsMatch(normalized, @"\b(?:capsules?|caps?|pods?|compatible)\b|كبسول|متوافق", RegexOptions.IgnoreCase)) ||
+            (Regex.IsMatch(normalized, @"\b(?:l'?or|lor)\b|لور", RegexOptions.IgnoreCase) &&
+             Regex.IsMatch(normalized, @"\b(?:capsules?|caps?|pods?)\b|كبسول", RegexOptions.IgnoreCase)))
             return "NespressoOriginal";
 
         return null;

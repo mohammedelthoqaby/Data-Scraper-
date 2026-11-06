@@ -143,6 +143,10 @@ def collect_page_ads(page_id: str, country: str = "EG", status: str = "ALL", max
 
 
 def main():
+    # Ad copy is Arabic; Windows consoles default to cp1252 and would crash printing it.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(description="Collect Meta ads for a Facebook Page ID")
     parser.add_argument("--page-id", type=str, default="100456846237420", help="Numeric Facebook Page ID (default: 100456846237420 for CAFELAX)")
     parser.add_argument("--country", type=str, default="EG", help="ISO country code (default: EG)")

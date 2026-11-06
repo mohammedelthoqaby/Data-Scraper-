@@ -19,9 +19,9 @@ namespace LazyBean.Api.Controllers;
 public class CompetitorsController(ISender sender) : ControllerBase
 {
     [HttpPost("{id:guid}/discover-google-advertisers")]
-    [ProducesResponseType(typeof(IReadOnlyList<AdvertiserIdentityDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(GoogleDiscoveryResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<IReadOnlyList<AdvertiserIdentityDto>>> DiscoverGoogleAdvertisers(
+    public async Task<ActionResult<GoogleDiscoveryResultDto>> DiscoverGoogleAdvertisers(
         Guid id,
         CancellationToken ct)
     {

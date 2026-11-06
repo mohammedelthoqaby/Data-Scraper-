@@ -178,6 +178,525 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/ai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AiSettingsDto"];
+                        "application/json": components["schemas"]["AiSettingsDto"];
+                        "text/json": components["schemas"]["AiSettingsDto"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UpdateAiSettingsRequestDto"];
+                    "text/json": components["schemas"]["UpdateAiSettingsRequestDto"];
+                    "application/*+json": components["schemas"]["UpdateAiSettingsRequestDto"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AiSettingsDto"];
+                        "application/json": components["schemas"]["AiSettingsDto"];
+                        "text/json": components["schemas"]["AiSettingsDto"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/ai/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TestAiConnectionRequestDto"];
+                    "text/json": components["schemas"]["TestAiConnectionRequestDto"];
+                    "application/*+json": components["schemas"]["TestAiConnectionRequestDto"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AiTestResultDto"];
+                        "application/json": components["schemas"]["AiTestResultDto"];
+                        "text/json": components["schemas"]["AiTestResultDto"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/ai/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AiTriageStats"];
+                        "application/json": components["schemas"]["AiTriageStats"];
+                        "text/json": components["schemas"]["AiTriageStats"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    severity?: components["schemas"]["AlertSeverity"];
+                    status?: components["schemas"]["AlertStatus"];
+                    isBestseller?: boolean;
+                    search?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AlertDto"][];
+                        "application/json": components["schemas"]["AlertDto"][];
+                        "text/json": components["schemas"]["AlertDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AlertSummaryDto"];
+                        "application/json": components["schemas"]["AlertSummaryDto"];
+                        "text/json": components["schemas"]["AlertSummaryDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DataHealthDto"];
+                        "application/json": components["schemas"]["DataHealthDto"];
+                        "text/json": components["schemas"]["DataHealthDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts/{id}/action": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AlertActionRequest"];
+                    "text/json": components["schemas"]["AlertActionRequest"];
+                    "application/*+json": components["schemas"]["AlertActionRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AlertDto"];
+                        "application/json": components["schemas"]["AlertDto"];
+                        "text/json": components["schemas"]["AlertDto"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AlertHistoryDto"][];
+                        "application/json": components["schemas"]["AlertHistoryDto"][];
+                        "text/json": components["schemas"]["AlertHistoryDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AlertDto"][];
+                        "application/json": components["schemas"]["AlertDto"][];
+                        "text/json": components["schemas"]["AlertDto"][];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AlertSettingsDto"];
+                        "application/json": components["schemas"]["AlertSettingsDto"];
+                        "text/json": components["schemas"]["AlertSettingsDto"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AlertSettingsDto"];
+                    "text/json": components["schemas"]["AlertSettingsDto"];
+                    "application/*+json": components["schemas"]["AlertSettingsDto"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AlertSettingsDto"];
+                        "application/json": components["schemas"]["AlertSettingsDto"];
+                        "text/json": components["schemas"]["AlertSettingsDto"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -296,6 +815,106 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/competitors/{id}/discover-google-advertisers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["GoogleDiscoveryResultDto"];
+                        "application/json": components["schemas"]["GoogleDiscoveryResultDto"];
+                        "text/json": components["schemas"]["GoogleDiscoveryResultDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sources/{id}/discover-google-advertisers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["GoogleDiscoveryResultDto"];
+                        "application/json": components["schemas"]["GoogleDiscoveryResultDto"];
+                        "text/json": components["schemas"]["GoogleDiscoveryResultDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -692,6 +1311,56 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/identities/discover-google/{competitorId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    competitorId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["GoogleDiscoveryResultDto"];
+                        "application/json": components["schemas"]["GoogleDiscoveryResultDto"];
+                        "text/json": components["schemas"]["GoogleDiscoveryResultDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/identities": {
         parameters: {
             query?: never;
@@ -968,6 +1637,159 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/internal/diagnostics/last-errors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DiagnosticsSummary"];
+                        "application/json": components["schemas"]["DiagnosticsSummary"];
+                        "text/json": components["schemas"]["DiagnosticsSummary"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/internal/runs/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RunDto"];
+                        "application/json": components["schemas"]["RunDto"];
+                        "text/json": components["schemas"]["RunDto"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/internal/ads/google/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: {
+                    force?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/internal/ads/google/identities": {
         parameters: {
             query?: never;
@@ -1180,6 +2002,284 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/internal/diagnostics/strong-coffee": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/internal/runs/{runId}/competitors/{slug}/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    runId: string;
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["IngestProductsBatchRequest"];
+                    "text/json": components["schemas"]["IngestProductsBatchRequest"];
+                    "application/*+json": components["schemas"]["IngestProductsBatchRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["IngestBatchResult"];
+                        "application/json": components["schemas"]["IngestBatchResult"];
+                        "text/json": components["schemas"]["IngestBatchResult"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/internal/runs/{runId}/competitors/{slug}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    runId: string;
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CompleteCompetitorRunRequest"];
+                    "text/json": components["schemas"]["CompleteCompetitorRunRequest"];
+                    "application/*+json": components["schemas"]["CompleteCompetitorRunRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CompleteCompetitorResult"];
+                        "application/json": components["schemas"]["CompleteCompetitorResult"];
+                        "text/json": components["schemas"]["CompleteCompetitorResult"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/internal/competitors/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CompetitorConfigDto"];
+                        "application/json": components["schemas"]["CompetitorConfigDto"];
+                        "text/json": components["schemas"]["CompetitorConfigDto"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MatchAuditItemDto"][];
+                        "application/json": components["schemas"]["MatchAuditItemDto"][];
+                        "text/json": components["schemas"]["MatchAuditItemDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1403,6 +2503,54 @@ export interface paths {
                         "text/plain": components["schemas"]["ReferenceOffersResponseDto"];
                         "application/json": components["schemas"]["ReferenceOffersResponseDto"];
                         "text/json": components["schemas"]["ReferenceOffersResponseDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/overview/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RankedAttentionItem"][];
+                        "application/json": components["schemas"]["RankedAttentionItem"][];
+                        "text/json": components["schemas"]["RankedAttentionItem"][];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
                     };
                 };
             };
@@ -1783,17 +2931,6 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["StartRunResultDto"];
-                        "application/json": components["schemas"]["StartRunResultDto"];
-                        "text/json": components["schemas"]["StartRunResultDto"];
-                    };
-                };
                 /** @description Accepted */
                 202: {
                     headers: {
@@ -1805,8 +2942,157 @@ export interface paths {
                         "text/json": components["schemas"]["StartRunResultDto"];
                     };
                 };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["StartRunResultDto"];
+                        "application/json": components["schemas"]["StartRunResultDto"];
+                        "text/json": components["schemas"]["StartRunResultDto"];
+                    };
+                };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RunProgressDto"];
+                        "application/json": components["schemas"]["RunProgressDto"];
+                        "text/json": components["schemas"]["RunProgressDto"];
+                    };
+                };
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/active/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RunProgressDto"];
+                        "application/json": components["schemas"]["RunProgressDto"];
+                        "text/json": components["schemas"]["RunProgressDto"];
+                    };
+                };
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RunProgressDto"];
+                        "application/json": components["schemas"]["RunProgressDto"];
+                        "text/json": components["schemas"]["RunProgressDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1842,6 +3128,57 @@ export interface paths {
                         "text/plain": components["schemas"]["CancelRunResultDto"];
                         "application/json": components["schemas"]["CancelRunResultDto"];
                         "text/json": components["schemas"]["CancelRunResultDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{id}/competitors/{slug}/redispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RedispatchResultDto"];
+                        "application/json": components["schemas"]["RedispatchResultDto"];
+                        "text/json": components["schemas"]["RedispatchResultDto"];
                     };
                 };
                 /** @description Not Found */
@@ -2204,6 +3541,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2276,6 +3646,9 @@ export interface components {
             pricePosition?: string | null;
             /** Format: double */
             priceDiffPercent?: number | null;
+            /** Format: double */
+            advertisedPrice?: number | null;
+            hasPriceDiscrepancy?: boolean;
         };
         AdvertiserIdentityDto: {
             /** Format: uuid */
@@ -2296,6 +3669,134 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
         };
+        AiSettingsDto: {
+            isEnabled?: boolean;
+            modelName?: string | null;
+            maskedApiKey?: string | null;
+            /** Format: int32 */
+            dailyRequestCap?: number;
+            /** Format: int32 */
+            requestsUsedToday?: number;
+            /** Format: date-time */
+            lastTestedAt?: string | null;
+            lastTestSuccess?: boolean | null;
+            lastTestMessage?: string | null;
+            /** Format: date-time */
+            lastCallAt?: string | null;
+            lastCallStatus?: string | null;
+        };
+        AiTestResultDto: {
+            success?: boolean;
+            message?: string | null;
+        };
+        AiTriageStats: {
+            /** Format: int32 */
+            totalEvaluated?: number;
+            /** Format: int32 */
+            cacheHits?: number;
+            /** Format: int32 */
+            apiCallsMade?: number;
+            /** Format: int32 */
+            sameCount?: number;
+            /** Format: int32 */
+            differentCount?: number;
+            /** Format: int32 */
+            unsureCount?: number;
+        };
+        AlertActionRequest: {
+            action?: string | null;
+            note?: string | null;
+        };
+        AlertDto: {
+            /** Format: uuid */
+            id?: string;
+            type?: string | null;
+            severity?: string | null;
+            title?: string | null;
+            reason?: string | null;
+            titleAr?: string | null;
+            reasonAr?: string | null;
+            suggestedAction?: string | null;
+            suggestedActionAr?: string | null;
+            /** Format: uuid */
+            referenceProductId?: string | null;
+            referenceProductTitle?: string | null;
+            referenceProductUrl?: string | null;
+            /** Format: uuid */
+            competitorProductId?: string | null;
+            competitorProductTitle?: string | null;
+            competitorProductUrl?: string | null;
+            competitorName?: string | null;
+            adLibraryUrl?: string | null;
+            isBestseller?: boolean;
+            /** Format: double */
+            egpImpact?: number;
+            metricValuesJson?: string | null;
+            status?: string | null;
+            /** Format: date-time */
+            snoozedUntil?: string | null;
+            dismissNote?: string | null;
+            /** Format: date-time */
+            resolvedAt?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string | null;
+        };
+        AlertHistoryDto: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            alertId?: string;
+            action?: string | null;
+            note?: string | null;
+            performedBy?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        AlertSettingsDto: {
+            /** Format: double */
+            adMoreExpensiveGapPercent?: number;
+            /** Format: double */
+            priceDropPercent?: number;
+            /** Format: double */
+            lazyBeanAboveCheapestPercent?: number;
+            /** Format: int32 */
+            outOfStockCompetitorCount?: number;
+            /** Format: double */
+            marginRoomBelowCheapestPercent?: number;
+            /** Format: int32 */
+            uncarriedBrandCompetitorCount?: number;
+            /** Format: int32 */
+            bigCampaignDiscountCount?: number;
+            /** Format: int32 */
+            prolongedGapDays?: number;
+            /** Format: double */
+            materialChangePercentPoints?: number;
+        };
+        /**
+         * Format: int32
+         * @enum {integer}
+         */
+        AlertSeverity: 0 | 1 | 2;
+        /**
+         * Format: int32
+         * @enum {integer}
+         */
+        AlertStatus: 0 | 1 | 2 | 3;
+        AlertSummaryDto: {
+            /** Format: int32 */
+            totalActive?: number;
+            /** Format: int32 */
+            urgentCount?: number;
+            /** Format: int32 */
+            opportunityCount?: number;
+            /** Format: int32 */
+            watchCount?: number;
+            countsByType?: {
+                [key: string]: number;
+            } | null;
+        };
         AuthenticatedUserDto: {
             /** Format: uuid */
             id?: string;
@@ -2314,6 +3815,18 @@ export interface components {
             /** Format: uuid */
             runId?: string;
             state?: string | null;
+        };
+        CompetitorConfigDto: {
+            slug?: string | null;
+            name?: string | null;
+            baseUrl?: string | null;
+            platform?: string | null;
+            collectionHost?: string | null;
+            /** Format: int32 */
+            minDelayMs?: number;
+            /** Format: int32 */
+            maxConcurrency?: number;
+            enabled?: boolean;
         };
         CompetitorDto: {
             /** Format: uuid */
@@ -2355,9 +3868,6 @@ export interface components {
             status?: string | null;
             brand?: string | null;
             vendor?: string | null;
-            /** Format: uuid */
-            matchId?: string | null;
-            matchMethod?: string | null;
         };
         CompetitorOffersResponseDto: {
             /** Format: uuid */
@@ -2406,10 +3916,30 @@ export interface components {
             matchId?: string | null;
             matchMethod?: string | null;
         };
+        CompetitorProgressDto: {
+            /** Format: uuid */
+            competitorId?: string;
+            competitorKey?: string | null;
+            competitorName?: string | null;
+            isReference?: boolean;
+            status?: string | null;
+            /** Format: int32 */
+            currentPage?: number;
+            /** Format: int32 */
+            totalPages?: number | null;
+            /** Format: int32 */
+            productsSaved?: number;
+            /** Format: date-time */
+            lastUpdated?: string;
+            lastMessage?: string | null;
+            collectionHost?: string | null;
+        };
         CompetitorRunDto: {
             /** Format: uuid */
             competitorId?: string;
             competitorKey?: string | null;
+            competitorName?: string | null;
+            isReference?: boolean;
             status?: string | null;
             coverage?: string | null;
             /** Format: int32 */
@@ -2418,6 +3948,22 @@ export interface components {
             products?: number;
             /** Format: int32 */
             errors?: number;
+        };
+        CompleteCompetitorResult: {
+            status?: string | null;
+            /** Format: int32 */
+            totalProducts?: number;
+            /** Format: int32 */
+            totalPages?: number;
+            message?: string | null;
+        };
+        CompleteCompetitorRunRequest: {
+            status?: string | null;
+            /** Format: int32 */
+            totalPages?: number;
+            /** Format: int32 */
+            totalProducts?: number;
+            error?: string | null;
         };
         CreateCompetitorCommand: {
             key?: string | null;
@@ -2463,6 +4009,16 @@ export interface components {
             approve?: boolean;
             notes?: string | null;
         };
+        DataHealthDto: {
+            allHealthy?: boolean;
+            /** Format: int32 */
+            failedRunsCount?: number;
+            staleCompetitors?: string[] | null;
+            blockedAdCollectors?: string[] | null;
+            metaTokenStatus?: string | null;
+            /** Format: date-time */
+            metaTokenExpiresAt?: string | null;
+        };
         DecisionBody: {
             notes?: string | null;
         };
@@ -2477,6 +4033,31 @@ export interface components {
             id?: string;
             status?: string | null;
             decision?: string | null;
+        };
+        DiagnosticErrorRecord: {
+            /** Format: date-time */
+            timestamp?: string;
+            endpoint?: string | null;
+            method?: string | null;
+            correlationId?: string | null;
+            exceptionType?: string | null;
+            message?: string | null;
+            stackTrace?: string | null;
+            /** Format: int32 */
+            statusCode?: number;
+        };
+        DiagnosticsSummary: {
+            /** Format: date-time */
+            appStartTime?: string;
+            /** Format: date-span */
+            processUptime?: string;
+            /** Format: int32 */
+            processId?: number;
+            /** Format: double */
+            workingSetMb?: number;
+            /** Format: int32 */
+            totalRecordedErrors?: number;
+            errors?: components["schemas"]["DiagnosticErrorRecord"][] | null;
         };
         GetAdsResponseDto: {
             /** Format: int32 */
@@ -2503,6 +4084,13 @@ export interface components {
             error?: string | null;
             ads?: components["schemas"]["GoogleAdPayloadItem"][] | null;
         };
+        GoogleDiscoveryResultDto: {
+            status?: string | null;
+            /** Format: int32 */
+            candidatesFound?: number;
+            message?: string | null;
+            identities?: components["schemas"]["AdvertiserIdentityDto"][] | null;
+        };
         GoogleIdentityDto: {
             /** Format: uuid */
             id?: string;
@@ -2516,9 +4104,47 @@ export interface components {
             /** Format: date-time */
             blockedUntil?: string | null;
         };
+        IngestBatchResult: {
+            /** Format: int32 */
+            productsSaved?: number;
+            /** Format: int32 */
+            variantsSaved?: number;
+            /** Format: int32 */
+            priceObservationsRecorded?: number;
+            /** Format: int32 */
+            changeEventsRecorded?: number;
+        };
+        IngestProductsBatchRequest: {
+            /** Format: int32 */
+            page?: number;
+            /** Format: int32 */
+            totalPages?: number | null;
+            products?: components["schemas"]["RawProduct"][] | null;
+        };
         LoginCommand: {
             username?: string | null;
             password?: string | null;
+        };
+        MatchAuditItemDto: {
+            /** Format: uuid */
+            matchId?: string;
+            competitorName?: string | null;
+            referenceTitle?: string | null;
+            referenceUrl?: string | null;
+            referenceBrand?: string | null;
+            /** Format: double */
+            referencePrice?: number;
+            competitorTitle?: string | null;
+            competitorUrl?: string | null;
+            competitorBrand?: string | null;
+            /** Format: double */
+            competitorPrice?: number;
+            /** Format: double */
+            score?: number;
+            method?: string | null;
+            /** Format: date-time */
+            approvedAt?: string;
+            reason?: string | null;
         };
         MatchDecisionItemDto: {
             /** Format: uuid */
@@ -2607,6 +4233,13 @@ export interface components {
             /** Format: int32 */
             maxConcurrency?: number | null;
         };
+        PhaseProgressDto: {
+            name?: string | null;
+            status?: string | null;
+            message?: string | null;
+            /** Format: int32 */
+            durationMs?: number | null;
+        };
         PriceHistoryPointDto: {
             /** Format: uuid */
             observationId?: string;
@@ -2693,6 +4326,57 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        RankedAttentionItem: {
+            id?: string | null;
+            type?: string | null;
+            headline?: string | null;
+            headlineAr?: string | null;
+            explanation?: string | null;
+            explanationAr?: string | null;
+            priority?: string | null;
+            /** Format: int32 */
+            rank?: number;
+            productUrl?: string | null;
+            brand?: string | null;
+            competitorName?: string | null;
+            /** Format: double */
+            lazyBeanPrice?: number;
+            /** Format: double */
+            competitorPrice?: number;
+            isAiGenerated?: boolean;
+        };
+        RawProduct: {
+            externalId?: string | null;
+            title?: string | null;
+            canonicalUrl?: string | null;
+            category?: string | null;
+            variants?: components["schemas"]["RawVariant"][] | null;
+            productType?: string | null;
+            vendor?: string | null;
+            tags?: string | null;
+            vendorId?: string | null;
+            /** Format: int32 */
+            weightGrams?: number | null;
+            roast?: string | null;
+            brand?: string | null;
+            handle?: string | null;
+        };
+        RawVariant: {
+            externalId?: string | null;
+            title?: string | null;
+            /** Format: double */
+            price?: number;
+            /** Format: double */
+            compareAtPrice?: number | null;
+            currency?: string | null;
+            inStock?: boolean | null;
+            sku?: string | null;
+        };
+        RedispatchResultDto: {
+            success?: boolean;
+            message?: string | null;
+            actionsUrl?: string | null;
+        };
         ReferenceOfferDto: {
             /** Format: uuid */
             offerId?: string;
@@ -2719,9 +4403,6 @@ export interface components {
             status?: string | null;
             brand?: string | null;
             vendor?: string | null;
-            /** Format: uuid */
-            matchId?: string | null;
-            matchMethod?: string | null;
         };
         ReferenceOffersResponseDto: {
             /** Format: uuid */
@@ -2742,6 +4423,10 @@ export interface components {
             competitorProduct?: components["schemas"]["ReviewProductDetailsDto"];
             /** Format: date-time */
             createdAt?: string;
+            aiVerdict?: string | null;
+            /** Format: double */
+            aiConfidence?: number | null;
+            aiReason?: string | null;
         };
         ReviewProductDetailsDto: {
             /** Format: uuid */
@@ -2785,6 +4470,24 @@ export interface components {
             /** Format: date-time */
             finishedAt?: string | null;
             competitors?: components["schemas"]["CompetitorRunDto"][] | null;
+            /** Format: int32 */
+            matchesCount?: number | null;
+            phasesJson?: string | null;
+        };
+        RunProgressDto: {
+            /** Format: uuid */
+            runId?: string;
+            status?: string | null;
+            /** Format: int32 */
+            overallPercent?: number;
+            isStalled?: boolean;
+            lastLogMessage?: string | null;
+            /** Format: date-time */
+            lastProgressAt?: string;
+            competitors?: components["schemas"]["CompetitorProgressDto"][] | null;
+            phases?: components["schemas"]["PhaseProgressDto"][] | null;
+            /** Format: date-time */
+            startedAt?: string | null;
         };
         SessionResponse: {
             authenticated?: boolean;
@@ -2814,6 +4517,17 @@ export interface components {
             /** Format: int32 */
             campaignsCreated?: number;
             errors?: string[] | null;
+        };
+        TestAiConnectionRequestDto: {
+            apiKey?: string | null;
+            modelName?: string | null;
+        };
+        UpdateAiSettingsRequestDto: {
+            isEnabled?: boolean | null;
+            apiKey?: string | null;
+            modelName?: string | null;
+            /** Format: int32 */
+            dailyRequestCap?: number | null;
         };
     };
     responses: never;

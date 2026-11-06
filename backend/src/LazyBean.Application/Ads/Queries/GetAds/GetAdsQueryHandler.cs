@@ -1,3 +1,4 @@
+using LazyBean.Application.Ads.Common;
 using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Common.Interfaces;
 using LazyBean.Domain.Entities;
@@ -76,6 +77,18 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
                 .ToDictionaryAsync(p => p.Id, p => (Title: p.Title, CanonicalUrl: p.CanonicalUrl), ct)
             : new Dictionary<Guid, (string Title, string CanonicalUrl)>();
 
+        var compVariants = productIds.Count > 0
+            ? await readContext.Query<Variant>()
+                .AsNoTracking()
+                .Where(v => productIds.Contains(v.ProductId))
+                .Select(v => new { v.Id, v.ProductId })
+                .ToListAsync(ct)
+            : [];
+
+        var compVariantIdsByProduct = compVariants
+            .GroupBy(v => v.ProductId)
+            .ToDictionary(g => g.Key, g => g.Select(v => v.Id).ToList());
+
         var matches = productIds.Count > 0
             ? await (
                 from m in readContext.Query<ProductMatch>().AsNoTracking()
@@ -98,6 +111,7 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
 
         var variantIds = matches.Select(m => m.CompetitorVariantId)
             .Concat(matches.Select(m => m.ReferenceVariantId))
+            .Concat(compVariants.Select(v => v.Id))
             .Distinct()
             .ToList();
 
@@ -152,7 +166,11 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
                         {
                             pricePosition = "lazyBeanOutOfStock";
                         }
-                        else if (refPrice.Value <= compPrice.Value)
+                        else if (refPrice.Value == compPrice.Value)
+                        {
+                            pricePosition = "same price";
+                        }
+                        else if (refPrice.Value < compPrice.Value)
                         {
                             pricePosition = "cheapest";
                         }
@@ -173,8 +191,23 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
                 else
                 {
                     pricePosition = "unmatched";
+                    // Resolve competitor store price even if unmatched to Lazy Bean
+                    if (compVariantIdsByProduct.TryGetValue(prodId.Value, out var cVarIds))
+                    {
+                        foreach (var vid in cVarIds)
+                        {
+                            if (latestObservations.TryGetValue(vid, out var obs) && obs.Price > 0)
+                            {
+                                compPrice = obs.Price;
+                                break;
+                            }
+                        }
+                    }
                 }
             }
+
+            var advertisedPrice = AdPriceParser.ParseAdvertisedPrice(x.Ad.Title, x.Ad.Body);
+            var hasPriceDiscrepancy = AdPriceParser.HasPriceDiscrepancy(advertisedPrice, compPrice);
 
             return new AdDto(
                 x.Ad.Id,
@@ -205,7 +238,9 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
                 compPrice,
                 refPrice,
                 pricePosition,
-                priceDiffPercent);
+                priceDiffPercent,
+                advertisedPrice,
+                hasPriceDiscrepancy);
         }).ToList();
 
         return new GetAdsResponseDto(totalCount, items);

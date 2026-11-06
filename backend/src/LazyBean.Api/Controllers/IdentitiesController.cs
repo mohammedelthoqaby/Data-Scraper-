@@ -18,9 +18,9 @@ public record DecisionBody(string? Notes = null);
 public class IdentitiesController(ISender sender) : ControllerBase
 {
     [HttpPost("discover-google/{competitorId:guid}")]
-    [ProducesResponseType(typeof(IReadOnlyList<AdvertiserIdentityDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(GoogleDiscoveryResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<IReadOnlyList<AdvertiserIdentityDto>>> DiscoverGoogleAdvertisers(
+    public async Task<ActionResult<GoogleDiscoveryResultDto>> DiscoverGoogleAdvertisers(
         Guid competitorId,
         CancellationToken ct)
     {

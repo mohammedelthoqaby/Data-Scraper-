@@ -29,4 +29,6 @@ public record AdDto(
     decimal? CompetitorPrice = null,
     decimal? LazyBeanPrice = null,
     string? PricePosition = null,
-    decimal? PriceDiffPercent = null);
+    decimal? PriceDiffPercent = null,
+    decimal? AdvertisedPrice = null,
+    bool HasPriceDiscrepancy = false);

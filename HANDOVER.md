@@ -3,7 +3,7 @@
 This document describes the deployment architecture, configuration secrets, scheduled automation, and operational maintenance for LazyBean.
 
 The system is designed for **zero developer maintenance**:
-- No self-hosted runners or personal servers.
+- No personal servers. The only self-hosted runner is the optional office PC used for Meta Ads (section 4); nothing else depends on it.
 - No Contabo VPS or persistent cloud compute costs.
 - No credit card required (runs entirely on free tiers).
 - Completely hands-off daily operation after handover.
@@ -24,7 +24,7 @@ The system is designed for **zero developer maintenance**:
 +--------------------------+              +------------------------------------+
 |  Optional Office PC      |              |        MonsterASP (Backend API)    |
 |  (Self-Hosted Runner)    | -----------> |  - Serves ASP.NET Core & React UI  |
-|  - meta-ads.yml (Weekly) |  (Internal   |  - Runs Shopify, Woo & LB Scraping |
+|  - meta-ads.yml (Daily)  |  (Internal   |  - Runs Shopify, Woo & LB Scraping |
 |  - Egyptian Office IP    |    Token)    |  - Executes Matching, AI & Alerts  |
 |  - Zero impact when off  |              |  - SQLite / PostgreSQL Persistence |
 +--------------------------+              +-----------------+------------------+
@@ -156,7 +156,8 @@ Because Meta blocks all datacenter IPs (MonsterASP, GitHub cloud runners, Cloudf
    - On Linux/macOS: Run `./run.sh` or `./svc.sh install && ./svc.sh start`.
 
 ### How It Operates
-- Workflow: `.github/workflows/meta-ads.yml` runs weekly (Sunday 07:00 UTC) or manually via **Run workflow**.
+- Workflow: `.github/workflows/meta-ads.yml` runs daily at 09:00 UTC on the `[self-hosted, lazybean-collector]` runner, or manually via **Run workflow** (`workflow_dispatch`). There is no GitHub-hosted fallback for Meta: a Meta run that cannot reach the office runner simply does not happen.
+- Posts to `API_BASE_URL` (production) with `INTERNAL_TOKEN`. Each page's result (status, ad count, error) is printed per page and in the run summary in the Actions log.
 - Runs Python (`tools/meta-ads/sync.py`), scrapes approved Meta Page IDs through the Egyptian office IP, and posts ads to `POST /api/internal/ads/meta`.
 - **Runs only when the PC is on**: When the PC is off, GitHub simply queues the job until the PC boots up, or the run can be triggered manually.
 - **Nothing breaks when off**: The LazyBean dashboard displays `"Runner offline - last sync <date>"`. No errors, red alerts, or broken states appear anywhere.
@@ -178,7 +179,7 @@ Because Meta blocks all datacenter IPs (MonsterASP, GitHub cloud runners, Cloudf
 
 ### Adding or Approving Advertiser Identities
 1. Go to **Manage Sources > Advertiser Identities**.
-2. For Meta: Review seeded identities (`cafelax`, `coffee-and-cream`, `coffee-zone`, `fengany`, `strong-coffee`) and click **Approve**.
+2. For Meta: identities seeded from `seed/competitors.json` (`cafelax`, `coffee-and-cream`, `coffee-zone`, `fengany`, `strong-coffee`) are approved automatically on startup. There is no manual approval step for them. To stop collecting a page, reject its identity in **Manage Sources > Advertiser Identities**; a rejection is kept across restarts and is not re-approved on the next startup.
 3. For Google: Click **🔍 Discover Google Advertisers** next to any competitor, review discovered candidates, and approve.
 
 ---

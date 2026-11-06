@@ -1,5 +1,5 @@
 using LazyBean.Application.Ads.Dtos;
-using LazyBean.Application.Common.Exceptions;
+using LazyBean.Application.Ads.Exceptions;
 using LazyBean.Application.Common.Interfaces;
 using LazyBean.Domain.Entities;
 using LazyBean.Domain.Enums;
@@ -16,9 +16,9 @@ public class DiscoverGoogleAdvertisersCommandHandler(
     IReadDbContext readContext,
     IGoogleAdsTransparencyClient googleClient,
     ILogger<DiscoverGoogleAdvertisersCommandHandler> logger)
-    : IRequestHandler<DiscoverGoogleAdvertisersCommand, IReadOnlyList<AdvertiserIdentityDto>>
+    : IRequestHandler<DiscoverGoogleAdvertisersCommand, GoogleDiscoveryResultDto>
 {
-    public async Task<IReadOnlyList<AdvertiserIdentityDto>> Handle(DiscoverGoogleAdvertisersCommand request, CancellationToken ct)
+    public async Task<GoogleDiscoveryResultDto> Handle(DiscoverGoogleAdvertisersCommand request, CancellationToken ct)
     {
         var competitor = await unitOfWork.Competitors.GetByIdAsync(request.CompetitorId, ct)
             ?? throw new NotFoundException(nameof(Competitor), request.CompetitorId);
@@ -39,6 +39,8 @@ public class DiscoverGoogleAdvertisersCommandHandler(
         }
 
         var allCandidates = new Dictionary<string, GoogleAdvertiserCandidateDto>(StringComparer.OrdinalIgnoreCase);
+        string? blockedReason = null;
+        string? errorReason = null;
 
         foreach (var q in queries)
         {
@@ -50,8 +52,14 @@ public class DiscoverGoogleAdvertisersCommandHandler(
                     allCandidates.TryAdd(c.AdvertiserId, c);
                 }
             }
+            catch (GoogleAdsBlockedException ex)
+            {
+                blockedReason = ex.Message;
+                logger.LogWarning(ex, "Google Ads Transparency blocked candidate search for competitor '{Name}' with query '{Query}'.", competitor.Name, q);
+            }
             catch (Exception ex)
             {
+                errorReason = ex.Message;
                 logger.LogWarning(ex, "Failed to search Google Ads Transparency candidates for competitor '{Name}' with query '{Query}'.", competitor.Name, q);
             }
         }
@@ -62,14 +70,12 @@ public class DiscoverGoogleAdvertisersCommandHandler(
             .ToListAsync(ct);
         var existingByExtId = existingIdentities.ToDictionary(i => i.ExternalId, StringComparer.OrdinalIgnoreCase);
 
-        var createdOrExisting = new List<AdvertiserIdentity>();
         var hasNew = false;
 
         foreach (var (advId, candidate) in allCandidates)
         {
-            if (existingByExtId.TryGetValue(advId, out var existing))
+            if (existingByExtId.ContainsKey(advId))
             {
-                createdOrExisting.Add(existing);
                 continue;
             }
 
@@ -85,14 +91,13 @@ public class DiscoverGoogleAdvertisersCommandHandler(
             };
 
             await unitOfWork.AdvertiserIdentities.AddAsync(identity, ct);
-            createdOrExisting.Add(identity);
             hasNew = true;
         }
 
         if (hasNew)
         {
             await unitOfWork.SaveChangesAsync(ct);
-            logger.LogInformation("Discovered and saved {Count} new Google advertiser identities for competitor '{Name}'.", createdOrExisting.Count - existingIdentities.Count, competitor.Name);
+            logger.LogInformation("Discovered and saved new Google advertiser identities for competitor '{Name}'.", competitor.Name);
         }
 
         // Return all identities for this competitor (both existing and newly created)
@@ -100,7 +105,7 @@ public class DiscoverGoogleAdvertisersCommandHandler(
             .Where(i => i.CompetitorId == competitor.Id && i.Platform == AdPlatform.Google)
             .ToListAsync(ct);
 
-        return allCompetitorGoogleIdentities.Select(i => new AdvertiserIdentityDto(
+        var identityDtos = allCompetitorGoogleIdentities.Select(i => new AdvertiserIdentityDto(
             i.Id,
             competitor.Id,
             competitor.Key,
@@ -114,5 +119,29 @@ public class DiscoverGoogleAdvertisersCommandHandler(
             i.Notes,
             i.ReviewedAt,
             i.CreatedAt)).ToList();
+
+        var (status, message) = ResolveOutcome(competitor.Name, allCandidates.Count, blockedReason, errorReason);
+        return new GoogleDiscoveryResultDto(status, allCandidates.Count, message, identityDtos);
+    }
+
+    private static (string Status, string? Message) ResolveOutcome(
+        string competitorName, int candidatesFound, string? blockedReason, string? errorReason)
+    {
+        if (candidatesFound > 0)
+        {
+            return ("found", null);
+        }
+
+        if (blockedReason is not null)
+        {
+            return ("blocked", $"Google Ads Transparency blocked the search: {blockedReason}");
+        }
+
+        if (errorReason is not null)
+        {
+            return ("error", $"Google Ads discovery failed for {competitorName}: {errorReason}");
+        }
+
+        return ("none", $"No Google advertiser found for {competitorName}.");
     }
 }

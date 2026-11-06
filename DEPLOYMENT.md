@@ -162,7 +162,7 @@ Follow these steps when deploying to MonsterASP:
 - **Runtime**: Native C# implementation in `GoogleAdsTransparencyClient` & `GoogleAdsSyncService` without external runner or proxies. Caches advertiser AR IDs and backs off for 24h on 429/CAPTCHA.
 
 ### 5.3 Meta Ads Sync (Optional Self-Hosted Office Runner)
-- **Architecture**: Runs optionally on any company office PC via GitHub Actions self-hosted runner (`.github/workflows/meta-ads.yml` + `tools/meta-ads/sync.py`), using standard Egyptian residential/office IP.
+- **Architecture**: Runs on the company office PC via GitHub Actions self-hosted runner with label `lazybean-collector` (`.github/workflows/meta-ads.yml` + `tools/meta-ads/sync.py`), using standard Egyptian residential/office IP. Schedule: daily 09:00 UTC, plus manual `workflow_dispatch`. No GitHub-hosted fallback.
 - **Resilience**: Runs only when the office PC is powered on. If the PC is off, nothing breaks: the Ads page displays "Runner offline - last sync <date>", with no error alerts or red states.
 - **Manual Verification**: Each competitor card provides a direct "View on Meta Ad Library ↗" button opening the official Egypt Ad Library page directly.
 

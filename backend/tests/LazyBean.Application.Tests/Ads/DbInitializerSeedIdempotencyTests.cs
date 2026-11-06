@@ -36,14 +36,15 @@ public class DbInitializerSeedIdempotencyTests
     }
 
     [Fact]
-    public async Task SeedCompetitorsAsync_IsIdempotent_AndPreservesApprovedStatus()
+    public async Task SeedCompetitorsAsync_IsIdempotent_AndPreservesAdminDecisions()
     {
         var dbName = Guid.NewGuid().ToString();
         var sp = CreateServiceProvider(dbName);
 
-        // First Seed: should seed competitors and Meta advertiser identities as Pending
+        // First seed: Meta advertiser identities are auto-approved at startup
         await DbInitializer.SeedCompetitorsAsync(sp);
 
+        Guid rejectedId;
         using (var scope = sp.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<LazyBeanDbContext>();
@@ -56,16 +57,17 @@ public class DbInitializerSeedIdempotencyTests
 
             // We have 5 competitors with Meta IDs in seed/competitors.json
             Assert.Equal(5, metaIdentities.Count);
-            Assert.All(metaIdentities, i => Assert.Equal(AdvertiserIdentityStatus.Pending, i.Status));
+            Assert.All(metaIdentities, i => Assert.Equal(AdvertiserIdentityStatus.Approved, i.Status));
 
-            // Simulate admin approving one identity
-            var first = metaIdentities.First();
-            first.Status = AdvertiserIdentityStatus.Approved;
-            first.ReviewedAt = DateTimeOffset.UtcNow;
+            // Simulate admin rejecting one identity
+            var rejected = metaIdentities.First();
+            rejected.Status = AdvertiserIdentityStatus.Rejected;
+            rejected.ReviewedAt = DateTimeOffset.UtcNow;
+            rejectedId = rejected.Id;
             await db.SaveChangesAsync();
         }
 
-        // Second Seed: should NOT duplicate identities, and must NOT reset approved status
+        // Second seed: must not duplicate identities, and must not undo the admin's rejection
         await DbInitializer.SeedCompetitorsAsync(sp);
 
         using (var scope = sp.CreateScope())
@@ -78,11 +80,11 @@ public class DbInitializerSeedIdempotencyTests
             // Still exactly 5 identities (no duplicates)
             Assert.Equal(5, metaIdentities.Count);
 
-            var approved = metaIdentities.Single(i => i.Status == AdvertiserIdentityStatus.Approved);
-            Assert.NotNull(approved.ReviewedAt);
+            var rejected = metaIdentities.Single(i => i.Id == rejectedId);
+            Assert.Equal(AdvertiserIdentityStatus.Rejected, rejected.Status);
+            Assert.NotNull(rejected.ReviewedAt);
 
-            var pending = metaIdentities.Where(i => i.Status == AdvertiserIdentityStatus.Pending).ToList();
-            Assert.Equal(4, pending.Count);
+            Assert.Equal(4, metaIdentities.Count(i => i.Status == AdvertiserIdentityStatus.Approved));
         }
     }
 }

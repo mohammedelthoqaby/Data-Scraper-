@@ -355,7 +355,11 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                     </td>
                     <td style={{ padding: '10px 12px' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        {renderStatusBadge(item.googleStatus)}
+                        {item.googleStatus === 'No identity' ? (
+                          <span className="badge neutral">No Google advertiser found</span>
+                        ) : (
+                          renderStatusBadge(item.googleStatus)
+                        )}
                         {item.googleAdCount > 0 && (
                           <span style={{ fontSize: '11px', color: 'var(--muted)' }}>({item.googleAdCount} ads)</span>
                         )}
@@ -598,6 +602,11 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                               <div className="ad-price-comparison-row">
                                 <div>
                                   <span style={{ color: 'var(--muted)' }}>Advertised: </span>
+                                  <strong>{ad.advertisedPrice != null ? `${ad.advertisedPrice.toFixed(2)} EGP` : '—'}</strong>
+                                </div>
+
+                                <div>
+                                  <span style={{ color: 'var(--muted)' }}>Store: </span>
                                   <strong>{ad.competitorPrice != null ? `${ad.competitorPrice.toFixed(2)} EGP` : '—'}</strong>
                                 </div>
 
@@ -609,6 +618,12 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                                 ) : (
                                   <span className="badge neutral" style={{ fontSize: '10px' }}>
                                     Unmatched
+                                  </span>
+                                )}
+
+                                {ad.hasPriceDiscrepancy && (
+                                  <span className="badge warn" style={{ fontSize: '10px' }}>
+                                    Ad price ≠ store price
                                   </span>
                                 )}
                               </div>
@@ -624,6 +639,8 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                                     <span className="badge bad">
                                       Competitor is {Math.abs(ad.priceDiffPercent ?? 0).toFixed(1)}% cheaper
                                     </span>
+                                  ) : ad.pricePosition === 'same price' ? (
+                                    <span className="badge neutral">Same price as Lazy Bean</span>
                                   ) : ad.pricePosition === 'within 5%' ? (
                                     <span className="badge neutral">
                                       Prices within 5% ({ad.priceDiffPercent?.toFixed(1)}%)

@@ -1,8 +1,8 @@
-name: Meta Ads Weekly Sync
+name: Meta Ads Daily Sync
 
 on:
   schedule:
-    - cron: '0 7 * * 0' # 07:00 UTC every Sunday
+    - cron: '0 9 * * *' # 09:00 UTC daily
   workflow_dispatch:
 
 jobs:
@@ -66,6 +66,7 @@ jobs:
           DELAY_MIN_SECONDS: "20"
           DELAY_MAX_SECONDS: "40"
           MAX_ADS_PER_PAGE: "50"
+          PYTHONIOENCODING: "utf-8"
         run: |
           if (-not $env:API_BASE_URL -or -not $env:INTERNAL_TOKEN) {
             Write-Error "API_BASE_URL and INTERNAL_TOKEN secrets must be configured in GitHub repository secrets."
