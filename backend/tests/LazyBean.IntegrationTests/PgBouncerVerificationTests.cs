@@ -91,6 +91,12 @@ public class PgBouncerVerificationTests
     {
         var pgbouncerConnStr = $"{PgBouncerBaseConnectionString};Database=lazybean";
 
+        // A fresh lazybean database (CI) has no tables yet. The app migrates at startup, so do the same here.
+        await using (var migrate = new LazyBeanDbContext(new DbContextOptionsBuilder<LazyBeanDbContext>().UseNpgsql(pgbouncerConnStr).Options))
+        {
+            await migrate.Database.MigrateAsync();
+        }
+
         var services = new ServiceCollection();
         services.AddDbContext<LazyBeanDbContext>(opts => opts.UseNpgsql(pgbouncerConnStr));
         services.AddDataProtection()
