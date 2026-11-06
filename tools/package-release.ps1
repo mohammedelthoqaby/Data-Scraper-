@@ -53,6 +53,10 @@ try {
     # 3. Server package.
     $apiOut = Join-Path $out "api"
     if (Test-Path $apiOut) { Remove-Item $apiOut -Recurse -Force }
+    # Build before publish. The precompressed web assets (.br and .gz) are produced by the Release build, and a
+    # publish from a clean checkout alone leaves them out of the package.
+    dotnet build $apiProject -c Release -r $ApiRuntime --self-contained false -p:SourceRevisionId=$Revision
+    if ($LASTEXITCODE -ne 0) { throw "API build failed." }
     dotnet publish $apiProject -c Release -r $ApiRuntime --self-contained false -p:SourceRevisionId=$Revision -o $apiOut
     if ($LASTEXITCODE -ne 0) { throw "API publish failed." }
     Remove-Item (Join-Path $apiOut "appsettings.Development.json") -ErrorAction SilentlyContinue
