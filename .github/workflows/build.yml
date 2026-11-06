@@ -19,7 +19,8 @@ jobs:
         env:
           POSTGRES_USER: lazybean
           POSTGRES_PASSWORD: ci-${{ github.run_id }}
-          POSTGRES_DB: postgres
+          # The PgBouncer and data-protection tests connect to "lazybean", as the local docker-compose database does.
+          POSTGRES_DB: lazybean
         ports:
           - 15432:5432
           - 16432:5432
