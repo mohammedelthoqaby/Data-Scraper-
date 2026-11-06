@@ -17,7 +17,8 @@ public sealed record CollectorHostOptions(
     IMetaPageCollector? MetaCollector = null,
     IGoogleAdsTransparencyClient? GoogleClient = null,
     TimeSpan? Heartbeat = null,
-    Func<TimeSpan, CancellationToken, Task>? Delay = null);
+    Func<TimeSpan, CancellationToken, Task>? Delay = null,
+    TimeSpan? SignOutTimeout = null);
 
 // Owns the pairing, the device token, the API client and the worker loop. The window and the headless mode
 // both drive the app through this class. Nothing here depends on a window: the loop runs on its own task, so
@@ -25,6 +26,9 @@ public sealed record CollectorHostOptions(
 public sealed class CollectorHost : IAsyncDisposable
 {
     private static readonly Func<TimeSpan, CancellationToken, Task> DefaultDelay = (duration, ct) => Task.Delay(duration, ct);
+
+    // How long a stop, a sign-out or a server change waits for the worker loop before going on regardless.
+    private static readonly TimeSpan LoopStopLimit = TimeSpan.FromSeconds(5);
 
     private readonly SettingsStore _settingsStore;
     private readonly TokenStore _tokenStore;
@@ -37,6 +41,7 @@ public sealed class CollectorHost : IAsyncDisposable
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly object _gate = new();
     private readonly CollectorSettings _settings;
+    private readonly TimeSpan _signOutTimeout;
 
     private ICollectorApi? _api;
     private HttpClient? _apiHttp;
@@ -53,6 +58,7 @@ public sealed class CollectorHost : IAsyncDisposable
         _settingsStore = new SettingsStore(paths.SettingsFile);
         _tokenStore = new TokenStore(paths.TokenFile);
         _settings = _settingsStore.Load();
+        _signOutTimeout = _options.SignOutTimeout ?? TimeSpan.FromSeconds(10);
         _services = CollectorServices.Build();
         _woo = new WooStoreApiAdapter(_services.GetRequiredService<ICollectorHttpClient>());
 
@@ -74,6 +80,11 @@ public sealed class CollectorHost : IAsyncDisposable
             return Task.CompletedTask;
         }
 
+        if (ServerPolicy.NeedsProductionServer(_settings.ServerUrl, ServerPolicy.IsReleaseBuild))
+        {
+            _log.Warn($"This PC is paired with {_settings.ServerUrl}, a local address. Release builds use {ServerPolicy.ProductionServerUrl}; the window offers the switch.");
+        }
+
         _api = CreateApi(_settings.ServerUrl);
         _api.BearerToken = token;
         _log.Info($"Starting as {_settings.DeviceName ?? "this PC"} on {_settings.ServerUrl}.");
@@ -83,10 +94,11 @@ public sealed class CollectorHost : IAsyncDisposable
 
     public async Task PairAsync(string serverUrl, string username, string password, string deviceName, CancellationToken ct)
     {
-        await StopLoopAsync();
+        await StopLoopWithinAsync();
         var api = CreateApi(serverUrl);
         var result = await api.PairAsync(username, password, deviceName, ct);
 
+        var previousServer = _settings.DeviceId is not null ? _settings.ServerUrl : null;
         _tokenStore.Save(result.Token);
         _settings.ServerUrl = serverUrl.Trim();
         _settings.DeviceId = result.DeviceId;
@@ -94,34 +106,55 @@ public sealed class CollectorHost : IAsyncDisposable
         _settings.PairedBy = username;
         SaveSettings();
 
+        if (previousServer is not null && !SameServer(previousServer, _settings.ServerUrl))
+        {
+            _log.Warn($"This PC was paired with {previousServer} before. That device is still listed there; revoke it on that server if you no longer need it.");
+        }
+
         api.BearerToken = result.Token;
         _api = api;
         _log.Info($"Paired as {result.DeviceName}. Collection will start on the next poll.");
         StartLoop();
     }
 
-    // Tells the server to revoke this device, then forgets the token on this PC either way.
+    // Forgets this PC's token first, so sign-out completes even when the server cannot be reached. The server is then
+    // asked to revoke the device, for at most SignOutTimeout.
     public async Task SignOutAsync(CancellationToken ct)
     {
-        await StopLoopAsync();
-        if (_api is { BearerToken: not null })
-        {
-            try
-            {
-                await _api.UnpairAsync(ct);
-            }
-            catch (CollectorApiException ex)
-            {
-                _log.Warn($"The server could not be told about the sign-out ({ex.Message}). Revoke this PC on the dashboard if it is still listed.");
-            }
-        }
-
-        _tokenStore.Clear();
-        _settings.DeviceId = null;
-        _settings.PairedBy = null;
-        SaveSettings();
+        var api = _api;
+        await StopLoopWithinAsync();
+        ForgetDevice();
         _state.SetConnection(ConnectionState.NotPaired, "Signed out. Pair this PC again to collect.");
         _log.Info("Signed out on this PC.");
+
+        if (api is null)
+        {
+            return;
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(_signOutTimeout);
+        try
+        {
+            await api.UnpairAsync(timeout.Token);
+        }
+        catch (Exception ex) when (ex is CollectorApiException or OperationCanceledException)
+        {
+            _log.Warn("The server could not be told about the sign-out. Revoke this PC on the dashboard if it is still listed.");
+        }
+    }
+
+    // Switches a release build from a local test server to production. The pairing belongs to the test server, so this
+    // PC forgets it; the pairing form then opens at production.
+    public async Task UseProductionServerAsync()
+    {
+        var previousServer = _settings.ServerUrl;
+        await StopLoopWithinAsync();
+        ForgetDevice();
+        _settings.ServerUrl = ServerPolicy.ProductionServerUrl;
+        SaveSettings();
+        _state.SetConnection(ConnectionState.NotPaired, $"Pair this PC with {ServerPolicy.ProductionServerUrl} to collect.");
+        _log.Warn($"Switched from {previousServer} to {ServerPolicy.ProductionServerUrl}. This PC forgot its local pairing; that device is still listed on {previousServer}.");
     }
 
     public async Task RequestAdsNowAsync(CancellationToken ct)
@@ -140,6 +173,21 @@ public sealed class CollectorHost : IAsyncDisposable
         _settings.TrayHintShown = true;
         SaveSettings();
     }
+
+    // Stops the worker loop without waiting longer than LoopStopLimit: a dead server must not hold up sign-out or a change of server.
+    private async Task StopLoopWithinAsync() => await Task.WhenAny(StopLoopAsync(), Task.Delay(LoopStopLimit));
+
+    private void ForgetDevice()
+    {
+        _tokenStore.Clear();
+        _api = null;
+        _settings.DeviceId = null;
+        _settings.PairedBy = null;
+        SaveSettings();
+    }
+
+    private static bool SameServer(string a, string b) =>
+        string.Equals(a.Trim().TrimEnd('/'), b.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
 
     private ICollectorApi RequireApi() =>
         _api ?? throw new CollectorApiException(ApiErrorKind.Unauthorized, "This PC is not paired. Pair it first.");
@@ -165,7 +213,7 @@ public sealed class CollectorHost : IAsyncDisposable
                 catch (PairingRequiredException ex)
                 {
                     _tokenStore.Clear();
-                    _api!.BearerToken = null;
+                    api.BearerToken = null;
                     _state.SetConnection(ConnectionState.PairingRequired, "This PC was signed out or revoked on the server. Pair it again.");
                     _log.Error($"Stopped: {ex.Message} Pair this PC again.");
                 }

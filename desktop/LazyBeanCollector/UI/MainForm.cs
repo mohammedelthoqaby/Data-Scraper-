@@ -33,6 +33,11 @@ public sealed class MainForm : Form
     private readonly Button _adsNow = new();
     private readonly Button _signOut = new();
     private readonly Button _openLogs = new();
+    private readonly Button _changeServer = new();
+    private readonly Panel _banner = new();
+    private readonly Label _bannerText = new();
+    private readonly Button _useProduction = new();
+    private readonly System.Windows.Forms.Timer _refresh = new() { Interval = 5000 };
     private readonly CheckBox _startWithWindows = new();
 
     private bool _suppressStartupToggle;
@@ -48,8 +53,8 @@ public sealed class MainForm : Form
         Text = "LazyBean Collector";
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = UiStyle.BodyFont;
-        MinimumSize = new Size(760, 600);
-        ClientSize = new Size(820, 640);
+        MinimumSize = new Size(760, 634);
+        ClientSize = new Size(820, 674);
         StartPosition = FormStartPosition.CenterScreen;
         Icon = AppIcons.Load(new Size(32, 32));
 
@@ -65,6 +70,8 @@ public sealed class MainForm : Form
         _suppressStartupToggle = false;
         LoadLog();
         RefreshState();
+        _refresh.Tick += (_, _) => RefreshState();
+        _refresh.Start();
     }
 
     // Unsubscribes from the app-wide events: a disposed window must not keep receiving updates.
@@ -74,6 +81,7 @@ public sealed class MainForm : Form
         {
             _state.Changed -= _stateChanged;
             _log.Added -= _logAdded;
+            _refresh.Dispose();
         }
 
         base.Dispose(disposing);
@@ -81,6 +89,19 @@ public sealed class MainForm : Form
 
     private void BuildLayout()
     {
+        _banner.Location = new Point(16, 96);
+        _banner.Size = new Size(788, 30);
+        _banner.BackColor = Color.FromArgb(255, 244, 222);
+        _banner.Visible = false;
+        _bannerText.Location = new Point(10, 7);
+        _bannerText.Size = new Size(580, 20);
+        _bannerText.ForeColor = Color.FromArgb(120, 72, 0);
+        _useProduction.Text = "Use production server";
+        _useProduction.Location = new Point(596, 3);
+        _useProduction.Size = new Size(180, 24);
+        _useProduction.Click += async (_, _) => await UseProductionServerAsync();
+        _banner.Controls.AddRange([_bannerText, _useProduction]);
+
         var header = new Panel { Dock = DockStyle.Top, Height = 92, Padding = new Padding(16, 14, 16, 8) };
         _dot.Size = new Size(14, 14);
         _dot.Location = new Point(16, 22);
@@ -98,7 +119,7 @@ public sealed class MainForm : Form
         _server.ForeColor = UiStyle.Muted;
         header.Controls.AddRange([_dot, _status, _server]);
 
-        var jobBox = new GroupBox { Text = "Current job", Location = new Point(16, 100), Size = new Size(788, 120) };
+        var jobBox = new GroupBox { Text = "Current job", Location = new Point(16, 134), Size = new Size(788, 120) };
         _jobTitle.Location = new Point(14, 26);
         _jobTitle.Size = new Size(760, 22);
         _jobTitle.Font = new Font(UiStyle.BodyFont, FontStyle.Bold);
@@ -109,7 +130,7 @@ public sealed class MainForm : Form
         _jobMessage.ForeColor = UiStyle.Muted;
         jobBox.Controls.AddRange([_jobTitle, _progress, _jobMessage]);
 
-        var syncBox = new GroupBox { Text = "Last sync", Location = new Point(16, 228), Size = new Size(788, 150) };
+        var syncBox = new GroupBox { Text = "Last sync", Location = new Point(16, 262), Size = new Size(788, 150) };
         _lastSync.Location = new Point(12, 24);
         _lastSync.Size = new Size(764, 116);
         _lastSync.View = View.Details;
@@ -120,7 +141,7 @@ public sealed class MainForm : Form
         _lastSync.Columns.Add("Result", 360);
         syncBox.Controls.Add(_lastSync);
 
-        var actions = new FlowLayoutPanel { Location = new Point(16, 388), Size = new Size(788, 44), WrapContents = false };
+        var actions = new FlowLayoutPanel { Location = new Point(16, 422), Size = new Size(788, 44), WrapContents = false };
         _pair.Text = "Pair this PC…";
         _pair.Size = new Size(140, 32);
         _pair.Click += (_, _) => OpenPairing();
@@ -133,14 +154,18 @@ public sealed class MainForm : Form
         _openLogs.Text = "Open log folder";
         _openLogs.Size = new Size(140, 32);
         _openLogs.Click += (_, _) => Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_paths.LogsDirectory}\"") { UseShellExecute = false });
-        actions.Controls.AddRange([_pair, _adsNow, _signOut, _openLogs]);
+        _changeServer.Text = "Change server…";
+        _changeServer.Size = new Size(140, 32);
+        _changeServer.Visible = false;
+        _changeServer.Click += (_, _) => OpenPairing();
+        actions.Controls.AddRange([_pair, _adsNow, _signOut, _changeServer, _openLogs]);
 
         _startWithWindows.Text = "Start LazyBean Collector when Windows starts";
-        _startWithWindows.Location = new Point(16, 440);
+        _startWithWindows.Location = new Point(16, 474);
         _startWithWindows.Size = new Size(788, 24);
         _startWithWindows.CheckedChanged += (_, _) => ToggleStartup();
 
-        var logBox = new GroupBox { Text = "Activity", Location = new Point(16, 472), Size = new Size(788, 158), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+        var logBox = new GroupBox { Text = "Activity", Location = new Point(16, 506), Size = new Size(788, 158), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
         _logList.Location = new Point(12, 22);
         _logList.Size = new Size(764, 124);
         _logList.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -149,7 +174,7 @@ public sealed class MainForm : Form
         _logList.Font = UiStyle.SmallFont;
         logBox.Controls.Add(_logList);
 
-        Controls.AddRange([header, jobBox, syncBox, actions, _startWithWindows, logBox]);
+        Controls.AddRange([header, _banner, jobBox, syncBox, actions, _startWithWindows, logBox]);
     }
 
     private Color CurrentDotColor() => _state.Connection switch
@@ -174,6 +199,12 @@ public sealed class MainForm : Form
             ConnectionState.Stopped => "Stopped",
             _ => "Starting",
         };
+        var waited = _state.UnreachableFor;
+        if (_state.Connection == ConnectionState.Waiting && waited is { } unreachable && unreachable > TimeSpan.FromMinutes(1))
+        {
+            _status.Text = $"Waiting for the server: no answer for {(int)unreachable.TotalMinutes} min";
+        }
+
         if (_state.IsAllDone && _state.CurrentJob is null)
         {
             _status.Text = "All done for this run - you can close the app";
@@ -213,6 +244,18 @@ public sealed class MainForm : Form
         _pair.Enabled = !paired;
         _adsNow.Enabled = paired && _state.Connection is ConnectionState.Connected or ConnectionState.Waiting;
         _signOut.Enabled = paired;
+        _changeServer.Visible = paired && waited is { } gone && gone > TimeSpan.FromMinutes(1);
+
+        var localServer = ServerPolicy.NeedsProductionServer(settings.ServerUrl, ServerPolicy.IsReleaseBuild);
+        _banner.Visible = localServer;
+        _bannerText.Text = $"This PC is set to the local server {settings.ServerUrl}. Release builds use {ServerPolicy.ProductionServerUrl}.";
+    }
+
+    private async Task UseProductionServerAsync()
+    {
+        await _host.UseProductionServerAsync();
+        RefreshState();
+        OpenPairing();
     }
 
     private void RenderLastSync()

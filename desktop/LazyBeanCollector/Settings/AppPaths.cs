@@ -11,6 +11,9 @@ public sealed class AppPaths(string root)
             ? overridden
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LazyBeanCollector");
 
+    // True when LAZYBEAN_DATA_DIR points the app at its own folder (developer and test runs).
+    public static bool DataDirOverridden => Environment.GetEnvironmentVariable("LAZYBEAN_DATA_DIR") is { Length: > 0 };
+
     public string Root { get; } = root;
 
     public string SettingsFile => Path.Combine(Root, "settings.json");

@@ -36,11 +36,14 @@ public sealed class PairForm : Form
             Size = new Size(408, 44),
         };
 
-        _server.Text = host.Settings.ServerUrl;
+        _server.Text = ServerPolicy.PairingDefault(host.Settings.ServerUrl, ServerPolicy.IsReleaseBuild);
         _device.Text = host.Settings.DeviceName ?? Environment.MachineName;
         _password.UseSystemPasswordChar = true;
 
         AddRow(60, "Server", _server);
+        var reset = new LinkLabel { Text = "Reset to default", Location = new Point(132, 88), AutoSize = true };
+        reset.LinkClicked += (_, _) => _server.Text = ServerPolicy.ProductionServerUrl;
+        Controls.Add(reset);
         AddRow(100, "Username", _username);
         AddRow(140, "Password", _password);
         AddRow(180, "This PC's name", _device);

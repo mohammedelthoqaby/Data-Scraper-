@@ -122,7 +122,9 @@ public sealed class FakeCollectorApi : ICollectorApi
 
     public Task RequestAdsNowAsync(CancellationToken ct) => Task.CompletedTask;
 
-    public Task UnpairAsync(CancellationToken ct) => Task.CompletedTask;
+    public Func<CancellationToken, Task>? UnpairBehavior { get; set; }
+
+    public Task UnpairAsync(CancellationToken ct) => UnpairBehavior?.Invoke(ct) ?? Task.CompletedTask;
 }
 
 public sealed class FakeAdapter(IEnumerable<RawProduct> products, Action? beforeFinish = null) : ICompetitorAdapter

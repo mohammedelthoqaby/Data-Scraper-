@@ -18,9 +18,11 @@ public sealed record JobProgress(string Title, string Message, int Done, int? To
 public sealed record BatchProgress(int Position, int Total);
 
 // What the window shows. Background threads update it and raise Changed; the UI marshals to its own thread.
-public sealed class CollectorState
+public sealed class CollectorState(Func<DateTimeOffset>? clock = null)
 {
     private readonly object _gate = new();
+    private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.UtcNow);
+    private DateTimeOffset? _waitingSince;
     private readonly Dictionary<string, SourceSync> _lastSync = new(StringComparer.Ordinal);
 
     public event Action? Changed;
@@ -56,12 +58,32 @@ public sealed class CollectorState
         }
     }
 
+    // How long the server has not answered, counted from the first failed claim. Null while it answers.
+    public TimeSpan? UnreachableFor
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _waitingSince is { } since ? _clock() - since : null;
+            }
+        }
+    }
+
     public void SetConnection(ConnectionState state, string detail)
     {
         lock (_gate)
         {
             Connection = state;
             ConnectionDetail = detail;
+            if (state == ConnectionState.Waiting)
+            {
+                _waitingSince ??= _clock();
+            }
+            else
+            {
+                _waitingSince = null;
+            }
         }
 
         Changed?.Invoke();

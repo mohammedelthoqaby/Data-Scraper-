@@ -15,6 +15,24 @@ internal static class Program
     private static int Main(string[] args)
     {
         var options = LaunchOptions.Parse(args);
+#if DEBUG
+        // A development build must never write to the real settings of this Windows user.
+        if (!AppPaths.DataDirOverridden)
+        {
+            const string message = "Debug builds need LAZYBEAN_DATA_DIR set to a scratch folder, so they never write to the real "
+                + "LazyBean Collector settings. Example: set LAZYBEAN_DATA_DIR=C:\\scratch\\lazybean-dev";
+            if (options.Headless)
+            {
+                Console.Error.WriteLine(message);
+            }
+            else
+            {
+                System.Windows.Forms.MessageBox.Show(message, "LazyBean Collector", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Error);
+            }
+
+            return 2;
+        }
+#endif
         return options.Headless
             ? HeadlessRunner.RunAsync(options).GetAwaiter().GetResult()
             : RunWindow(options);
