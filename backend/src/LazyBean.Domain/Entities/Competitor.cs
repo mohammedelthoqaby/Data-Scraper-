@@ -11,7 +11,7 @@ public class Competitor : BaseEntity, IAggregateRoot
     public CompetitorPlatform Platform { get; set; }
     public bool IsReference { get; set; }
     public bool Enabled { get; set; } = true;
-    public string CollectionHost { get; set; } = "server"; // "server" | "github"
+    public string CollectionHost { get; set; } = "server"; // "server" | "desktop"
 
     // Politeness policy for the collection pipeline - per-domain delay between requests
     // and how many requests for this competitor may run concurrently.

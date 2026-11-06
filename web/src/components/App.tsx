@@ -26,6 +26,8 @@ import { SourcesIdentitiesView } from './views/SourcesIdentitiesView';
 import { SettingsAiView } from './views/SettingsAiView';
 import { ActionCenterView } from './views/ActionCenterView';
 import { SettingsAlertsView } from './views/SettingsAlertsView';
+import { SettingsCollectorView } from './views/SettingsCollectorView';
+import { CollectorBanner } from './shell/CollectorBanner';
 import { DataQualityView } from './views/DataQualityView';
 import { ProductDetailModal } from './views/ProductDetailModal';
 import { fetchAlertSummary } from '../api/alerts';
@@ -113,6 +115,7 @@ export const App: React.FC = () => {
           'history',
           'settings-ai',
           'settings-alerts',
+          'settings-collector',
           'data-quality',
           'improve-recommendations',
         ].includes(hash)
@@ -395,6 +398,8 @@ export const App: React.FC = () => {
             />
           ) : (
             <>
+              <CollectorBanner runActive={Boolean(activeRunProgress)} />
+
               <Toolbar
                 runs={runs}
                 selectedRunId={selectedRunId}
@@ -447,6 +452,10 @@ export const App: React.FC = () => {
 
               {activeView === 'settings-alerts' && (
                 <SettingsAlertsView />
+              )}
+
+              {activeView === 'settings-collector' && (
+                <SettingsCollectorView />
               )}
 
               {(activeView === 'data-quality' || activeView === 'review-queue') && (

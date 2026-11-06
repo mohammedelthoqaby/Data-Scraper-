@@ -17,6 +17,8 @@ public interface IUnitOfWork : IDisposable
     IRepository<Entities.Alert> Alerts { get; }
     IRepository<Entities.AlertHistory> AlertHistories { get; }
     IRepository<Entities.AlertSetting> AlertSettings { get; }
+    IRepository<Entities.CollectorDevice> CollectorDevices { get; }
+    IRepository<Entities.CollectorJob> CollectorJobs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
     void ClearTracker();

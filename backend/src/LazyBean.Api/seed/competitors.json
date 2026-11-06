@@ -64,7 +64,7 @@
     "platform": "WooCommerce",
     "isReference": false,
     "minDelayMs": 3000,
-    "collectionHost": "github",
+    "collectionHost": "desktop",
     "metaPageIds": [
       "102631558265863"
     ]

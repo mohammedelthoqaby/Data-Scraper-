@@ -1,202 +1,161 @@
 # LazyBean - System Handover & Operational Guide
 
-This document describes the deployment architecture, configuration secrets, scheduled automation, and operational maintenance for LazyBean.
+This document covers how LazyBean runs, what it depends on, and what to do when something needs attention.
 
-The system is designed for **zero developer maintenance**:
-- No personal servers. The only self-hosted runner is the optional office PC used for Meta Ads (section 4); nothing else depends on it.
-- No Contabo VPS or persistent cloud compute costs.
-- No credit card required (runs entirely on free tiers).
-- Completely hands-off daily operation after handover.
+LazyBean has two parts:
+
+- **The server** (`https://lazy-bean.runasp.net`): the .NET API, the dashboard, the database, and every scheduled step that does not need a home PC.
+- **LazyBean Collector** (desktop app, Windows): runs on a PC in Egypt and collects the sources that block server addresses: Strong Coffee and Meta ads.
+
+GitHub is no longer part of collection. There are no GitHub Actions workflows that collect data, no self-hosted runner, and no GitHub access token. The only workflow left is `build.yml`, which builds the code.
 
 ---
 
-## 1. Architecture Overview
+## 1. Architecture
 
 ```
-                                  +------------------------------------+
-                                  |         GitHub Actions (Free)       |
-                                  |  - Daily trigger at 05:00 UTC      |
-                                  |  - Runs LazyBean.CollectorCli for  |
-                                  |    Strong Coffee (WooCommerce)     |
-                                  +-----------------+------------------+
-                                                    | (X-Internal-Token)
-                                                    v
-+--------------------------+              +------------------------------------+
-|  Optional Office PC      |              |        MonsterASP (Backend API)    |
-|  (Self-Hosted Runner)    | -----------> |  - Serves ASP.NET Core & React UI  |
-|  - meta-ads.yml (Daily)  |  (Internal   |  - Runs Shopify, Woo & LB Scraping |
-|  - Egyptian Office IP    |    Token)    |  - Executes Matching, AI & Alerts  |
-|  - Zero impact when off  |              |  - SQLite / PostgreSQL Persistence |
-+--------------------------+              +-----------------+------------------+
-                                                            |
-                                                            v
-                                                  +--------------------+
-                                                  | PostgreSQL (Neon)  |
-                                                  +--------------------+
+  Strong Coffee (WooCommerce)      Meta Ad Library          Google Ads Transparency
+            |                            |                            |
+            v                            v                            v
+  +----------------------------------------------+        +---------------------+
+  |  LazyBean Collector (desktop, paired PC)     |        |  Server (fallback)  |
+  |  - polls the job queue every 10 s            |        |  Google only, when  |
+  |  - collects with the PC's own connection     |        |  no app is connected|
+  |  - reports via /api/collector/*              |        +----------+----------+
+  +-------------------+--------------------------+                   |
+                      | device token (bearer)                         |
+                      v                                               v
+  +-----------------------------------------------------------------------------+
+  |  Server (MonsterASP): ASP.NET Core API + React dashboard                    |
+  |  - Shopify competitors collected on the server (no desktop needed)          |
+  |  - job queue, pairing, ingest, classification, matching, AI triage, alerts  |
+  |  - Quartz daily run at 07:00 Africa/Cairo                                   |
+  +-----------------------------------+-----------------------------------------+
+                                      |
+                                      v
+                           PostgreSQL (MonsterASP)
 ```
 
-1. **Backend & Frontend (MonsterASP)**:
-   - ASP.NET Core 9 / 10 API hosting the built Astro / React SPA from `wwwroot`.
-   - Collects from server-friendly sources: Lazy Bean (Shopify), Cafelax, Coffee & Cream, Coffee Zone, Fengany.
-   - Orchestrates automated catalog classification, deterministic matching, optional Gemini AI review triage, and manager action alerts.
-2. **External WooCommerce Collector (GitHub Actions)**:
-   - Strong Coffee (`strongcoffee-eg.com`) blocks MonsterASP server IPs (HTTP 403) but succeeds from standard cloud IPs.
-   - A dedicated .NET console tool (`LazyBean.CollectorCli`) runs in GitHub Actions (`.github/workflows/daily-run.yml` and `github-collect.yml`), reuses the exact same `WooStoreApiAdapter` and domain rules, and streams product batches back to the backend.
-3. **Ads Intelligence**:
-   - **Google Ads**: Direct in-app backend sync with transparency `SearchSuggestions` & `SearchCreatives`. Weekly internal trigger + manual button.
-   - **Meta Ads**: Public Meta Ad Library blocks datacenter IPs (MonsterASP, GitHub, Cloudflare). Collection runs optionally via a self-hosted GitHub runner on an office PC (`meta-ads.yml` + `tools/meta-ads/sync.py`) using Egyptian residential/office IP. If the PC is off, nothing breaks: the UI displays "Runner offline - last sync <date>" with no error alerts. Each competitor card also provides a direct "View on Meta Ad Library ↗" button opening the official Egypt library page.
+### What runs where
 
----
-
-## 2. Secrets & Configuration Inventory
-
-No secret values are stored in the git repository. All secrets are managed in their respective provider consoles:
-
-### A. GitHub Repository Secrets
-Location: **GitHub Repository > Settings > Secrets and variables > Actions**
-
-| Secret Name | Purpose | Example / Format |
+| Work | Where | When |
 |---|---|---|
-| `API_BASE_URL` | Base public URL of MonsterASP application | `https://lazy-bean.runasp.net` (no trailing slash) |
-| `INTERNAL_TOKEN` | Shared secret token authorizing `/api/internal/*` requests | High-entropy string (e.g. 32-64 chars) |
+| Shopify competitors (Coffee Zone, Cafelax, Coffee & Cream, Fengany, Lazy Bean) | Server | Daily run, and manual runs |
+| Strong Coffee (WooCommerce) catalog | Desktop app | Every run; skipped if no app picks it up within 10 minutes |
+| Meta ads (approved Page IDs) | Desktop app | Every run, and **Collect ads now**; skipped if no app picks it up within 10 minutes |
+| Google ads (approved advertisers) | Desktop app if connected, otherwise the server | Every run, and **Collect ads now** |
+| Classification, matching, AI triage, alerts | Server | After collection finishes |
 
-### B. MonsterASP Environment Variables
-Location: **MonsterASP Control Panel > Website Settings > Environment Variables**
+Meta blocks datacenter addresses, which is why Meta and Strong Coffee run on the desktop app. Google is the one ads source that works from the server, so it falls back to the server when no app is connected.
 
-| Variable Name | Purpose | Notes |
+---
+
+## 2. Runs and the Job Queue
+
+A collection run creates these jobs, in this order:
+
+1. **Store collection** for each desktop competitor (today: Strong Coffee).
+2. **Meta ads** for the approved Meta identities.
+3. **Google ads** for the approved Google identities.
+
+Within a run, each job starts only after the job before it has finished. The run does not wait for Meta or Google: once the store jobs are done, the run continues to matching, AI triage, and alerts, and the ads jobs settle on their own. Ad alerts are recalculated when an ads job completes.
+
+**Claims and leases.** The app claims a job by polling. A claim stays with that app as long as it sends heartbeats. If the app stops for 5 minutes, the job returns to the queue. After 3 attempts the job fails.
+
+**The skip rule.** A desktop job that nobody claims within 10 minutes of becoming available is marked **Skipped (collector not running)**. A skipped store job is never treated as missing products: nothing is marked Missing or Removed, and the run carries on. Skipped ads jobs simply leave the existing ads as they were.
+
+**Statuses on the Collection Runs page.** Each competitor and each ads source shows where it ran (Desktop app or Server) and how it ended (Running, Completed, Failed, Skipped). The run stays **Running** until collection, matching, AI triage, and alerts have all finished, and progress only reaches 100% at that point.
+
+---
+
+## 3. Pairing and Revoking the Desktop App
+
+### Pairing
+1. Open LazyBean Collector on the PC.
+2. Keep the default server address `https://lazy-bean.runasp.net`.
+3. Sign in with a dashboard username and password.
+
+The app receives a device token once and stores it encrypted for the current Windows user. The server keeps only a SHA-256 hash of the token. Pairing is limited to 5 attempts per 10 minutes per IP address.
+
+A device token can only call `/api/collector/*`. A dashboard login cannot call those endpoints, and a device token cannot call the dashboard endpoints.
+
+### Revoking
+Go to **Settings > Collector**, find the device under **Paired devices**, and click **Revoke**. The token stops working on its next request, and any job that device was holding goes back to the queue. To use the app again, pair it again.
+
+### Checking the connection
+The dashboard header shows **Collector: Connected**, **Collector: Working 2/3** (jobs finished in the current batch), or **Collector: Not running**. A device counts as connected while it has polled within the last 45 seconds.
+
+---
+
+## 4. Installing the Desktop App
+
+The installer is `LazyBeanCollector.exe`. It is served from the dashboard at **Settings > Collector**, which shows the file size and its SHA-256 hash. Compare the hash before you run it.
+
+1. Download the file from **Settings > Collector**.
+2. Windows SmartScreen may say the app is not recognised. Click **More info**, then **Run anyway**.
+3. Pair the app as described in section 3.
+4. Optional: turn on **Start with Windows** in the app's window.
+
+If the installer is not listed on the page, it has not been published to the server yet.
+
+### App closed or PC off
+- Strong Coffee and Meta jobs wait for the app. After 10 minutes with no app, they are skipped and the run finishes.
+- Google continues on the server, so Google ads are collected whenever the app is closed.
+- Nothing is lost: the next run creates new jobs.
+
+---
+
+## 5. Secrets and Configuration
+
+No secret values are stored in the repository. Set them in the MonsterASP control panel under **Website Settings > Environment Variables**.
+
+| Variable | Purpose | Notes |
 |---|---|---|
-| `ConnectionStrings__Default` | PostgreSQL connection string | Point to Neon Postgres database |
-| `Internal__Token` | Shared internal API token | **Must match `INTERNAL_TOKEN` in GitHub Secrets** |
-| `Security__JwtSecret` | Cryptographic secret for signing auth tokens | 32+ random characters |
-| `Admin__Username` | Initial administrator login username | e.g. `admin` |
-| `Admin__Password` | Initial administrator login password | Strong password |
-| `Gemini__ApiKey` | (Optional) Gemini API Key fallback | Better to configure via UI with encryption |
-| `GitHub__DispatchToken` | Fine-grained PAT for Actions dispatch | **Actions: Read and write** on this repo (see guide below) |
-| `GitHub__Repo` | Target GitHub repository | `mohammedelthoqaby/Data-Scraper-` |
-| `GitHub__Ref` | Git branch to trigger workflow on | `main` |
+| `ConnectionStrings__Default` | PostgreSQL connection string | Points at MonsterASP PostgreSQL (PgBouncer transaction mode is supported) |
+| `Admin__Username` / `Admin__Password` | First administrator login | Used when the admin user is first created |
+| `Internal__Token` | Token for the `/api/internal/*` endpoints | Not used by the desktop app and not needed for collection |
+| `Security__UseHttpsRedirection` | HTTPS redirect | `false`; TLS is terminated by the MonsterASP front end |
+
+**Removed:** `GitHub__DispatchToken`, `GitHub__Repo`, and `GitHub__Ref`. They are no longer read, and the GitHub access token can be revoked in GitHub.
+
+**In the app (encrypted in the database):** the Gemini API key, under **Settings > AI Configuration**.
 
 ---
 
-### Step-by-Step GitHub Fine-Grained Personal Access Token (PAT) Setup
+## 6. Ads Intelligence
 
-To allow MonsterASP to automatically dispatch `github-collect.yml` whenever a manual or scheduled collection run starts:
-
-1. Log into your GitHub account and go to **Settings** (top right profile icon > Settings).
-2. In the left sidebar, click **Developer settings** (at the bottom).
-3. Under **Personal access tokens**, click **Fine-grained tokens** > **Generate new token**.
-4. Configure the token fields:
-   - **Token name**: `LazyBean-MonsterASP-Dispatch`
-   - **Expiration**: Select `90 days` or `1 year` (set a calendar reminder to renew before expiration).
-   - **Resource owner**: `mohammedelthoqaby`
-   - **Repository access**: Select **Only select repositories**, then choose `mohammedelthoqaby/Data-Scraper-`.
-   - **Permissions > Repository permissions**:
-     - Find **Actions**: change access from *No access* to **Read and write**.
-     - All other permissions should remain *No access*.
-5. Click **Generate token** and copy the generated token (`github_pat_...`).
-6. Go to **MonsterASP Control Panel > Website Settings > Environment Variables**:
-   - Add `GitHub__DispatchToken` with the copied token value.
-   - Add `GitHub__Repo` with value `mohammedelthoqaby/Data-Scraper-`.
-   - Add `GitHub__Ref` with value `main`.
-7. **Security Guarantee**: The backend never logs this token in console logs, exception traces, or HTTP responses. If dispatch fails, the backend only surfaces the sanitized HTTP status code (e.g. HTTP 401 / 403) to the UI.
+- **Meta identities.** Approved automatically on startup for the seeded Page IDs. To stop collecting a page, reject its identity under **Manage Sources > Advertiser Identities**. A rejection survives restarts.
+- **Google identities.** Click **Discover Google Advertisers** next to a competitor, review the candidates, and approve the right one. The result says either how many advertisers were found, or that none were found.
+- **Collect ads now.** Starts Meta and Google collection without a full run. It is on **Settings > Collector** and the Ads page.
 
 ---
 
-### C. In-App Encrypted Secrets (Settings UI)
-Location: **LazyBean Web App > Settings > Google AI Studio (Gemini)**
+## 7. Troubleshooting
 
-| Setting | Purpose | Notes |
+| Symptom | Likely cause | What to do |
 |---|---|---|
-| `Gemini API Key` | Powers AI candidate review triage and attention ranking | Encrypted with ASP.NET Data Protection into DB |
+| Banner: "No LazyBean Collector is connected" | The app is closed, or the PC is off | Open the app. Google still runs on the server. |
+| Strong Coffee shows "Skipped (collector not running)" | No app picked it up within 10 minutes | Open the app, then run again or use **Collect ads now** |
+| App says the token is invalid or revoked | The device was revoked, or the token is stale | Pair the app again |
+| Pairing returns 429 | More than 5 attempts in 10 minutes from this IP | Wait 10 minutes |
+| Meta page returns 0 ads | Either the page really has no ads in Egypt, or Meta is blocking this PC | Check the Page ID under Advertiser Identities; compare with the Ad Library in a browser |
+| Run stays "Running" | An ads or store job is still in progress, or the post-processing step is working | Check **Sources for this run**; the run completes once its store jobs and post-processing finish |
 
 ---
 
-## 3. Scheduled Automations & Automated Dispatch
+## 8. Publishing a Release
 
-### Daily Run (05:00 UTC / 07:00 Egypt Time)
-- File: `.github/workflows/daily-run.yml`
-- Workflow:
-  1. Calls `POST /api/internal/runs` on MonsterASP with `X-Internal-Token`.
-  2. Receives the `runId`.
-  3. The server immediately initiates collection:
-     - Scrapes server-hosted competitors (`cafelax`, `coffee-and-cream`, `coffee-zone`, `fengany`).
-     - Automatically calls GitHub REST API `workflow_dispatch` for `github-collect.yml` for any competitor configured with `collectionHost = "github"` (`strong-coffee`).
-  4. GitHub Actions runner executes `LazyBean.CollectorCli` on `ubuntu-latest`:
-     - Posts product batches to `POST /api/internal/runs/{runId}/competitors/strong-coffee/products`.
-     - Completes competitor run with `POST .../complete`.
-  5. The server waits up to 30 minutes with a live countdown: `Waiting for GitHub collector (mm:ss / 30:00)`.
-  6. MonsterASP automatically executes the post-processing pipeline: classification -> matching -> AI triage (if configured) -> alerts.
-
-### Manual Collection Runs (Dashboard)
-- When clicking **Start Collection Run** in the web dashboard, the exact same automated dispatch occurs:
-  - The backend dispatches `github-collect.yml` automatically via GitHub API.
-  - The dashboard displays a direct link **View GitHub Actions ↗** and a **↻ Re-dispatch** button on the Strong Coffee row.
-  - The false "Scraper appears stalled" warning is suppressed while waiting for external collectors.
-
-### Weekly Google Ads Sync
-- Executes inside the backend automatically every 7 days after the daily collection run, or on-demand via the **Sync Google Ads** button in the Ads UI.
-- Direct connection to Google Ads Transparency SearchSuggestions and SearchCreatives.
-
----
-
-## 4. Optional Meta Ads Office PC Runner (Setup & Maintenance)
-
-Because Meta blocks all datacenter IPs (MonsterASP, GitHub cloud runners, Cloudflare), Meta collection can run optionally from any company office PC via GitHub's free self-hosted runner mechanism:
-
-### Quick Setup Steps (One-time, 5 minutes)
-1. In your GitHub repository, navigate to **Settings > Actions > Runners > New self-hosted runner**.
-2. Select your OS (Windows or Linux).
-3. Download the runner package and run `config.cmd` (or `config.sh`).
-4. When prompted for labels, add: `lazybean-collector`.
-5. Run the runner:
-   - On Windows: Run `run.cmd`, or install as a background service:
-     ```powershell
-     .\svc.bat install
-     .\svc.bat start
-     ```
-   - On Linux/macOS: Run `./run.sh` or `./svc.sh install && ./svc.sh start`.
-
-### How It Operates
-- Workflow: `.github/workflows/meta-ads.yml` runs daily at 09:00 UTC on the `[self-hosted, lazybean-collector]` runner, or manually via **Run workflow** (`workflow_dispatch`). There is no GitHub-hosted fallback for Meta: a Meta run that cannot reach the office runner simply does not happen.
-- Posts to `API_BASE_URL` (production) with `INTERNAL_TOKEN`. Each page's result (status, ad count, error) is printed per page and in the run summary in the Actions log.
-- Runs Python (`tools/meta-ads/sync.py`), scrapes approved Meta Page IDs through the Egyptian office IP, and posts ads to `POST /api/internal/ads/meta`.
-- **Runs only when the PC is on**: When the PC is off, GitHub simply queues the job until the PC boots up, or the run can be triggered manually.
-- **Nothing breaks when off**: The LazyBean dashboard displays `"Runner offline - last sync <date>"`. No errors, red alerts, or broken states appear anywhere.
-- **Direct Library Access**: The Ads page provides a direct **"View on Meta Ad Library ↗"** button for each competitor to view live active campaigns at any time without running any scraper.
-
----
-
-## 5. Manual Operations & Troubleshooting
-
-### Triggering a Run Manually
-- **From UI**: Click **Start Collection Run** on the Collection Runs page.
-- **From GitHub Actions**:
-  - Open **Actions** tab in GitHub repo.
-  - Select **Daily Collection Run** > Click **Run workflow**.
-
-### Re-running Strong Coffee Only
-- Open GitHub Actions > Select **GitHub Actions Collector** (`github-collect.yml`).
-- Enter the `run_id` (copied from Collection Runs page) > Click **Run workflow**.
-
-### Adding or Approving Advertiser Identities
-1. Go to **Manage Sources > Advertiser Identities**.
-2. For Meta: identities seeded from `seed/competitors.json` (`cafelax`, `coffee-and-cream`, `coffee-zone`, `fengany`, `strong-coffee`) are approved automatically on startup. There is no manual approval step for them. To stop collecting a page, reject its identity in **Manage Sources > Advertiser Identities**; a rejection is kept across restarts and is not re-approved on the next startup.
-3. For Google: Click **🔍 Discover Google Advertisers** next to any competitor, review discovered candidates, and approve.
-
----
-
-## 6. Deployment / Publishing Instructions
-
-To produce a new release package:
-```bash
-# 1. Build frontend
-cd web && npm run build && cd ..
-
-# 2. Publish backend win-x86 for MonsterASP
+```powershell
+# 1. Build the server (this also builds web/ and copies it into wwwroot)
 dotnet publish backend/src/LazyBean.Api/LazyBean.Api.csproj -c Release -r win-x86 --self-contained false -o publish
 
-# 3. Ensure appsettings.Development.json is removed
-rm -f publish/appsettings.Development.json
+# 2. Remove development settings
+Remove-Item publish/appsettings.Development.json -ErrorAction SilentlyContinue
 
-# 4. Zip the contents of publish/ into lazybean-api.zip (files at root of zip)
+# 3. Optional: publish the desktop app and place it where the server serves it
+#    publish/wwwroot/downloads/LazyBeanCollector.exe
 ```
-Upload `lazybean-api.zip` directly to MonsterASP root directory and extract.
+
+Zip the contents of `publish/` (files at the root of the archive) and extract them into the MonsterASP site folder. The desktop installer is only offered on the Settings page when `wwwroot/downloads/LazyBeanCollector.exe` exists.
+
+Database changes ship as EF Core migrations and are applied at startup. Never write schema changes as raw SQL at startup.

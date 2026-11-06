@@ -137,6 +137,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <span>AI Configuration (Gemini)</span>
               </button>
+              <button
+                type="button"
+                aria-current={activeView === 'settings-collector' ? 'page' : undefined}
+                onClick={() => onNavigate('settings-collector')}
+              >
+                <span>Collector (desktop app)</span>
+              </button>
             </>
           )}
         </details>

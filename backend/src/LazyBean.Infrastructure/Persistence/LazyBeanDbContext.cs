@@ -30,6 +30,8 @@ public class LazyBeanDbContext(DbContextOptions<LazyBeanDbContext> options) : Db
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<AlertHistory> AlertHistories => Set<AlertHistory>();
     public DbSet<AlertSetting> AlertSettings => Set<AlertSetting>();
+    public DbSet<CollectorDevice> CollectorDevices => Set<CollectorDevice>();
+    public DbSet<CollectorJob> CollectorJobs => Set<CollectorJob>();
 
     public IQueryable<T> Query<T>() where T : BaseEntity => Set<T>().AsNoTracking();
 

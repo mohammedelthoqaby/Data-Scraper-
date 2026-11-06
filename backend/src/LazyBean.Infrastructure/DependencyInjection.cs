@@ -1,12 +1,16 @@
+using LazyBean.Collectors.Google;
+using LazyBean.Collectors.Http;
+using LazyBean.Collectors.Woo;
 using LazyBean.Application.Collection.Contracts;
 using LazyBean.Application.Collection.Orchestration;
+using LazyBean.Application.Collector.Contracts;
 using LazyBean.Application.Common.Interfaces;
 using LazyBean.Domain.Interfaces;
 using LazyBean.Infrastructure.Ads;
 using LazyBean.Infrastructure.Caching;
+using LazyBean.Infrastructure.Collector;
 using LazyBean.Infrastructure.Collection.Adapters;
 using LazyBean.Infrastructure.Collection.Evidence;
-using LazyBean.Infrastructure.Collection.Http;
 using LazyBean.Infrastructure.Collection.Orchestration;
 using LazyBean.Infrastructure.Collection.Scheduling;
 using LazyBean.Infrastructure.HealthChecks;
@@ -46,6 +50,12 @@ public static class DependencyInjection
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddSingleton<IPasswordHasher, PasswordHasherAdapter>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<ICollectorDeviceAuthenticator, CollectorDeviceAuthenticator>();
+        services.AddScoped<ICollectorJobService, CollectorJobService>();
+        services.AddScoped<IAdsIngestionService, AdsIngestionService>();
+        services.AddSingleton<ICollectorServerFallback, CollectorServerFallback>();
+        services.AddHostedService<CollectorMaintenanceService>();
 
         var redisConnection = configuration.GetConnectionString("Redis");
         var redisConfigured = !string.IsNullOrWhiteSpace(redisConnection);
@@ -88,14 +98,6 @@ public static class DependencyInjection
         services.AddScoped<ICompetitorProductIngestionService, CompetitorProductIngestionService>();
 
         services.AddScoped<ICollectionRunExecutor, CollectionRunExecutor>();
-        services.AddOptions<GitHubOptions>()
-            .Bind(configuration.GetSection(GitHubOptions.SectionName))
-            .ValidateOnStart();
-        services.AddSingleton<IValidateOptions<GitHubOptions>, GitHubOptionsValidator>();
-        services.AddHttpClient<IGitHubWorkflowDispatcher, GitHubWorkflowDispatcher>(client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
         services.AddHttpClient<IMetaAdLibraryClient, MetaAdLibraryClient>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(60);

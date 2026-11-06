@@ -110,17 +110,3 @@ export async function triggerMatchingNow(): Promise<any> {
   return res.json();
 }
 
-export async function redispatchGithubCollector(
-  runId: string,
-  slug: string
-): Promise<{ success: boolean; message?: string; actionsUrl?: string }> {
-  const res = await fetch(`/api/runs/${runId}/competitors/${slug}/redispatch`, {
-    method: 'POST',
-    credentials: 'include',
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error(data?.message || data?.error || `HTTP ${res.status}: Failed to redispatch.`);
-  }
-  return res.json();
-}

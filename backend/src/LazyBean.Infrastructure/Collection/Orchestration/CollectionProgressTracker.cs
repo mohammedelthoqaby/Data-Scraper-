@@ -177,11 +177,11 @@ public class CollectionProgressTracker : ICollectionProgressTracker
         public RunProgressDto ToDto()
         {
             var now = DateTimeOffset.UtcNow;
-            var anyGithubWaiting = _competitors.Values.Any(c =>
-                string.Equals(c.CollectionHost, "github", StringComparison.OrdinalIgnoreCase) &&
+            var anyDesktopWaiting = _competitors.Values.Any(c =>
+                string.Equals(c.CollectionHost, "desktop", StringComparison.OrdinalIgnoreCase) &&
                 (c.Status == "Running" || c.Status == "Queued"));
 
-            var isStalled = !anyGithubWaiting && (Status == "Running" || Status == "Queued") && (now - LastProgressAt > TimeSpan.FromMinutes(3));
+            var isStalled = !anyDesktopWaiting && (Status == "Running" || Status == "Queued") && (now - LastProgressAt > TimeSpan.FromMinutes(3));
 
             var compDtos = _competitors.Values.Select(c => c.ToDto()).ToList();
 

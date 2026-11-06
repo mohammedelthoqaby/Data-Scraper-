@@ -1,8 +1,10 @@
 using System.Threading.RateLimiting;
+using LazyBean.Api.Auth;
 using LazyBean.Api.Middleware;
 using LazyBean.Application;
 using LazyBean.Infrastructure;
 using LazyBean.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Authorization;
@@ -46,8 +48,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     }
 });
 
+const string DefaultAuthScheme = "LazyBeanAuth";
+
+// One default scheme routes each request to the right credential: the paired collector app's bearer
+// token on /api/collector/*, and the dashboard cookie everywhere else. Each scheme refuses the other's
+// requests, so neither credential can reach the other's endpoints.
 builder.Services
-    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddAuthentication(DefaultAuthScheme)
+    .AddPolicyScheme(DefaultAuthScheme, "Dashboard cookie or collector device token", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+            context.Request.Path.StartsWithSegments(DeviceTokenAuthenticationHandler.PathPrefix, StringComparison.OrdinalIgnoreCase)
+            && context.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                ? DeviceTokenAuthenticationHandler.SchemeName
+                : CookieAuthenticationDefaults.AuthenticationScheme;
+    })
+    .AddScheme<AuthenticationSchemeOptions, DeviceTokenAuthenticationHandler>(DeviceTokenAuthenticationHandler.SchemeName, _ => { })
     .AddCookie(options =>
     {
         options.Cookie.HttpOnly = true;
@@ -70,7 +86,7 @@ builder.Services
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(CollectorPolicies.Register);
 
 builder.Services.AddControllers(options =>
 {
@@ -126,6 +142,17 @@ builder.Services.AddRateLimiter(options =>
             {
                 Window = TimeSpan.FromMinutes(1),
                 PermitLimit = 60,
+                QueueLimit = 0
+            }));
+
+    // Pairing takes dashboard credentials: at most 5 attempts per 10 minutes per client IP.
+    options.AddPolicy("collector-pair", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(10),
+                PermitLimit = 5,
                 QueueLimit = 0
             }));
 

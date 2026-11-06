@@ -19,7 +19,6 @@ using Microsoft.EntityFrameworkCore;
 namespace LazyBean.Api.Controllers;
 
 public record StartRunRequest(IReadOnlyList<Guid>? CompetitorIds = null);
-public record RedispatchResultDto(bool Success, string? Message, string? ActionsUrl);
 
 [ApiController]
 [Route("api/runs")]
@@ -214,48 +213,6 @@ public class RunsController(ISender sender) : ControllerBase
     {
         var result = await sender.Send(new CancelRunCommand(id), ct);
         return Ok(result);
-    }
-
-    [HttpPost("{id:guid}/competitors/{slug}/redispatch")]
-    [ProducesResponseType(typeof(RedispatchResultDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<RedispatchResultDto>> Redispatch(
-        Guid id,
-        string slug,
-        [FromServices] IGitHubWorkflowDispatcher dispatcher,
-        [FromServices] ICollectionProgressTracker tracker,
-        [FromServices] LazyBean.Infrastructure.Persistence.LazyBeanDbContext db,
-        CancellationToken ct)
-    {
-        var comp = await db.Competitors.FirstOrDefaultAsync(c => c.Key == slug, ct);
-        if (comp == null)
-        {
-            return NotFound(new { error = $"Competitor '{slug}' not found." });
-        }
-
-        var cr = await db.CompetitorRuns.FirstOrDefaultAsync(r => r.RunId == id && r.CompetitorId == comp.Id, ct);
-        if (cr == null)
-        {
-            return NotFound(new { error = $"Run '{id}' does not have competitor '{slug}'." });
-        }
-
-        var result = await dispatcher.DispatchCollectorAsync(id, [slug], ct);
-        if (result.Success)
-        {
-            cr.Status = CompetitorRunStatus.Running;
-            cr.Errors = 0;
-            await db.SaveChangesAsync(ct);
-            tracker.UpdateCompetitorProgress(id, comp.Id, "Running", cr.Pages, null, cr.Products, "Re-dispatched GitHub Actions collector...");
-            return Ok(new RedispatchResultDto(true, "Successfully dispatched GitHub Actions collector workflow.", result.ActionsUrl));
-        }
-        else
-        {
-            cr.Status = CompetitorRunStatus.Degraded;
-            cr.Errors = 1;
-            await db.SaveChangesAsync(ct);
-            tracker.UpdateCompetitorProgress(id, comp.Id, "Degraded", cr.Pages, null, cr.Products, result.ErrorMessage);
-            return Ok(new RedispatchResultDto(false, result.ErrorMessage, result.ActionsUrl));
-        }
     }
 
     [HttpGet]
