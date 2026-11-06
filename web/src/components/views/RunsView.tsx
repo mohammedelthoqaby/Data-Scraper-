@@ -4,7 +4,6 @@ import {
   api,
   fetchRunProgress,
   fetchActiveRun,
-  triggerMatchingNow,
   type RunDto,
   type AuthenticatedUser,
   type RunProgress,
@@ -30,8 +29,6 @@ export const RunsView: React.FC<RunsViewProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [isMatching, setIsMatching] = useState(false);
-  const [matchNotice, setMatchNotice] = useState<string | null>(null);
   const [activeProgress, setActiveProgress] = useState<RunProgress | null>(null);
   const [expandedRunIds, setExpandedRunIds] = useState<Set<string>>(new Set());
 
@@ -149,27 +146,6 @@ export const RunsView: React.FC<RunsViewProps> = ({
     }
   };
 
-  const handleRunMatching = async () => {
-    if (!user) {
-      onOpenLogin();
-      return;
-    }
-    setIsMatching(true);
-    setMatchNotice(null);
-    try {
-      const res = await triggerMatchingNow();
-      setMatchNotice(
-        `Matching complete: ${res?.autoAcceptedCount ?? 0} auto-accepted, ${res?.reviewItemCount ?? 0} reviews flagged.`
-      );
-      await fetchRunsList();
-      onRefreshRuns();
-    } catch (err: any) {
-      alert(err?.message || 'Failed to execute product matching');
-    } finally {
-      setIsMatching(false);
-    }
-  };
-
   const handleCancelRun = async (runId: string) => {
     if (!user) {
       onOpenLogin();
@@ -231,19 +207,10 @@ export const RunsView: React.FC<RunsViewProps> = ({
           <div className="eyebrow">SCRAPER PIPELINE & ORCHESTRATION</div>
           <h1 className="view-title">Collection Runs</h1>
           <p className="subtitle">
-            Trigger new collection passes across the 5 competitor stores, monitor real-time weighted scraping progress, or run matching manually.
+            Trigger new collection passes across the 5 competitor stores and monitor real-time weighted scraping progress. Matching runs automatically after each run.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={isMatching || isStarting}
-            onClick={handleRunMatching}
-            style={{ fontWeight: 600 }}
-          >
-            ⚡ {isMatching ? 'Matching in progress...' : 'Run Matching Now'}
-          </button>
           <button
             type="button"
             className="btn-primary"
@@ -299,16 +266,6 @@ export const RunsView: React.FC<RunsViewProps> = ({
           </div>
         )}
       </div>
-
-      {matchNotice && (
-        <div
-          className="warning-banner"
-          style={{ background: '#e7f3ec', borderColor: '#9bc9b1', color: '#1b5238', marginBottom: '20px' }}
-        >
-          <span>✓</span>
-          <span>{matchNotice}</span>
-        </div>
-      )}
 
       {/* Active Run Real-Time Progress Banner */}
       {activeProgress ? (
