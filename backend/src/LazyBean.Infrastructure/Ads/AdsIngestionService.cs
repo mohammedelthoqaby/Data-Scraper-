@@ -11,9 +11,10 @@ using Npgsql;
 
 namespace LazyBean.Infrastructure.Ads;
 
-// Ads ingestion shared by the internal API and the paired desktop collector. Matches each ad to a
-// product, groups it into campaigns, records start/stop change events and marks ads missing after
-// two consecutive successful collections.
+// Ads ingestion shared by the internal API and the paired desktop collector. Each creative is stored under its
+// advertiser account, so one account's creatives are never replaced by another's. A Google advertiser has one
+// campaign that groups its creatives. A Meta creative is grouped by its body text. Every ingest records a batch with
+// the counts the server did, so the Ads summary can reconcile against the app.
 public class AdsIngestionService(
     IUnitOfWork unitOfWork,
     IReadDbContext readContext,
@@ -29,9 +30,12 @@ public class AdsIngestionService(
             throw new NotFoundException(nameof(AdvertiserIdentity), request.AdvertiserId);
         }
 
+        var now = DateTimeOffset.UtcNow;
+
         if (string.Equals(request.Status, "Blocked", StringComparison.OrdinalIgnoreCase))
         {
-            identity.Block(DateTimeOffset.UtcNow.AddHours(24), request.Error ?? "Google Ads Transparency blocked/rate-limited direct scraper.");
+            var blockedReason = request.Error ?? "Google Ads Transparency blocked/rate-limited direct scraper.";
+            identity.Block(now.AddHours(24), blockedReason);
             unitOfWork.AdvertiserIdentities.Update(identity);
 
             var existingGoogleAds = await readContext.Query<Ad>()
@@ -48,8 +52,8 @@ public class AdsIngestionService(
                     Platform = AdPlatform.Google,
                     Title = $"{identity.Name} (Google Ads Blocked)",
                     Body = "Google Ads Transparency rate-limited or blocked direct access.",
-                    FirstSeenAt = DateTimeOffset.UtcNow,
-                    LastSeenAt = DateTimeOffset.UtcNow,
+                    FirstSeenAt = now,
+                    LastSeenAt = now,
                     Status = AdStatus.Blocked,
                     CreativeHash = "blocked"
                 };
@@ -60,22 +64,21 @@ public class AdsIngestionService(
                 foreach (var ega in existingGoogleAds)
                 {
                     ega.Status = AdStatus.Blocked;
-                    ega.LastSeenAt = DateTimeOffset.UtcNow;
+                    ega.LastSeenAt = now;
                     unitOfWork.Ads.Update(ega);
                 }
             }
 
-            await unitOfWork.SaveChangesAsync(ct);
+            await RecordBatchAsync(identity, 0, 0, 0, 0, 0, "Blocked", blockedReason, now, ct);
             logger.LogWarning("Marked Google advertiser identity '{Name}' as Blocked for 24h.", identity.Name);
             return new AdsIngestResponse("Blocked", Message: "Advertiser identity marked Blocked for 24h.");
         }
 
         var results = new List<AdsIngestItemResult>();
-        var ingestedCount = 0;
+        var received = request.Ads?.Count ?? 0;
 
         if (request.Ads is { Count: > 0 })
         {
-            var now = DateTimeOffset.UtcNow;
             var accepted = new List<GoogleAdNormalized>();
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -101,12 +104,16 @@ public class AdsIngestionService(
                 accepted.Add(normalized.Ad);
             }
 
-            // Existing ads and campaigns are read once, so every creative in the batch sees the same tracked state.
+            var catalog = await LoadCatalogAsync(identity.CompetitorId, ct);
+            var campaign = await GetOrCreateGoogleCampaignAsync(identity, now, ct);
+
+            // The existing creatives of this advertiser account only: the same creative ID under another account is
+            // a different row.
             var acceptedIds = accepted.Select(a => a.ExternalAdId).ToList();
             var existingAds = acceptedIds.Count == 0
                 ? new List<Ad>()
                 : await readContext.Query<Ad>()
-                    .Where(a => a.Platform == AdPlatform.Google && acceptedIds.Contains(a.ExternalAdId))
+                    .Where(a => a.IdentityId == identity.Id && a.Platform == AdPlatform.Google && acceptedIds.Contains(a.ExternalAdId))
                     .ToListAsync(ct);
 
             var existingByExternalId = new Dictionary<string, Ad>(StringComparer.Ordinal);
@@ -115,55 +122,24 @@ public class AdsIngestionService(
                 existingByExternalId.TryAdd(existing.ExternalAdId, existing);
             }
 
-            var existingCampaigns = await readContext.Query<AdCampaign>()
-                .Where(c => c.IdentityId == identity.Id)
-                .ToListAsync(ct);
-
-            var campaignsByHash = new Dictionary<string, AdCampaign>(StringComparer.Ordinal);
-            foreach (var existing in existingCampaigns)
-            {
-                campaignsByHash.TryAdd(existing.CreativeHash, existing);
-            }
-
             // Each creative is saved on its own, so one rejected creative cannot fail the whole batch.
             foreach (var ad in accepted)
             {
                 try
                 {
-                    var creativeHash = CreativeHashHelper.Compute(ad.Title, ad.Body, ad.SnapshotUrl);
-
-                    if (!campaignsByHash.TryGetValue(creativeHash, out var campaign))
-                    {
-                        campaign = new AdCampaign
-                        {
-                            CompetitorId = identity.CompetitorId,
-                            IdentityId = identity.Id,
-                            CreativeHash = creativeHash,
-                            Platform = AdPlatform.Google,
-                            FirstSeenAt = now,
-                            LastSeenAt = now,
-                            Status = AdStatus.Active
-                        };
-                        await unitOfWork.AdCampaigns.AddAsync(campaign, ct);
-                        await unitOfWork.SaveChangesAsync(ct);
-                        campaignsByHash[creativeHash] = campaign;
-                    }
-                    else
-                    {
-                        campaign.LastSeenAt = now;
-                        unitOfWork.AdCampaigns.Update(campaign);
-                    }
+                    campaign.LastSeenAt = now;
+                    unitOfWork.AdCampaigns.Update(campaign);
 
                     string outcome;
                     if (existingByExternalId.TryGetValue(ad.ExternalAdId, out var existingAd))
                     {
                         existingAd.LastSeenAt = ad.LastSeen ?? now;
                         existingAd.DeliveryStopDate = ad.LastSeen;
-                        if (existingAd.Status == AdStatus.Blocked)
-                        {
-                            existingAd.Status = AdStatus.Active;
-                        }
-
+                        existingAd.CampaignId = campaign.Id;
+                        existingAd.Status = AdStatus.Active;
+                        existingAd.PreviewUrl = ad.PreviewUrl ?? existingAd.PreviewUrl;
+                        existingAd.CreativeFormat = ad.CreativeFormat ?? existingAd.CreativeFormat;
+                        AdDerivedFields.Apply(existingAd, catalog);
                         unitOfWork.Ads.Update(existingAd);
                         outcome = "updated";
                     }
@@ -180,24 +156,23 @@ public class AdsIngestionService(
                             Body = ad.Body,
                             LinkUrl = ad.LinkUrl,
                             SnapshotUrl = ad.SnapshotUrl,
+                            PreviewUrl = ad.PreviewUrl,
+                            CreativeFormat = ad.CreativeFormat,
                             DeliveryStartDate = ad.FirstSeen,
                             DeliveryStopDate = ad.LastSeen,
                             FirstSeenAt = ad.FirstSeen ?? now,
                             LastSeenAt = ad.LastSeen ?? now,
                             Status = AdStatus.Active,
-                            CreativeHash = creativeHash,
+                            CreativeHash = CreativeHashHelper.Compute(ad.Title, ad.Body, ad.SnapshotUrl),
                             RawDataJson = ad.RawJson
                         };
+                        AdDerivedFields.Apply(newAd, catalog);
                         await unitOfWork.Ads.AddAsync(newAd, ct);
                         outcome = "created";
                     }
 
                     await unitOfWork.SaveChangesAsync(ct);
                     results.Add(new AdsIngestItemResult(ad.ExternalAdId, outcome));
-                    if (outcome == "created")
-                    {
-                        ingestedCount++;
-                    }
                 }
                 catch (DbUpdateException ex) when (ex.InnerException is PostgresException)
                 {
@@ -210,28 +185,21 @@ public class AdsIngestionService(
             }
         }
 
-        var skipped = results.Count(r => r.Outcome == "skipped");
+        var createdCount = results.Count(r => r.Outcome == "created");
+        var updatedCount = results.Count(r => r.Outcome == "updated");
+        var duplicateCount = results.Count(r => r.Outcome == "duplicate");
+        var skippedCount = results.Count(r => r.Outcome == "skipped");
+
+        await RecordBatchAsync(identity, received, createdCount, updatedCount, duplicateCount, skippedCount, "Success", null, now, ct);
+        logger.LogInformation(
+            "Google ads from '{Name}' ({AdvertiserId}): received {Received}, created {Created}, updated {Updated}, duplicate {Duplicate}, skipped {Skipped}.",
+            identity.Name, identity.ExternalId, received, createdCount, updatedCount, duplicateCount, skippedCount);
+
         return new AdsIngestResponse(
             "Success",
-            Message: skipped == 0 ? null : $"{skipped} creative(s) skipped; see items for the reason.",
-            IngestedCount: ingestedCount,
+            Message: skippedCount == 0 ? null : $"{skippedCount} creative(s) skipped; see items for the reason.",
+            IngestedCount: createdCount,
             Items: results);
-    }
-
-    // Short, safe reason for a creative the database rejected. The raw database message is only logged.
-    private static string DescribeRejection(DbUpdateException ex)
-    {
-        var postgres = ex.InnerException as PostgresException;
-        var column = string.IsNullOrEmpty(postgres?.ColumnName) ? string.Empty : $" ({postgres.ColumnName})";
-
-        return postgres?.SqlState switch
-        {
-            "22001" => $"A field was longer than the database allows{column}.",
-            "23505" => "This creative is already stored under another advertiser.",
-            "23502" => $"A required field was empty{column}.",
-            var state when state is not null && state.StartsWith("22", StringComparison.Ordinal) => $"The database rejected a value{column}.",
-            _ => "The database rejected this creative."
-        };
     }
 
     public async Task<AdsIngestResponse> IngestMetaPageAsync(MetaAdsIngestRequest request, CancellationToken ct = default)
@@ -244,11 +212,14 @@ public class AdsIngestionService(
             throw new NotFoundException(nameof(AdvertiserIdentity), request.PageId);
         }
 
+        var now = DateTimeOffset.UtcNow;
+
         if (string.Equals(request.Status, "Blocked", StringComparison.OrdinalIgnoreCase))
         {
-            identity.Block(DateTimeOffset.UtcNow.AddHours(24), request.Error ?? "Meta Ad Library rate-limited or blocked direct scraper.");
+            var blockedReason = request.Error ?? "Meta Ad Library rate-limited or blocked direct scraper.";
+            identity.Block(now.AddHours(24), blockedReason);
             unitOfWork.AdvertiserIdentities.Update(identity);
-            await unitOfWork.SaveChangesAsync(ct);
+            await RecordBatchAsync(identity, 0, 0, 0, 0, 0, "Blocked", blockedReason, now, ct);
             logger.LogWarning("Marked Meta advertiser identity '{Name}' ({PageId}) as Blocked for 24h: {Error}", identity.Name, identity.ExternalId, request.Error);
             return new AdsIngestResponse("Blocked", Message: "Advertiser identity marked Blocked for 24h.");
         }
@@ -293,32 +264,36 @@ public class AdsIngestionService(
             await unitOfWork.SaveChangesAsync(ct);
         }
 
-        // Fast lookups for ad -> product matching
-        var productsByHandle = competitorProducts
-            .Where(p => !string.IsNullOrWhiteSpace(p.Handle))
-            .GroupBy(p => p.Handle!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-
-        var productsByNormUrl = competitorProducts
-            .Where(p => !string.IsNullOrWhiteSpace(p.CanonicalUrl))
-            .GroupBy(p => CreativeHashHelper.NormalizeProductUrl(p.CanonicalUrl), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var catalog = competitorProducts
+            .Select(p => new LinkableProduct(p.Id, p.Title, p.Handle, p.CanonicalUrl))
+            .ToList();
 
         var existingCampaigns = await readContext.Query<AdCampaign>()
             .Where(c => c.IdentityId == identity.Id)
             .ToListAsync(ct);
-        var campaignsByHash = existingCampaigns.ToDictionary(c => c.CreativeHash, StringComparer.OrdinalIgnoreCase);
+        var campaignsByHash = new Dictionary<string, AdCampaign>(StringComparer.OrdinalIgnoreCase);
+        foreach (var existingCampaign in existingCampaigns)
+        {
+            campaignsByHash.TryAdd(existingCampaign.CreativeHash, existingCampaign);
+        }
         var touchedCampaigns = new HashSet<AdCampaign>();
 
         var seenAdIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var now = DateTimeOffset.UtcNow;
         var ingestedCount = 0;
+        var updatedCount = 0;
+        var duplicateCount = 0;
+        var received = request.Ads?.Count ?? 0;
 
         if (request.Ads != null && request.Ads.Count > 0)
         {
             foreach (var rawAd in request.Ads)
             {
-                seenAdIds.Add(rawAd.Id);
+                if (!seenAdIds.Add(rawAd.Id))
+                {
+                    duplicateCount++;
+                    continue;
+                }
+
                 // Campaign grouping: identity + normalized body
                 var creativeHash = CreativeHashHelper.Compute(identity.Id, rawAd.Body);
 
@@ -349,24 +324,6 @@ public class AdsIngestionService(
                     touchedCampaigns.Add(campaign);
                 }
 
-                Guid? matchedProductId = null;
-                if (!string.IsNullOrWhiteSpace(rawAd.Link))
-                {
-                    var adHandle = CreativeHashHelper.ExtractProductHandle(rawAd.Link);
-                    if (!string.IsNullOrWhiteSpace(adHandle) && productsByHandle.TryGetValue(adHandle, out var foundByHandle))
-                    {
-                        matchedProductId = foundByHandle.Id;
-                    }
-                    else
-                    {
-                        var normAdUrl = CreativeHashHelper.NormalizeProductUrl(rawAd.Link);
-                        if (productsByNormUrl.TryGetValue(normAdUrl, out var foundByUrl))
-                        {
-                            matchedProductId = foundByUrl.Id;
-                        }
-                    }
-                }
-
                 var targetStatus = string.Equals(rawAd.Status, "Inactive", StringComparison.OrdinalIgnoreCase)
                     ? AdStatus.Inactive
                     : string.Equals(rawAd.Status, "Active", StringComparison.OrdinalIgnoreCase)
@@ -380,10 +337,12 @@ public class AdsIngestionService(
                     existing.CampaignId = campaign.Id;
                     existing.CreativeHash = creativeHash;
                     existing.Body = rawAd.Body ?? existing.Body;
+                    existing.Title = rawAd.Title ?? existing.Title;
                     if (rawAd.StopDate.HasValue) existing.DeliveryStopDate = rawAd.StopDate.Value.ToUniversalTime();
-                    if (matchedProductId.HasValue) existing.ProductId = matchedProductId;
                     if (!string.IsNullOrWhiteSpace(rawAd.Link)) existing.LinkUrl = rawAd.Link;
                     if (!string.IsNullOrWhiteSpace(rawAd.SnapshotUrl)) existing.SnapshotUrl = rawAd.SnapshotUrl;
+                    if (!string.IsNullOrWhiteSpace(rawAd.ImageUrl)) existing.PreviewUrl = rawAd.ImageUrl;
+                    AdDerivedFields.Apply(existing, catalog);
 
                     if (existing.Status == AdStatus.Active && targetStatus == AdStatus.Inactive)
                     {
@@ -410,6 +369,7 @@ public class AdsIngestionService(
                         await unitOfWork.ChangeEvents.AddAsync(startEvent, ct);
                     }
                     unitOfWork.Ads.Update(existing);
+                    updatedCount++;
                 }
                 else
                 {
@@ -424,6 +384,7 @@ public class AdsIngestionService(
                         Body = rawAd.Body,
                         LinkUrl = rawAd.Link,
                         SnapshotUrl = rawAd.SnapshotUrl ?? $"https://www.facebook.com/ads/library/?id={rawAd.Id}",
+                        PreviewUrl = rawAd.ImageUrl,
                         DeliveryStartDate = rawAd.StartDate?.ToUniversalTime(),
                         DeliveryStopDate = rawAd.StopDate?.ToUniversalTime(),
                         FirstSeenAt = (rawAd.StartDate ?? now).ToUniversalTime(),
@@ -431,9 +392,9 @@ public class AdsIngestionService(
                         Status = targetStatus,
                         CreativeHash = creativeHash,
                         MissingCount = 0,
-                        ProductId = matchedProductId,
                         RawDataJson = rawAd.RawJson
                     };
+                    AdDerivedFields.Apply(newAd, catalog);
                     await unitOfWork.Ads.AddAsync(newAd, ct);
 
                     if (targetStatus == AdStatus.Active)
@@ -453,6 +414,7 @@ public class AdsIngestionService(
         }
 
         // Handle missing ads from this Success run (ended when missing from 2 consecutive Success runs)
+        var missingMarked = 0;
         foreach (var ad in existingAds)
         {
             if (!seenAdIds.Contains(ad.ExternalAdId) && ad.Status == AdStatus.Active)
@@ -462,6 +424,7 @@ public class AdsIngestionService(
                 {
                     ad.Status = AdStatus.Inactive;
                     ad.DeliveryStopDate = now;
+                    missingMarked++;
                     var stopEvent = new ChangeEvent
                     {
                         RunId = Guid.Empty,
@@ -480,7 +443,103 @@ public class AdsIngestionService(
             unitOfWork.AdCampaigns.Update(tc);
         }
 
+        await unitOfWork.AdIngestBatches.AddAsync(new AdIngestBatch
+        {
+            CompetitorId = identity.CompetitorId,
+            IdentityId = identity.Id,
+            Platform = AdPlatform.Meta,
+            Received = received,
+            Created = ingestedCount,
+            Updated = updatedCount,
+            Duplicate = duplicateCount,
+            Skipped = 0,
+            Status = "Success",
+            ReceivedAt = now,
+        }, ct);
+
         await unitOfWork.SaveChangesAsync(ct);
+        logger.LogInformation(
+            "Meta ads from '{Name}' ({PageId}): received {Received}, created {Created}, updated {Updated}, duplicate {Duplicate}, marked stopped {Stopped}.",
+            identity.Name, identity.ExternalId, received, ingestedCount, updatedCount, duplicateCount, missingMarked);
+
         return new AdsIngestResponse("Success", IngestedCount: ingestedCount, TotalProcessed: seenAdIds.Count);
+    }
+
+    // One Google advertiser has one campaign: the first one stored for it, or a new one.
+    private async Task<AdCampaign> GetOrCreateGoogleCampaignAsync(AdvertiserIdentity identity, DateTimeOffset now, CancellationToken ct)
+    {
+        var existing = await readContext.Query<AdCampaign>()
+            .Where(c => c.IdentityId == identity.Id && c.Platform == AdPlatform.Google)
+            .OrderBy(c => c.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var campaign = new AdCampaign
+        {
+            CompetitorId = identity.CompetitorId,
+            IdentityId = identity.Id,
+            CreativeHash = CreativeHashHelper.Compute(identity.Id, null),
+            Platform = AdPlatform.Google,
+            FirstSeenAt = now,
+            LastSeenAt = now,
+            Status = AdStatus.Active
+        };
+        await unitOfWork.AdCampaigns.AddAsync(campaign, ct);
+        await unitOfWork.SaveChangesAsync(ct);
+        return campaign;
+    }
+
+    private async Task<IReadOnlyList<LinkableProduct>> LoadCatalogAsync(Guid competitorId, CancellationToken ct) =>
+        await readContext.Query<Product>()
+            .Where(p => p.CompetitorId == competitorId)
+            .Select(p => new LinkableProduct(p.Id, p.Title, p.Handle, p.CanonicalUrl))
+            .ToListAsync(ct);
+
+    private async Task RecordBatchAsync(
+        AdvertiserIdentity identity,
+        int received,
+        int created,
+        int updated,
+        int duplicate,
+        int skipped,
+        string status,
+        string? error,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        await unitOfWork.AdIngestBatches.AddAsync(new AdIngestBatch
+        {
+            CompetitorId = identity.CompetitorId,
+            IdentityId = identity.Id,
+            Platform = identity.Platform,
+            Received = received,
+            Created = created,
+            Updated = updated,
+            Duplicate = duplicate,
+            Skipped = skipped,
+            Status = status,
+            Error = error is { Length: > 500 } ? error[..500] : error,
+            ReceivedAt = now,
+        }, ct);
+        await unitOfWork.SaveChangesAsync(ct);
+    }
+
+    // Short, safe reason for a creative the database rejected. The raw database message is only logged.
+    private static string DescribeRejection(DbUpdateException ex)
+    {
+        var postgres = ex.InnerException as PostgresException;
+        var column = string.IsNullOrEmpty(postgres?.ColumnName) ? string.Empty : $" ({postgres.ColumnName})";
+
+        return postgres?.SqlState switch
+        {
+            "22001" => $"A field was longer than the database allows{column}.",
+            "23505" => "This creative is already stored for this advertiser.",
+            "23502" => $"A required field was empty{column}.",
+            var state when state is not null && state.StartsWith("22", StringComparison.Ordinal) => $"The database rejected a value{column}.",
+            _ => "The database rejected this creative."
+        };
     }
 }

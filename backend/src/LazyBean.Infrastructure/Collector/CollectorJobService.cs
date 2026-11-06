@@ -447,7 +447,32 @@ public class CollectorJobService(
             return 0;
         }
 
-        return await SkipUnfinishedAdsJobsAsync(runId, DisconnectedSummary, ct);
+        // A job whose claim is held is not skipped here: its heartbeats keep the lease, and the lease rules release
+        // it if they stop. Only the jobs still waiting in the queue are skipped.
+        return await SkipQueuedAdsJobsAsync(runId, DisconnectedSummary, ct);
+    }
+
+    private async Task<int> SkipQueuedAdsJobsAsync(Guid runId, string reason, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
+        var pending = await unitOfWork.CollectorJobs.FindAsync(
+            j => j.RunId == runId
+                 && j.Source == CollectorJob.DesktopSource
+                 && (j.Kind == CollectorJobKind.MetaAds || j.Kind == CollectorJobKind.GoogleAds)
+                 && j.Status == CollectorJobStatus.Queued, ct);
+
+        foreach (var job in pending)
+        {
+            job.Skip(now, reason);
+            unitOfWork.CollectorJobs.Update(job);
+        }
+
+        if (pending.Count > 0)
+        {
+            await SaveAsync(ct);
+        }
+
+        return pending.Count;
     }
 
     public async Task<int> SkipUnfinishedAdsJobsAsync(Guid runId, string reason, CancellationToken ct)

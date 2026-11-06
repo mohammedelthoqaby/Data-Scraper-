@@ -60,7 +60,10 @@ public sealed class GoogleJobHandler(
             {
                 await delay(Pause(), ct);
                 var creatives = await CollectCreativesAsync(identity.ExternalId, ct);
-                items = creatives.Select(ToPayload).ToList();
+                // A creative listed on two result pages is sent once; the first copy is kept.
+                var unique = creatives.GroupBy(c => c.ExternalAdId).Select(g => g.First()).ToList();
+                items = unique.Select(ToPayload).ToList();
+                log.Info($"{identity.CompetitorName}: {creatives.Count} creative(s) collected, {unique.Count} unique, uploading now.");
 
                 await UploadAsync(identity, items, ct);
                 totalAds += items.Count;
@@ -106,7 +109,13 @@ public sealed class GoogleJobHandler(
             response = await api.IngestGoogleAdsAsync(request, ct);
         }
 
-        var skipped = response.Items?.Where(item => item.Outcome == "skipped").ToList() ?? [];
+        var results = response.Items ?? [];
+        var created = results.Count(item => item.Outcome == "created");
+        var updated = results.Count(item => item.Outcome == "updated");
+        var duplicate = results.Count(item => item.Outcome == "duplicate");
+        var skipped = results.Where(item => item.Outcome == "skipped").ToList();
+        log.Info($"{identity.CompetitorName}: uploaded {items.Count}; the server created {created}, updated {updated}, "
+            + $"skipped {skipped.Count}, duplicate {duplicate}.");
         if (skipped.Count > 0)
         {
             log.Warn($"{identity.CompetitorName}: the server skipped {skipped.Count} Google ad(s). First reason: {skipped[0].Reason}");
@@ -142,7 +151,8 @@ public sealed class GoogleJobHandler(
         creative.LinkUrl,
         creative.FirstSeen,
         creative.LastSeen,
-        creative.RawJson);
+        creative.RawJson,
+        creative.ImageUrl);
 
     private static TimeSpan Pause() => TimeSpan.FromSeconds(3 + Random.Shared.NextDouble() * 2);
 }

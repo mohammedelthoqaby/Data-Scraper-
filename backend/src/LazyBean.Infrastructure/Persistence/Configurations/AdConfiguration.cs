@@ -18,6 +18,11 @@ public class AdConfiguration : IEntityTypeConfiguration<Ad>
         builder.Property(a => a.LinkUrl).HasMaxLength(2000);
         builder.Property(a => a.SnapshotUrl).HasMaxLength(2000);
         builder.Property(a => a.CreativeHash).HasMaxLength(100);
+        builder.Property(a => a.PreviewUrl).HasMaxLength(2000);
+        builder.Property(a => a.CreativeFormat).HasMaxLength(20);
+        builder.Property(a => a.AdvertisedPrice).HasPrecision(12, 2);
+        builder.Property(a => a.LinkMethod).HasMaxLength(20);
+        builder.Property(a => a.LinkVersion).HasDefaultValue(0);
         builder.Property(a => a.RawDataJson).HasColumnType("jsonb");
         builder.Property(a => a.MissingCount).HasDefaultValue(0);
         builder.Property(a => a.ProductId).IsRequired(false);
@@ -26,7 +31,9 @@ public class AdConfiguration : IEntityTypeConfiguration<Ad>
         builder.HasIndex(a => a.IdentityId);
         builder.HasIndex(a => a.CampaignId);
         builder.HasIndex(a => a.ProductId);
-        builder.HasIndex(a => new { a.Platform, a.ExternalAdId }).IsUnique();
+        // A creative is keyed by its advertiser account and its creative ID. The same creative shown under two
+        // accounts is two rows, one per account, so neither account loses it.
+        builder.HasIndex(a => new { a.Platform, a.IdentityId, a.ExternalAdId }).IsUnique();
         builder.HasIndex(a => a.Status);
     }
 }

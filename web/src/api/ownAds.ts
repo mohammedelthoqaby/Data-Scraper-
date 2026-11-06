@@ -20,6 +20,8 @@ export interface OwnAdComparisonRow {
   ourAdUrl: string | null;
   competitorAdUrl: string | null;
   ourAdIsMoreExpensive: boolean;
+  platform: string | null;
+  gapPercent: number | null;
 }
 
 export interface AddIdentityFromUrlResult {

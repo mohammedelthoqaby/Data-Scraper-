@@ -39,9 +39,11 @@ public class AdsController(ISender sender) : ControllerBase
         [FromQuery] string? status,
         [FromQuery] DateTimeOffset? from,
         [FromQuery] DateTimeOffset? to,
-        CancellationToken ct)
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
     {
-        var result = await sender.Send(new GetAdsQuery(competitorId, identityId, platform, status, from, to), ct);
+        var result = await sender.Send(new GetAdsQuery(competitorId, identityId, platform, status, from, to, page, pageSize), ct);
         return Ok(result);
     }
 
@@ -55,14 +57,24 @@ public class AdsController(ISender sender) : ControllerBase
 
     [HttpGet("campaigns")]
     [ProducesResponseType(typeof(IReadOnlyList<AdCampaignDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<AdCampaignDto>>> GetCampaigns(
+    public async Task<ActionResult<CampaignPageDto>> GetCampaigns(
         [FromQuery] Guid? competitorId,
         [FromQuery] string? platform,
         [FromQuery] string? status,
-        CancellationToken ct)
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
     {
-        var result = await sender.Send(new LazyBean.Application.Ads.Queries.GetCampaigns.GetCampaignsQuery(competitorId, platform, status), ct);
+        var result = await sender.Send(new LazyBean.Application.Ads.Queries.GetCampaigns.GetCampaignsQuery(competitorId, platform, status, page, pageSize), ct);
         return Ok(result);
+    }
+
+    // Reconciles the ads per competitor and platform: what the app sent, what is stored, and what the page shows.
+    [HttpGet("summary")]
+    [ProducesResponseType(typeof(AdsSummaryDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<AdsSummaryDto>> GetSummary(CancellationToken ct)
+    {
+        return Ok(await sender.Send(new LazyBean.Application.Ads.Queries.GetAdsSummary.GetAdsSummaryQuery(), ct));
     }
 
     [HttpPost]

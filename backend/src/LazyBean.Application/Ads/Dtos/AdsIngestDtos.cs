@@ -11,7 +11,8 @@ public sealed record GoogleAdPayloadItem(
     string? LinkUrl,
     DateTimeOffset? FirstSeen,
     DateTimeOffset? LastSeen,
-    string? RawJson);
+    string? RawJson,
+    string? PreviewUrl = null);
 
 public sealed record GoogleAdsIngestRequest(
     string AdvertiserId,

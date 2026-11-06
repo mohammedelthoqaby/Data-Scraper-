@@ -53,7 +53,9 @@ public static class GoogleAdNormalizer
             LinkOrNull(item.SnapshotUrl),
             ClampDate(item.FirstSeen, now),
             ClampDate(item.LastSeen, now),
-            CleanRawJson(item.RawJson)));
+            CleanRawJson(item.RawJson),
+            LinkOrNull(item.PreviewUrl),
+            FormatName(item.Format)));
     }
 
     // Returns the raw JSON only when it parses and jsonb will accept it; anything else is stored as null.
@@ -134,6 +136,16 @@ public static class GoogleAdNormalizer
         return value[..end];
     }
 
+    // The creative format as shown in the Ads page badge: Text, Image, Video or Display.
+    private static string? FormatName(string? format) => format?.Trim().ToLowerInvariant() switch
+    {
+        null or "" => null,
+        "text" => "Text",
+        "image" => "Image",
+        "video" => "Video",
+        _ => "Display",
+    };
+
     private static string? LinkOrNull(string? value)
     {
         var cleaned = Clean(value);
@@ -180,7 +192,9 @@ public sealed record GoogleAdNormalized(
     string? SnapshotUrl,
     DateTimeOffset? FirstSeen,
     DateTimeOffset? LastSeen,
-    string? RawJson);
+    string? RawJson,
+    string? PreviewUrl,
+    string? CreativeFormat);
 
 // Either an accepted creative or the reason it was skipped. ExternalAdId is set when the creative had one.
 public sealed record GoogleAdNormalizationResult(string? ExternalAdId, GoogleAdNormalized? Ad, string? SkipReason)

@@ -54,6 +54,9 @@ public static class DependencyInjection
         services.AddScoped<ICollectorDeviceAuthenticator, CollectorDeviceAuthenticator>();
         services.AddScoped<ICollectorJobService, CollectorJobService>();
         services.AddScoped<IAdsIngestionService, AdsIngestionService>();
+        services.AddSingleton(configuration.GetSection("Ads").Get<LazyBean.Application.Ads.Common.AdsOptions>()
+            ?? new LazyBean.Application.Ads.Common.AdsOptions());
+        services.AddHostedService<LazyBean.Infrastructure.Ads.AdsBackfillService>();
         services.AddSingleton<ICollectorServerFallback, CollectorServerFallback>();
         services.AddHostedService<CollectorMaintenanceService>();
 

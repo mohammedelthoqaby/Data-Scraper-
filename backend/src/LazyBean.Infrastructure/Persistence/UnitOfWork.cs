@@ -15,6 +15,7 @@ public class UnitOfWork : IUnitOfWork
     private IRepository<AdvertiserIdentity>? _advertiserIdentities;
     private IRepository<AdCampaign>? _adCampaigns;
     private IRepository<Ad>? _ads;
+    private IRepository<AdIngestBatch>? _adIngestBatches;
     private IRepository<ChangeEvent>? _changeEvents;
     private IRepository<Product>? _products;
     private IRepository<AiSetting>? _aiSettings;
@@ -38,6 +39,7 @@ public class UnitOfWork : IUnitOfWork
     public IRepository<AdvertiserIdentity> AdvertiserIdentities => _advertiserIdentities ??= new Repository<AdvertiserIdentity>(_context);
     public IRepository<AdCampaign> AdCampaigns => _adCampaigns ??= new Repository<AdCampaign>(_context);
     public IRepository<Ad> Ads => _ads ??= new Repository<Ad>(_context);
+    public IRepository<AdIngestBatch> AdIngestBatches => _adIngestBatches ??= new Repository<AdIngestBatch>(_context);
     public IRepository<ChangeEvent> ChangeEvents => _changeEvents ??= new Repository<ChangeEvent>(_context);
     public IRepository<Product> Products => _products ??= new Repository<Product>(_context);
     public IRepository<AiSetting> AiSettings => _aiSettings ??= new Repository<AiSetting>(_context);

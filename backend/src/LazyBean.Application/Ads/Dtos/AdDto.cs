@@ -31,4 +31,9 @@ public record AdDto(
     string? PricePosition = null,
     decimal? PriceDiffPercent = null,
     decimal? AdvertisedPrice = null,
-    bool HasPriceDiscrepancy = false);
+    bool HasPriceDiscrepancy = false,
+    string? PreviewUrl = null,
+    string? CreativeFormat = null,
+    int? AdvertisedQuantity = null,
+    decimal? UnitPrice = null,
+    string? LinkMethod = null);

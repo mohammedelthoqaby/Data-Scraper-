@@ -28,6 +28,7 @@ public static class OurAdsComparisonLoader
                 a.Body,
                 a.LinkUrl,
                 a.SnapshotUrl,
+                a.Platform,
             })
             .ToListAsync(ct);
 
@@ -80,7 +81,7 @@ public static class OurAdsComparisonLoader
 
             if (referenceIds.Contains(ad.CompetitorId))
             {
-                ownAds.Add(new OwnAdInput(ad.Id, ad.ProductId, product.Title, ad.Title, ad.Body, ad.LinkUrl, ad.SnapshotUrl));
+                ownAds.Add(new OwnAdInput(ad.Id, ad.ProductId, product.Title, ad.Title, ad.Body, ad.LinkUrl, ad.SnapshotUrl, ad.Platform));
             }
             else
             {
@@ -92,7 +93,8 @@ public static class OurAdsComparisonLoader
                     ad.Title,
                     ad.Body,
                     ad.LinkUrl,
-                    ad.SnapshotUrl));
+                    ad.SnapshotUrl,
+                    ad.Platform));
             }
         }
 

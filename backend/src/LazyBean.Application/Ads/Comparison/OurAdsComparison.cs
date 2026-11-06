@@ -1,4 +1,5 @@
 using LazyBean.Application.Ads.Common;
+using LazyBean.Domain.Enums;
 
 namespace LazyBean.Application.Ads.Comparison;
 
@@ -10,7 +11,8 @@ public sealed record OwnAdInput(
     string? AdTitle,
     string? AdBody,
     string? LinkUrl,
-    string? SnapshotUrl);
+    string? SnapshotUrl,
+    AdPlatform Platform = AdPlatform.Meta);
 
 // An ad a competitor runs on one of its products.
 public sealed record CompetitorAdInput(
@@ -21,7 +23,8 @@ public sealed record CompetitorAdInput(
     string? AdTitle,
     string? AdBody,
     string? LinkUrl,
-    string? SnapshotUrl);
+    string? SnapshotUrl,
+    AdPlatform Platform = AdPlatform.Meta);
 
 // One of our products matched to one of a competitor's products, with each side's catalog price as a fallback.
 public sealed record MatchedPairInput(
@@ -47,6 +50,8 @@ public enum OwnAdComparisonKind
     OursOnly,
 }
 
+// One row per our product, competitor product and platform. OurPrice is the price per unit we advertise, or our
+// catalog price when we do not advertise it. GapPercent is how far our price is above (+) or below (-) the competitor's.
 public sealed record OwnAdComparisonRow(
     Guid OurProductId,
     string OurProductTitle,
@@ -60,7 +65,9 @@ public sealed record OwnAdComparisonRow(
     decimal? OurPrice,
     decimal? CompetitorPrice,
     string? OurAdUrl,
-    string? CompetitorAdUrl)
+    string? CompetitorAdUrl,
+    string? Platform = null,
+    decimal? GapPercent = null)
 {
     // We advertise this product at a higher price than the competitor's ad for the same product.
     public bool OurAdIsMoreExpensive =>
@@ -75,46 +82,60 @@ public static class OurAdsComparison
         IEnumerable<CompetitorAdInput> competitorAds,
         IEnumerable<MatchedPairInput> pairs)
     {
-        var own = ownAds.GroupBy(a => a.ProductId).ToDictionary(g => g.Key, g => g.ToList());
-        var competitor = competitorAds.GroupBy(a => a.ProductId).ToDictionary(g => g.Key, g => g.ToList());
+        var own = ownAds.GroupBy(a => (a.ProductId, a.Platform)).ToDictionary(g => g.Key, g => g.ToList());
+        var competitor = competitorAds.GroupBy(a => (a.ProductId, a.Platform)).ToDictionary(g => g.Key, g => g.ToList());
+        var ownPlatforms = own.Keys.GroupBy(k => k.ProductId).ToDictionary(g => g.Key, g => g.Select(k => k.Platform).ToList());
+        var competitorPlatforms = competitor.Keys.GroupBy(k => k.ProductId).ToDictionary(g => g.Key, g => g.Select(k => k.Platform).ToList());
+
         var rows = new List<OwnAdComparisonRow>();
         var ourProductsWithAMatch = new HashSet<Guid>();
 
         foreach (var pair in pairs.DistinctBy(p => (p.OurProductId, p.CompetitorProductId)))
         {
-            own.TryGetValue(pair.OurProductId, out var ours);
-            competitor.TryGetValue(pair.CompetitorProductId, out var theirs);
-            if (ours is null && theirs is null)
+            // One row per platform on which either side has ads for the pair.
+            var platforms = ownPlatforms.GetValueOrDefault(pair.OurProductId, [])
+                .Concat(competitorPlatforms.GetValueOrDefault(pair.CompetitorProductId, []))
+                .Distinct()
+                .ToList();
+
+            foreach (var platform in platforms)
             {
-                continue;
+                own.TryGetValue((pair.OurProductId, platform), out var ours);
+                competitor.TryGetValue((pair.CompetitorProductId, platform), out var theirs);
+
+                ourProductsWithAMatch.Add(pair.OurProductId);
+                var kind = ours is not null && theirs is not null
+                    ? OwnAdComparisonKind.Both
+                    : theirs is not null ? OwnAdComparisonKind.CompetitorOnly : OwnAdComparisonKind.OursOnly;
+
+                var ourPrice = UnitPriceOf(ours?.Select(a => (a.AdTitle, a.AdBody)), pair.OurStorePrice);
+                var theirPrice = UnitPriceOf(theirs?.Select(a => (a.AdTitle, a.AdBody)), pair.CompetitorStorePrice);
+
+                rows.Add(new OwnAdComparisonRow(
+                    pair.OurProductId,
+                    pair.OurProductTitle,
+                    pair.CompetitorProductId,
+                    pair.CompetitorProductTitle,
+                    pair.CompetitorId,
+                    pair.CompetitorName,
+                    kind,
+                    ours?.Count ?? 0,
+                    theirs?.Count ?? 0,
+                    ourPrice,
+                    theirPrice,
+                    ours?.Select(a => a.SnapshotUrl ?? a.LinkUrl).FirstOrDefault(u => u is not null),
+                    theirs?.Select(a => a.SnapshotUrl ?? a.LinkUrl).FirstOrDefault(u => u is not null),
+                    platform.ToString(),
+                    GapPercent(ourPrice, theirPrice)));
             }
-
-            ourProductsWithAMatch.Add(pair.OurProductId);
-            var kind = ours is not null && theirs is not null
-                ? OwnAdComparisonKind.Both
-                : theirs is not null ? OwnAdComparisonKind.CompetitorOnly : OwnAdComparisonKind.OursOnly;
-
-            rows.Add(new OwnAdComparisonRow(
-                pair.OurProductId,
-                pair.OurProductTitle,
-                pair.CompetitorProductId,
-                pair.CompetitorProductTitle,
-                pair.CompetitorId,
-                pair.CompetitorName,
-                kind,
-                ours?.Count ?? 0,
-                theirs?.Count ?? 0,
-                ours is null ? null : PriceOf(ours.Select(a => (a.AdTitle, a.AdBody)), pair.OurStorePrice),
-                theirs is null ? null : PriceOf(theirs.Select(a => (a.AdTitle, a.AdBody)), pair.CompetitorStorePrice),
-                ours?.Select(a => a.SnapshotUrl ?? a.LinkUrl).FirstOrDefault(u => u is not null),
-                theirs?.Select(a => a.SnapshotUrl ?? a.LinkUrl).FirstOrDefault(u => u is not null)));
         }
 
-        // Our advertised products that no competitor product matches are still ours to show.
-        foreach (var (productId, ads) in own.Where(kv => !ourProductsWithAMatch.Contains(kv.Key)))
+        // Our advertised products that no competitor product matches are still ours to show, one row per platform.
+        foreach (var entry in own.Where(kv => !ourProductsWithAMatch.Contains(kv.Key.ProductId)))
         {
+            var ads = entry.Value;
             rows.Add(new OwnAdComparisonRow(
-                productId,
+                entry.Key.ProductId,
                 ads[0].ProductTitle,
                 null,
                 null,
@@ -123,24 +144,32 @@ public static class OurAdsComparison
                 OwnAdComparisonKind.OursOnly,
                 ads.Count,
                 0,
-                PriceOf(ads.Select(a => (a.AdTitle, a.AdBody)), null),
+                UnitPriceOf(ads.Select(a => (a.AdTitle, a.AdBody)), null),
                 null,
                 ads.Select(a => a.SnapshotUrl ?? a.LinkUrl).FirstOrDefault(u => u is not null),
+                null,
+                entry.Key.Platform.ToString(),
                 null));
         }
 
         return rows
             .OrderBy(r => r.Kind)
             .ThenBy(r => r.OurProductTitle, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.Platform, StringComparer.Ordinal)
             .ToList();
     }
 
-    // The price an ad advertises wins; the catalog price is the fallback when no ad text states one.
-    private static decimal? PriceOf(IEnumerable<(string? Title, string? Body)> ads, decimal? storePrice)
+    // The price per unit an ad advertises wins (a bundle is divided by its quantity); the catalog price is the fallback.
+    private static decimal? UnitPriceOf(IEnumerable<(string? Title, string? Body)>? ads, decimal? storePrice)
     {
-        var advertised = ads
-            .Select(a => AdPriceParser.ParseAdvertisedPrice(a.Title, a.Body))
-            .FirstOrDefault(p => p.HasValue);
-        return advertised ?? storePrice;
+        var advertised = ads?
+            .Select(a => AdPriceParser.ParseOffer(a.Title, a.Body))
+            .FirstOrDefault(o => o is not null);
+        return advertised?.UnitPrice ?? storePrice;
     }
+
+    private static decimal? GapPercent(decimal? ours, decimal? theirs) =>
+        ours is > 0 && theirs is > 0
+            ? Math.Round((ours.Value - theirs.Value) / theirs.Value * 100m, 1, MidpointRounding.AwayFromZero)
+            : null;
 }

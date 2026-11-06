@@ -22,6 +22,10 @@ public partial class GoogleAdsTransparencyClient(
     [GeneratedRegex(@"https://(?:tpc\.googlesyndication\.com|lh\d+\.googleusercontent\.com)/[^""'\\\s<>]+", RegexOptions.IgnoreCase)]
     private static partial Regex GoogleImageUrlRegex();
 
+    // A video creative's preview is an HTML page on Google's display-ads host (its URL escapes are decoded below).
+    [GeneratedRegex(@"https://displayads-formats\.googleusercontent\.com/[^""'\s<>]+", RegexOptions.IgnoreCase)]
+    private static partial Regex GoogleDisplayFormatRegex();
+
     public async Task<string?> SearchAdvertiserIdAsync(string query, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -199,8 +203,11 @@ public partial class GoogleAdsTransparencyClient(
                         int? approxCount = null;
 
                         if (advInfo.TryGetProperty("4", out var p4) &&
+                            p4.ValueKind == JsonValueKind.Object &&
                             p4.TryGetProperty("2", out var p42) &&
+                            p42.ValueKind == JsonValueKind.Object &&
                             p42.TryGetProperty("2", out var p422) &&
+                            p422.ValueKind == JsonValueKind.Number &&
                             p422.TryGetInt32(out var count))
                         {
                             approxCount = count;
@@ -287,19 +294,26 @@ public partial class GoogleAdsTransparencyClient(
             {
                 foreach (var adItem in adsArray.EnumerateArray())
                 {
-                    if (!adItem.TryGetProperty("2", out var idProp) || string.IsNullOrWhiteSpace(idProp.GetString()))
+                    if (adItem.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
+                    if (!adItem.TryGetProperty("2", out var idProp) ||
+                        idProp.ValueKind != JsonValueKind.String ||
+                        string.IsNullOrWhiteSpace(idProp.GetString()))
                     {
                         continue;
                     }
 
                     var creativeId = idProp.GetString()!;
-                    var advId = adItem.TryGetProperty("1", out var aProp) && !string.IsNullOrWhiteSpace(aProp.GetString())
+                    var advId = adItem.TryGetProperty("1", out var aProp) && aProp.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(aProp.GetString())
                         ? aProp.GetString()!
                         : advertiserId;
 
-                    var advName = adItem.TryGetProperty("12", out var nProp) ? nProp.GetString() : null;
+                    var advName = adItem.TryGetProperty("12", out var nProp) && nProp.ValueKind == JsonValueKind.String ? nProp.GetString() : null;
 
-                    var formatId = adItem.TryGetProperty("4", out var fProp) && fProp.TryGetInt32(out var fid) ? fid : 0;
+                    var formatId = adItem.TryGetProperty("4", out var fProp) && fProp.ValueKind == JsonValueKind.Number && fProp.TryGetInt32(out var fid) ? fid : 0;
                     var formatName = formatId switch
                     {
                         1 => "text",
@@ -309,7 +323,8 @@ public partial class GoogleAdsTransparencyClient(
                     };
 
                     DateTimeOffset? firstSeen = null;
-                    if (adItem.TryGetProperty("6", out var fsObj) && fsObj.TryGetProperty("1", out var fsVal))
+                    if (adItem.TryGetProperty("6", out var fsObj) && fsObj.ValueKind == JsonValueKind.Object &&
+                        fsObj.TryGetProperty("1", out var fsVal) && fsVal.ValueKind == JsonValueKind.String)
                     {
                         if (long.TryParse(fsVal.GetString(), out var fsSec) && fsSec > 0)
                         {
@@ -318,7 +333,8 @@ public partial class GoogleAdsTransparencyClient(
                     }
 
                     DateTimeOffset? lastSeen = null;
-                    if (adItem.TryGetProperty("7", out var lsObj) && lsObj.TryGetProperty("1", out var lsVal))
+                    if (adItem.TryGetProperty("7", out var lsObj) && lsObj.ValueKind == JsonValueKind.Object &&
+                        lsObj.TryGetProperty("1", out var lsVal) && lsVal.ValueKind == JsonValueKind.String)
                     {
                         if (long.TryParse(lsVal.GetString(), out var lsSec) && lsSec > 0)
                         {
@@ -366,13 +382,14 @@ public partial class GoogleAdsTransparencyClient(
 
     private static string? ExtractImageUrl(JsonElement adItem)
     {
-        if (!adItem.TryGetProperty("3", out var mediaObj))
+        if (!adItem.TryGetProperty("3", out var mediaObj) || mediaObj.ValueKind != JsonValueKind.Object)
         {
             return null;
         }
 
         // 1. Try finding HTML snippet in mediaObj -> "3" -> "2" or mediaObj -> "2"
-        if (mediaObj.TryGetProperty("3", out var m3) && m3.TryGetProperty("2", out var snippet32) && snippet32.ValueKind == JsonValueKind.String)
+        if (mediaObj.TryGetProperty("3", out var m3) && m3.ValueKind == JsonValueKind.Object &&
+            m3.TryGetProperty("2", out var snippet32) && snippet32.ValueKind == JsonValueKind.String)
         {
             var snippet = snippet32.GetString();
             if (!string.IsNullOrEmpty(snippet))
@@ -404,6 +421,12 @@ public partial class GoogleAdsTransparencyClient(
         if (cdnMatch.Success)
         {
             return cdnMatch.Value.Replace("\\/", "/");
+        }
+
+        var formatMatch = GoogleDisplayFormatRegex().Match(rawJson);
+        if (formatMatch.Success)
+        {
+            return formatMatch.Value.Replace("\\u0026", "&").Replace("\\u003d", "=").Replace("\\/", "/");
         }
 
         return null;
