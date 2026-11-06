@@ -165,15 +165,15 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
       </div>
 
       {/* What Needs Attention? */}
-      <div className="panel">
-        <div className="panel-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div className="panel urgent-alerts-panel">
+        <div className="urgent-alerts-header">
+          <div className="urgent-alerts-title">
             <h2 className="panel-title">Top Urgent Alerts (Action Center)</h2>
             <span className="badge bad" style={{ fontSize: '11px', textTransform: 'uppercase' }}>
               {totalUrgentCount > 0 ? `${totalUrgentCount} Urgent Issues` : 'Real-time AI'}
             </span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="urgent-alerts-controls">
             {/* Arabic / English language toggle */}
             <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: '6px', overflow: 'hidden' }}>
               <button
@@ -227,45 +227,33 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         </div>
 
         {urgentAlerts.length > 0 ? (
-          urgentAlerts.map((item) => {
-            const headline = lang === 'ar' && item.titleAr ? item.titleAr : item.title;
-            const explanation = lang === 'ar' && item.reasonAr ? item.reasonAr : item.reason;
-            const isRtl = lang === 'ar';
+          <div className="urgent-alerts-list">
+            {urgentAlerts.map((item) => {
+              const headline = lang === 'ar' && item.titleAr ? item.titleAr : item.title;
+              const explanation = lang === 'ar' && item.reasonAr ? item.reasonAr : item.reason;
+              const isRtl = lang === 'ar';
 
-            return (
-              <div
-                key={item.id}
-                className="decision-row"
-                style={{
-                  direction: isRtl ? 'rtl' : 'ltr',
-                  textAlign: isRtl ? 'right' : 'left',
-                  alignItems: 'flex-start',
-                  padding: '14px 0',
-                }}
-              >
-                <div className="decision-content" style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span
-                      className="badge bad"
-                      style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: 700 }}
-                    >
-                      {item.severity}
-                    </span>
+              return (
+                <article key={item.id} className="urgent-alert-card" dir={isRtl ? 'rtl' : 'ltr'}>
+                  <div className="urgent-alert-title">
+                    <span className="badge bad urgent-alert-severity">{item.severity}</span>
                     {item.isBestseller && (
-                      <span className="badge-bestseller" style={{ fontSize: '10px' }}>
-                        ★ Bestseller
-                      </span>
+                      <span className="badge-bestseller urgent-alert-bestseller">★ Bestseller</span>
                     )}
-                    <strong style={{ fontSize: '14px', color: 'var(--text)' }}>
-                      {headline}
-                    </strong>
+                    <strong className="urgent-alert-headline">{headline}</strong>
                   </div>
 
-                  <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '4px 0 8px 0', lineHeight: 1.4 }}>
-                    {explanation}
-                  </p>
+                  <button
+                    type="button"
+                    className="btn-secondary urgent-alert-action-btn"
+                    onClick={() => onNavigate('attention')}
+                  >
+                    Act Now →
+                  </button>
 
-                  <div className="decision-meta" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '12px' }}>
+                  <p className="urgent-alert-explanation">{explanation}</p>
+
+                  <div className="urgent-alert-bottom">
                     {item.competitorName && (
                       <span className="badge neutral">
                         {isRtl ? `المنافس: ${item.competitorName}` : `Competitor: ${item.competitorName}`}
@@ -274,25 +262,14 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                     <span className="badge bad" style={{ fontWeight: 600 }}>
                       {item.egpImpact.toFixed(2)} EGP gap
                     </span>
-                    <span style={{ color: 'var(--action)', fontWeight: 500 }}>
+                    <span className="urgent-alert-next">
                       {isRtl ? 'الإجراء:' : 'Action:'} {lang === 'ar' && item.suggestedActionAr ? item.suggestedActionAr : item.suggestedAction}
                     </span>
                   </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    style={{ fontSize: '12px', padding: '4px 10px' }}
-                    onClick={() => onNavigate('attention')}
-                  >
-                    Act Now →
-                  </button>
-                </div>
-              </div>
-            );
-          })
+                </article>
+              );
+            })}
+          </div>
         ) : isLoadingAttention ? (
           <div style={{ padding: '12px 0' }}>
             <div className="skeleton skeleton-row" />
@@ -300,40 +277,34 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="skeleton skeleton-row" />
           </div>
         ) : rankedAttention.length > 0 ? (
-          rankedAttention.map((item) => {
-            const headline = lang === 'ar' && item.headlineAr ? item.headlineAr : item.headline;
-            const explanation = lang === 'ar' && item.explanationAr ? item.explanationAr : item.explanation;
-            const isRtl = lang === 'ar';
+          <div className="urgent-alerts-list">
+            {rankedAttention.map((item) => {
+              const headline = lang === 'ar' && item.headlineAr ? item.headlineAr : item.headline;
+              const explanation = lang === 'ar' && item.explanationAr ? item.explanationAr : item.explanation;
+              const isRtl = lang === 'ar';
 
-            return (
-              <div
-                key={item.id}
-                className="decision-row"
-                style={{
-                  direction: isRtl ? 'rtl' : 'ltr',
-                  textAlign: isRtl ? 'right' : 'left',
-                  alignItems: 'flex-start',
-                  padding: '14px 0',
-                }}
-              >
-                <div className="decision-content" style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              return (
+                <article key={item.id} className="urgent-alert-card" dir={isRtl ? 'rtl' : 'ltr'}>
+                  <div className="urgent-alert-title">
                     <span
-                      className={`badge ${item.priority === 'high' ? 'bad' : item.priority === 'low' ? 'good' : 'warn'}`}
-                      style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: 700 }}
+                      className={`badge ${item.priority === 'high' ? 'bad' : item.priority === 'low' ? 'good' : 'warn'} urgent-alert-severity`}
                     >
                       {item.priority}
                     </span>
-                    <strong style={{ fontSize: '14px', color: 'var(--text)' }}>
-                      {headline}
-                    </strong>
+                    <strong className="urgent-alert-headline">{headline}</strong>
                   </div>
 
-                  <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '4px 0 8px 0', lineHeight: 1.4 }}>
-                    {explanation}
-                  </p>
+                  <button
+                    type="button"
+                    className="btn-secondary urgent-alert-action-btn"
+                    onClick={() => onNavigate('price-comparisons')}
+                  >
+                    {isRtl ? 'عرض في المقارنة ←' : 'View in matrix →'}
+                  </button>
 
-                  <div className="decision-meta" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '12px' }}>
+                  <p className="urgent-alert-explanation">{explanation}</p>
+
+                  <div className="urgent-alert-bottom">
                     {item.brand && <span className="badge neutral">{item.brand}</span>}
                     <span className="badge neutral">
                       {isRtl ? `المنافس: ${item.competitorName}` : `Competitor: ${item.competitorName}`}
@@ -345,27 +316,27 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                       {isRtl ? 'المنافس:' : `${item.competitorName}:`} <strong>{item.competitorPrice.toFixed(2)} EGP</strong>
                     </span>
                   </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : fallbackAttentionItems.length > 0 ? (
+          <div className="urgent-alerts-list">
+            {fallbackAttentionItems.map((item) => (
+              <article key={item.lazyBeanProductId} className="urgent-alert-card urgent-alert-card--no-explain">
+                <div className="urgent-alert-title">
+                  <strong className="urgent-alert-headline">{item.lazyBeanTitle}</strong>
                 </div>
 
-                <div style={{ marginLeft: isRtl ? '0' : '16px', marginRight: isRtl ? '16px' : '0' }}>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    style={{ fontSize: '12px', padding: '4px 10px', whiteSpace: 'nowrap' }}
-                    onClick={() => onNavigate('price-comparisons')}
-                  >
-                    {isRtl ? 'عرض في المقارنة ←' : 'View in matrix →'}
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        ) : fallbackAttentionItems.length > 0 ? (
-          fallbackAttentionItems.map((item) => (
-            <div key={item.lazyBeanProductId} className="decision-row">
-              <div className="decision-content">
-                <div className="decision-title">{item.lazyBeanTitle}</div>
-                <div className="decision-meta">
+                <button
+                  type="button"
+                  className="btn-secondary urgent-alert-action-btn"
+                  onClick={() => onNavigate('price-comparisons')}
+                >
+                  View in matrix →
+                </button>
+
+                <div className="urgent-alert-bottom">
                   {item.brand && <span className="badge neutral">{item.brand}</span>}
                   <span>
                     Lazy Bean: <strong>{item.lazyBeanPrice.toFixed(2)} EGP</strong>
@@ -378,17 +349,9 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                     </span>
                   )}
                 </div>
-              </div>
-              <button
-                type="button"
-                className="btn-secondary"
-                style={{ fontSize: '12px', padding: '4px 10px' }}
-                onClick={() => onNavigate('price-comparisons')}
-              >
-                View in matrix →
-              </button>
-            </div>
-          ))
+              </article>
+            ))}
+          </div>
         ) : (
           <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
             All compared products currently have favorable positions.
