@@ -220,7 +220,7 @@ public class CollectorController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> IngestGoogleAds([FromBody] GoogleAdsIngestRequest request, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.AdvertiserId))
+        if (request is null || string.IsNullOrWhiteSpace(request.AdvertiserId))
         {
             return BadRequest(new { error = "AdvertiserId is required." });
         }

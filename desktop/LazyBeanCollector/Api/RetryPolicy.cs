@@ -10,7 +10,7 @@ public sealed class RetryPolicy(int maxRetries = 2, Func<TimeSpan, CancellationT
 
     public int MaxRetries { get; } = maxRetries;
 
-    public async Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken ct)
+    public async Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken ct, bool retryServerErrors = true)
     {
         for (var retry = 0; ; retry++)
         {
@@ -18,7 +18,7 @@ public sealed class RetryPolicy(int maxRetries = 2, Func<TimeSpan, CancellationT
             {
                 return await operation(ct);
             }
-            catch (CollectorApiException ex) when (ex.IsRetryable && retry < MaxRetries)
+            catch (CollectorApiException ex) when (ex.IsRetryable && (retryServerErrors || ex.Kind != ApiErrorKind.ServerError) && retry < MaxRetries)
             {
                 var wait = ex.RetryAfter is { } serverAsked
                     ? (serverAsked > MaxRetryAfter ? MaxRetryAfter : serverAsked)

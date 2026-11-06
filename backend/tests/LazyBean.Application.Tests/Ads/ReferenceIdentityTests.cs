@@ -171,4 +171,64 @@ public class ReferenceIdentityTests
         var handler = new AddIdentityFromUrlCommandHandler(new UnitOfWork(db), db, jobs.Object);
         return (db, handler, jobs, lazyBean.Id);
     }
+
+    private const string LazyBeanGoogleAdvertiserId = "AR12066457051832778753";
+
+    [Fact]
+    public async Task Seed_ApprovesTheLazyBeanGoogleAdvertiser_AndIsIdempotent()
+    {
+        var sp = CreateServiceProvider(Guid.NewGuid().ToString());
+
+        await DbInitializer.SeedCompetitorsAsync(sp);
+        await DbInitializer.SeedCompetitorsAsync(sp);
+
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LazyBeanDbContext>();
+        var lazyBean = await db.Competitors.SingleAsync(c => c.Key == "lazy-bean");
+        var identity = Assert.Single(await db.AdvertiserIdentities
+            .Where(i => i.Platform == AdPlatform.Google && i.ExternalId == LazyBeanGoogleAdvertiserId)
+            .ToListAsync());
+        Assert.Equal(AdvertiserIdentityStatus.Approved, identity.Status);
+        Assert.Equal(lazyBean.Id, identity.CompetitorId);
+    }
+
+    [Fact]
+    public async Task Seed_ApprovesAPendingLazyBeanGoogleIdentity()
+    {
+        var sp = CreateServiceProvider(Guid.NewGuid().ToString());
+        await DbInitializer.SeedCompetitorsAsync(sp);
+        await SetGoogleStatusAsync(sp, AdvertiserIdentityStatus.Pending);
+
+        await DbInitializer.SeedCompetitorsAsync(sp);
+
+        Assert.Equal(AdvertiserIdentityStatus.Approved, await GoogleStatusAsync(sp));
+    }
+
+    [Fact]
+    public async Task Seed_DoesNotOverrideAGoogleIdentityAnAdminRejected()
+    {
+        var sp = CreateServiceProvider(Guid.NewGuid().ToString());
+        await DbInitializer.SeedCompetitorsAsync(sp);
+        await SetGoogleStatusAsync(sp, AdvertiserIdentityStatus.Rejected);
+
+        await DbInitializer.SeedCompetitorsAsync(sp);
+
+        Assert.Equal(AdvertiserIdentityStatus.Rejected, await GoogleStatusAsync(sp));
+    }
+
+    private static async Task SetGoogleStatusAsync(IServiceProvider sp, AdvertiserIdentityStatus status)
+    {
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LazyBeanDbContext>();
+        var identity = await db.AdvertiserIdentities.SingleAsync(i => i.ExternalId == LazyBeanGoogleAdvertiserId);
+        identity.Status = status;
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task<AdvertiserIdentityStatus> GoogleStatusAsync(IServiceProvider sp)
+    {
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LazyBeanDbContext>();
+        return (await db.AdvertiserIdentities.SingleAsync(i => i.ExternalId == LazyBeanGoogleAdvertiserId)).Status;
+    }
 }

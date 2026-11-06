@@ -163,7 +163,7 @@ public class AdsIntegrationTests(TestDatabaseFixture testDb) : IAsyncLifetime
         {
             CompetitorId = comp.Id,
             Platform = AdPlatform.Google,
-            ExternalId = "AR01064852753525768193",
+            ExternalId = "AR55555555555555555555",
             Name = "CAFELAX Google Ads",
             Status = AdvertiserIdentityStatus.Approved
         };
@@ -188,7 +188,7 @@ public class AdsIntegrationTests(TestDatabaseFixture testDb) : IAsyncLifetime
             CompetitorId = comp.Id,
             IdentityId = identity.Id,
             CampaignId = campaign.Id,
-            ExternalAdId = "CR11098911077365186561",
+            ExternalAdId = "CRQUERYTEST0001",
             Platform = AdPlatform.Google,
             Title = "De'Longhi Special Promotion",
             Body = "Up to 30% off espresso machines",
@@ -211,10 +211,64 @@ public class AdsIntegrationTests(TestDatabaseFixture testDb) : IAsyncLifetime
         Assert.Single(body.Ads);
 
         var first = body.Ads[0];
-        Assert.Equal("CR11098911077365186561", first.ExternalAdId);
+        Assert.Equal("CRQUERYTEST0001", first.ExternalAdId);
         Assert.Equal("Google", first.Platform);
         Assert.Equal("Active", first.Status);
         Assert.Equal("a1b2c3d4e5f60718", first.CreativeHash);
         Assert.Equal("De'Longhi Special Promotion", first.Title);
+    }
+
+    [Fact]
+    public async Task GoogleIdentity_CanBeAddedForTheReferenceStore_FromALinkOrABareId_AndInvalidIdsAreExplained()
+    {
+        var referenceId = await CreateReferenceCompetitorAsync();
+        const string advertiserId = "AR90000000000000000001";
+
+        var fromLink = await _client.PostAsJsonAsync("/api/identities", new
+        {
+            competitorId = referenceId,
+            platform = "Google",
+            externalId = $"https://adstransparency.google.com/advertiser/{advertiserId}?region=EG",
+        });
+        Assert.Equal(HttpStatusCode.Created, fromLink.StatusCode);
+        var created = await fromLink.Content.ReadFromJsonAsync<AdvertiserIdentityDto>();
+        Assert.NotNull(created);
+        Assert.Equal(advertiserId, created.ExternalId);
+        Assert.Equal("Google", created.Platform);
+        Assert.Equal("Pending", created.Status);
+
+        var bare = await _client.PostAsJsonAsync("/api/identities", new
+        {
+            competitorId = referenceId,
+            platform = "Google",
+            externalId = advertiserId.ToLowerInvariant(),
+        });
+        Assert.Equal(HttpStatusCode.Created, bare.StatusCode);
+        var again = await bare.Content.ReadFromJsonAsync<AdvertiserIdentityDto>();
+        Assert.Equal(created.Id, again!.Id);
+
+        var invalid = await _client.PostAsJsonAsync("/api/identities", new
+        {
+            competitorId = referenceId,
+            platform = "Google",
+            externalId = "cafelax.com",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Contains("AR followed by 20 digits", await invalid.Content.ReadAsStringAsync());
+    }
+
+    private async Task<Guid> CreateReferenceCompetitorAsync()
+    {
+        var options = new DbContextOptionsBuilder<LazyBeanDbContext>().UseNpgsql(testDb.ConnectionString).Options;
+        await using var db = new LazyBeanDbContext(options);
+        var competitor = new Competitor
+        {
+            Key = $"ref-it-{Guid.NewGuid():N}",
+            Name = "Lazy Bean (integration)",
+            IsReference = true,
+        };
+        db.Competitors.Add(competitor);
+        await db.SaveChangesAsync();
+        return competitor.Id;
     }
 }

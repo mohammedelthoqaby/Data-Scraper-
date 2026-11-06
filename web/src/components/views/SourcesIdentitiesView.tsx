@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api, type Competitor, type AdvertiserIdentity } from '../../api/client';
 import { addIdentityFromUrl } from '../../api/ownAds';
+import { GOOGLE_ADVERTISER_ID_ERROR, parseGoogleAdvertiserId } from '../../api/googleAdvertiser';
+import { apiErrorMessage } from '../../api/errors';
 
 export const SourcesIdentitiesView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'sources' | 'identities'>('sources');
@@ -26,6 +28,7 @@ export const SourcesIdentitiesView: React.FC = () => {
   const [isAddingFromLink, setIsAddingFromLink] = useState<boolean>(false);
   const [newName, setNewName] = useState<string>('');
   const [isSubmittingNew, setIsSubmittingNew] = useState<boolean>(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Fetch sources
   const fetchSources = async () => {
@@ -162,30 +165,50 @@ export const SourcesIdentitiesView: React.FC = () => {
 
   const handleCreateManualIdentity = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCompId || !newExternalId.trim()) {
-      alert('Please select a competitor and provide an Account ID / Domain.');
+    setFormError(null);
+    if (!newCompId) {
+      setFormError('Choose the competitor store this account belongs to.');
       return;
     }
+
+    // A Google account is checked before it is sent: the server stores only the advertiser ID, so a pasted link is
+    // reduced to its ID first.
+    let externalId = newExternalId.trim();
+    if (newPlatform === 'Google') {
+      const advertiserId = parseGoogleAdvertiserId(externalId);
+      if (!advertiserId) {
+        setFormError(GOOGLE_ADVERTISER_ID_ERROR);
+        return;
+      }
+      externalId = advertiserId;
+    } else if (!externalId) {
+      setFormError('Enter the account ID of the Meta page.');
+      return;
+    }
+
     setIsSubmittingNew(true);
     setActionNotice(null);
     try {
-      const res = await api.POST('/api/identities', {
+      const { data, error } = await api.POST('/api/identities', {
         body: {
           competitorId: newCompId,
           platform: newPlatform,
-          externalId: newExternalId.trim(),
+          externalId,
           name: newName.trim() || undefined,
         },
       });
-      if (res.data) {
-        await fetchIdentities();
-        setShowAddModal(false);
-        setNewExternalId('');
-        setNewName('');
-        setActionNotice(`Added identity '${res.data.name || res.data.externalId}' as Pending review.`);
+      if (error || !data) {
+        // Show the server's own reason rather than failing silently.
+        setFormError(apiErrorMessage(error, 'The advertiser account could not be saved.'));
+        return;
       }
+      await fetchIdentities();
+      setShowAddModal(false);
+      setNewExternalId('');
+      setNewName('');
+      setActionNotice(`Added identity '${data.name || data.externalId}' as Pending review.`);
     } catch (err: any) {
-      alert(err?.message || 'Failed to create advertiser identity.');
+      setFormError(apiErrorMessage(err, 'The advertiser account could not be saved.'));
     } finally {
       setIsSubmittingNew(false);
     }
@@ -347,6 +370,11 @@ export const SourcesIdentitiesView: React.FC = () => {
           {showAddModal && (
             <div className="panel" style={{ padding: '20px', marginBottom: '20px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#fafbfc' }}>
               <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 600 }}>Add Advertiser Identity Manually</h3>
+              {formError && (
+                <div role="alert" style={{ marginBottom: '12px', padding: '10px 12px', borderRadius: '6px', border: '1px solid #f1b5b5', background: '#fdecec', color: '#8a1f1f', fontSize: '13px' }}>
+                  {formError}
+                </div>
+              )}
               <form onSubmit={handleCreateManualIdentity} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', alignItems: 'flex-end' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--muted)' }}>
@@ -359,9 +387,9 @@ export const SourcesIdentitiesView: React.FC = () => {
                     style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff' }}
                   >
                     <option value="">Select competitor...</option>
-                    {sources.filter(s => !s.isReference).map((s) => (
+                    {sources.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name}
+                        {s.isReference ? `${s.name} (reference store)` : s.name}
                       </option>
                     ))}
                   </select>
@@ -387,13 +415,19 @@ export const SourcesIdentitiesView: React.FC = () => {
                   </label>
                   <input
                     type="text"
-                    placeholder={newPlatform === 'Meta' ? 'e.g. 100456846237420' : 'e.g. AR01064852753525768193 or cafelax.com'}
+                    placeholder={newPlatform === 'Meta' ? 'e.g. 100456846237420' : 'AR followed by 20 digits, or an Ads Transparency link'}
                     value={newExternalId}
                     onChange={(e) => setNewExternalId(e.target.value)}
                     required
                     style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff' }}
                   />
                 </div>
+
+                {newPlatform === 'Google' && (
+                  <div style={{ gridColumn: '1 / -1', fontSize: '12px', color: 'var(--muted)', marginTop: '-4px' }}>
+                    Use the advertiser ID (AR followed by 20 digits, for example AR01064852753525768193), or paste its Ads Transparency link.
+                  </div>
+                )}
 
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--muted)' }}>
@@ -503,7 +537,7 @@ export const SourcesIdentitiesView: React.FC = () => {
                     const libraryUrl =
                       item.platform === 'Meta'
                         ? `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=EG&view_all_page_ids=${item.externalId}`
-                        : `https://adstransparency.google.com/?region=EG&domain=${item.externalId}`;
+                        : `https://adstransparency.google.com/advertiser/${item.externalId}?region=EG`;
 
                     return (
                       <tr key={item.id} style={{ borderBottom: '1px solid #edf0f2' }}>

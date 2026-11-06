@@ -66,7 +66,8 @@ public static class DbInitializer
         int MinDelayMs,
         List<string>? MetaPageIds = null,
         string? CollectionHost = null,
-        List<string>? PendingMetaPageIds = null);
+        List<string>? PendingMetaPageIds = null,
+        List<string>? ApprovedGoogleAdvertiserIds = null);
 
     public static async Task SeedCompetitorsAsync(IServiceProvider services, CancellationToken ct = default)
     {
@@ -306,6 +307,63 @@ public static class DbInitializer
         {
             await context.SaveChangesAsync(ct);
             logger.LogInformation("Seeded or approved {Count} Meta advertiser identities.", identitiesAdded);
+        }
+
+        // Google advertiser IDs an admin has confirmed for one of our own stores (for example Lazy Bean). They are
+        // seeded as Approved so collection starts at once. A pending identity is approved; an identity an admin has
+        // already rejected or blocked keeps its status.
+        var googleById = new Dictionary<string, AdvertiserIdentity>(StringComparer.OrdinalIgnoreCase);
+        foreach (var identity in await context.AdvertiserIdentities.Where(i => i.Platform == AdPlatform.Google).ToListAsync(ct))
+        {
+            googleById.TryAdd(identity.ExternalId, identity);
+        }
+
+        var googleIdentitiesChanged = 0;
+        foreach (var item in items)
+        {
+            if (item.ApprovedGoogleAdvertiserIds == null || item.ApprovedGoogleAdvertiserIds.Count == 0)
+                continue;
+
+            if (!allCompetitorsByKey.TryGetValue(item.Key, out var comp))
+                continue;
+
+            foreach (var advertiserId in item.ApprovedGoogleAdvertiserIds)
+            {
+                var cleanId = advertiserId.Trim().ToUpperInvariant();
+                if (string.IsNullOrWhiteSpace(cleanId))
+                    continue;
+
+                if (googleById.TryGetValue(cleanId, out var existingGoogle))
+                {
+                    if (existingGoogle.Status == AdvertiserIdentityStatus.Pending)
+                    {
+                        existingGoogle.Approve("Approved from competitors.json");
+                        googleIdentitiesChanged++;
+                    }
+                    continue;
+                }
+
+                var approved = new AdvertiserIdentity
+                {
+                    CompetitorId = comp.Id,
+                    Platform = AdPlatform.Google,
+                    ExternalId = cleanId,
+                    Name = comp.Name,
+                    Status = AdvertiserIdentityStatus.Approved,
+                    LibraryUrl = $"https://adstransparency.google.com/advertiser/{cleanId}?region=EG",
+                    ReviewedAt = DateTimeOffset.UtcNow,
+                    Notes = "Seeded from competitors.json"
+                };
+                context.AdvertiserIdentities.Add(approved);
+                googleById[cleanId] = approved;
+                googleIdentitiesChanged++;
+            }
+        }
+
+        if (googleIdentitiesChanged > 0)
+        {
+            await context.SaveChangesAsync(ct);
+            logger.LogInformation("Seeded or approved {Count} Google advertiser identities.", googleIdentitiesChanged);
         }
 
         await FixSeedMatchesAndCategoriesAsync(context, logger, ct);

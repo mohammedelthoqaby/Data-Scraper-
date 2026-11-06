@@ -1,3 +1,4 @@
+using System.Net;
 using LazyBean.Application.Ads.Exceptions;
 using LazyBean.Application.Collection.Orchestration;
 using LazyBean.Application.Collector.Dtos;
@@ -241,6 +242,76 @@ public sealed class GoogleJobHandlerTests : IDisposable
         Assert.Equal("captcha", blocked.Error);
         Assert.Equal(["AR00000000000000000001"], client.Requested);
     }
+
+    [Fact]
+    public async Task ServerErrorOnUpload_KeepsTheAds_AndRetriesOnceAfter30Seconds()
+    {
+        var api = new FakeCollectorApi
+        {
+            Identities = new CollectorIdentities([], [Builders.GoogleIdentity("AR01064852753525768193", "Strong Coffee")]),
+            GoogleIngestFailure = FailWithServerError(times: 1),
+        };
+        var client = new FakeGoogleClient();
+        client.Pages["AR01064852753525768193"] = new Queue<LazyBean.Application.Ads.Dtos.GoogleCreativesPageResult>(
+        [
+            new([Builders.Creative("c1"), Builders.Creative("c2")], null),
+        ]);
+        var delays = new DelayRecorder();
+        var handler = new GoogleJobHandler(api, client, Log(), new CollectorState(), delays.Delay);
+
+        var outcome = await handler.HandleAsync(CancellationToken.None);
+
+        // The same two ads were sent twice; the second attempt came after the 30-second wait.
+        Assert.Equal(2, api.Calls.Count(call => call == "google:AR01064852753525768193:Success"));
+        var stored = Assert.Single(api.GoogleIngests);
+        Assert.Equal(new[] { "c1", "c2" }, stored.Ads!.Select(ad => ad.ExternalAdId).ToArray());
+        Assert.Contains(delays.Delays, d => d == TimeSpan.FromSeconds(30));
+        Assert.Equal("Google: 2 ad(s) from 1 of 1 advertiser(s).", outcome.Summary);
+    }
+
+    [Fact]
+    public async Task ServerErrorTwice_IsReportedWithTheServerMessage_AndTheNextAdvertiserStillRuns()
+    {
+        var api = new FakeCollectorApi
+        {
+            Identities = new CollectorIdentities([], [
+                Builders.GoogleIdentity("AR00000000000000000001", "First"),
+                Builders.GoogleIdentity("AR00000000000000000002", "Second"),
+            ]),
+            GoogleIngestFailure = request => request.AdvertiserId == "AR00000000000000000001" ? ServerError() : null,
+        };
+        var client = new FakeGoogleClient();
+        client.Pages["AR00000000000000000001"] = new Queue<LazyBean.Application.Ads.Dtos.GoogleCreativesPageResult>(
+        [
+            new([Builders.Creative("a1")], null),
+        ]);
+        client.Pages["AR00000000000000000002"] = new Queue<LazyBean.Application.Ads.Dtos.GoogleCreativesPageResult>(
+        [
+            new([Builders.Creative("b1")], null),
+        ]);
+        var handler = new GoogleJobHandler(api, client, Log(), new CollectorState(), new DelayRecorder().Delay);
+
+        var outcome = await handler.HandleAsync(CancellationToken.None);
+
+        Assert.Equal(2, api.Calls.Count(call => call == "google:AR00000000000000000001:Success"));
+        var failed = Assert.Single(outcome.Pages!, page => page.PageId == "AR00000000000000000001");
+        Assert.Equal("Failed", failed.Status);
+        Assert.Contains("An unexpected error occurred. (reference 531c91fb)", failed.Error);
+        Assert.Contains("1 collected ad(s) were not saved.", failed.Error);
+        Assert.Equal("AR00000000000000000002", Assert.Single(api.GoogleIngests).AdvertiserId);
+        Assert.Equal("Google: 1 ad(s) from 1 of 2 advertiser(s).", outcome.Summary);
+    }
+
+    private static Func<LazyBean.Application.Ads.Dtos.GoogleAdsIngestRequest, Exception?> FailWithServerError(int times)
+    {
+        var failures = 0;
+        return _ => failures++ < times ? ServerError() : null;
+    }
+
+    private static CollectorApiException ServerError() => new(
+        ApiErrorKind.ServerError,
+        "The server reported an error (500): An unexpected error occurred. (reference 531c91fb)",
+        HttpStatusCode.InternalServerError);
 
     private ActivityLog Log() => new(_logs);
 }

@@ -34,6 +34,8 @@ public sealed class FakeCollectorApi : ICollectorApi
 
     public Func<MetaAdsIngestRequest, Exception?>? MetaIngestFailure { get; set; }
 
+    public Func<GoogleAdsIngestRequest, Exception?>? GoogleIngestFailure { get; set; }
+
     public Func<CompleteCollectorJobRequest, Exception?>? JobCompleteFailure { get; set; }
 
     public int Heartbeats { get; private set; }
@@ -109,6 +111,11 @@ public sealed class FakeCollectorApi : ICollectorApi
     public Task<AdsIngestResponse> IngestGoogleAdsAsync(GoogleAdsIngestRequest request, CancellationToken ct)
     {
         Calls.Add($"google:{request.AdvertiserId}:{request.Status}");
+        if (GoogleIngestFailure?.Invoke(request) is { } failure)
+        {
+            throw failure;
+        }
+
         GoogleIngests.Add(request);
         return Task.FromResult(new AdsIngestResponse(request.Status ?? "Success"));
     }

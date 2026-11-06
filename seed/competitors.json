@@ -8,7 +8,8 @@
     "minDelayMs": 3000,
     "collectionHost": "server",
     "metaPageIds": [],
-    "pendingMetaPageIds": ["433792133147901"]
+    "pendingMetaPageIds": ["433792133147901"],
+    "approvedGoogleAdvertiserIds": ["AR12066457051832778753"]
   },
   {
     "key": "coffee-zone",

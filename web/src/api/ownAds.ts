@@ -1,3 +1,5 @@
+import { apiErrorMessage } from './errors';
+
 // Our own ads (the reference competitor, Lazy Bean) compared with competitor ads, and adding Meta pages from a
 // Facebook link. These endpoints are not in the generated schema, so they are called directly.
 
@@ -36,7 +38,7 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw new Error(data?.detail || data?.title || data?.error || `HTTP ${res.status}`);
+    throw new Error(apiErrorMessage(data, `HTTP ${res.status}`));
   }
   return res.json() as Promise<T>;
 }

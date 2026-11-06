@@ -19,6 +19,9 @@ public sealed class GoogleJobHandler(
     private const int MaxPagesPerAdvertiser = 4;
     private const int MaxCreativesPerAdvertiser = 100;
 
+    // A server error on the upload is retried once, after this wait, with the same ads.
+    private static readonly TimeSpan IngestRetryDelay = TimeSpan.FromSeconds(30);
+
     public async Task<JobOutcome> HandleAsync(CancellationToken ct)
     {
         var identities = (await api.GetIdentitiesAsync(ct)).Google;
@@ -52,13 +55,14 @@ public sealed class GoogleJobHandler(
                 continue;
             }
 
+            var items = new List<GoogleAdPayloadItem>();
             try
             {
                 await delay(Pause(), ct);
                 var creatives = await CollectCreativesAsync(identity.ExternalId, ct);
-                var items = creatives.Select(ToPayload).ToList();
+                items = creatives.Select(ToPayload).ToList();
 
-                await api.IngestGoogleAdsAsync(new GoogleAdsIngestRequest(identity.ExternalId, "Success", null, null, items), ct);
+                await UploadAsync(identity, items, ct);
                 totalAds += items.Count;
                 pages.Add(new CollectorPageReport(identity.ExternalId, "Success", items.Count, null));
                 log.Info($"{identity.CompetitorName}: {items.Count} Google ad(s).");
@@ -70,15 +74,43 @@ public sealed class GoogleJobHandler(
                 log.Warn($"Google blocked requests for {identity.CompetitorName}. Stopping Google collection for this run.");
                 break;
             }
-            catch (CollectorApiException ex) when (ex.Kind is ApiErrorKind.NotFound or ApiErrorKind.BadRequest)
+            catch (CollectorApiException ex) when (ex.Kind is ApiErrorKind.NotFound or ApiErrorKind.BadRequest or ApiErrorKind.ServerError)
             {
-                log.Error($"{identity.CompetitorName}: the server did not accept the ads ({ex.Message}).");
-                pages.Add(new CollectorPageReport(identity.ExternalId, "Failed", 0, ex.Message));
+                // The server's own message is kept. After a server error the collected ads were not stored.
+                var message = ex.Kind == ApiErrorKind.ServerError && items.Count > 0
+                    ? $"{ex.Message} {items.Count} collected ad(s) were not saved."
+                    : ex.Message;
+                log.Error($"{identity.CompetitorName}: the server did not accept the ads. {message}");
+                pages.Add(new CollectorPageReport(identity.ExternalId, "Failed", 0, message));
             }
         }
 
         var succeeded = pages.Count(p => p.Status == "Success");
         return new JobOutcome($"Google: {totalAds} ad(s) from {succeeded} of {identities.Count} advertiser(s).", pages);
+    }
+
+    // Uploads the ads. A server error is retried once, after 30 seconds, with the same ads kept in memory. Any other
+    // failure goes to the caller at once.
+    private async Task UploadAsync(GoogleIdentityDto identity, List<GoogleAdPayloadItem> items, CancellationToken ct)
+    {
+        var request = new GoogleAdsIngestRequest(identity.ExternalId, "Success", null, null, items);
+        AdsIngestResponse response;
+        try
+        {
+            response = await api.IngestGoogleAdsAsync(request, ct);
+        }
+        catch (CollectorApiException ex) when (ex.Kind == ApiErrorKind.ServerError)
+        {
+            log.Warn($"{identity.CompetitorName}: the server could not save {items.Count} Google ad(s) ({ex.Message}). Retrying once in 30 seconds.");
+            await delay(IngestRetryDelay, ct);
+            response = await api.IngestGoogleAdsAsync(request, ct);
+        }
+
+        var skipped = response.Items?.Where(item => item.Outcome == "skipped").ToList() ?? [];
+        if (skipped.Count > 0)
+        {
+            log.Warn($"{identity.CompetitorName}: the server skipped {skipped.Count} Google ad(s). First reason: {skipped[0].Reason}");
+        }
     }
 
     private async Task<List<GoogleCreativeDto>> CollectCreativesAsync(string advertiserId, CancellationToken ct)

@@ -63,4 +63,9 @@ public sealed record AdsIngestResponse(
     string Status,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Message = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? IngestedCount = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? TotalProcessed = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? TotalProcessed = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<AdsIngestItemResult>? Items = null);
+
+// Outcome of one creative in a Google ads batch: created, updated, duplicate (repeated in the batch) or skipped
+// (with the reason). Reasons are short and safe to show in the desktop app.
+public sealed record AdsIngestItemResult(string ExternalAdId, string Outcome, string? Reason = null);

@@ -48,6 +48,21 @@ public class RetryPolicyTests
         Assert.Equal(3, attempts);
     }
 
+    [Fact]
+    public async Task ServerErrorsCanBeLeftOutOfRetries()
+    {
+        var attempts = 0;
+        var policy = new RetryPolicy(2, NoWait);
+
+        await Assert.ThrowsAsync<CollectorApiException>(() => policy.ExecuteAsync<int>(_ =>
+        {
+            attempts++;
+            throw new CollectorApiException(ApiErrorKind.ServerError, "boom", HttpStatusCode.InternalServerError);
+        }, CancellationToken.None, retryServerErrors: false));
+
+        Assert.Equal(1, attempts);
+    }
+
     [Theory]
     [InlineData(ApiErrorKind.ServerNotFound)]
     [InlineData(ApiErrorKind.Offline)]
@@ -243,6 +258,43 @@ public class CollectorApiClientTests
 
         Assert.Equal(ApiErrorKind.RateLimited, error.Kind);
         Assert.Contains("10 minutes", error.Message);
+    }
+
+    [Fact]
+    public async Task GoogleIngest_ServerError_IsSentOnce_AndCarriesTheServerReference()
+    {
+        var handler = new ScriptedHandler(_ => Respond(HttpStatusCode.InternalServerError,
+            "{\"status\":500,\"title\":\"An unexpected error occurred.\",\"traceId\":\"0HN\",\"correlationId\":\"531c91fb\"}"));
+        var api = Api(handler);
+        api.BearerToken = "test-token";
+
+        var error = await Assert.ThrowsAsync<CollectorApiException>(() =>
+            api.IngestGoogleAdsAsync(
+                new LazyBean.Application.Ads.Dtos.GoogleAdsIngestRequest("AR01064852753525768193", "Success", null, null, []),
+                CancellationToken.None));
+
+        // One request only: the job retries the upload itself, once, after 30 seconds.
+        Assert.Single(handler.Requests);
+        Assert.Equal(ApiErrorKind.ServerError, error.Kind);
+        Assert.Contains("An unexpected error occurred.", error.Message);
+        Assert.Contains("(reference 531c91fb)", error.Message);
+    }
+
+    [Fact]
+    public async Task GoogleIngest_ValidationFailure_ShowsTheServerMessage()
+    {
+        var handler = new ScriptedHandler(_ => Respond(HttpStatusCode.BadRequest,
+            "{\"status\":400,\"title\":\"Validation failed\",\"errors\":[{\"PropertyName\":\"ExternalId\",\"ErrorMessage\":\"Enter the Google advertiser ID.\"}]}"));
+        var api = Api(handler);
+        api.BearerToken = "test-token";
+
+        var error = await Assert.ThrowsAsync<CollectorApiException>(() =>
+            api.IngestGoogleAdsAsync(
+                new LazyBean.Application.Ads.Dtos.GoogleAdsIngestRequest("cafelax.com", "Success", null, null, []),
+                CancellationToken.None));
+
+        Assert.Equal(ApiErrorKind.BadRequest, error.Kind);
+        Assert.Contains("Enter the Google advertiser ID.", error.Message);
     }
 
     private static CollectorApiClient Api(HttpMessageHandler handler) => new(Http(handler), new RetryPolicy(2, NoWait));

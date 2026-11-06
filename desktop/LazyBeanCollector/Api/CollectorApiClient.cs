@@ -104,13 +104,14 @@ public sealed class CollectorApiClient(HttpClient http, RetryPolicy retry) : ICo
                 ?? throw new CollectorApiException(ApiErrorKind.ServerError, "The server returned no ingest result.");
         }, ct);
 
+    // Server errors are not retried here: GoogleJobHandler retries the upload once, after 30 seconds, with the same ads.
     public Task<AdsIngestResponse> IngestGoogleAdsAsync(GoogleAdsIngestRequest request, CancellationToken ct) =>
         retry.ExecuteAsync(async c =>
         {
             using var response = await SendAsync(HttpMethod.Post, "api/collector/ads/google", request, auth: true, c);
             return await ReadBodyAsync<AdsIngestResponse>(response, c)
                 ?? throw new CollectorApiException(ApiErrorKind.ServerError, "The server returned no ingest result.");
-        }, ct);
+        }, ct, retryServerErrors: false);
 
     public Task RequestAdsNowAsync(CancellationToken ct) =>
         retry.ExecuteAsync(async c =>
@@ -207,7 +208,9 @@ public sealed class CollectorApiClient(HttpClient http, RetryPolicy retry) : ICo
             retryAfter),
         _ when (int)status >= 500 => new CollectorApiException(
             ApiErrorKind.ServerError,
-            $"The server reported an error ({(int)status}). Try again shortly.",
+            string.IsNullOrWhiteSpace(detail)
+                ? $"The server reported an error ({(int)status}). Try again shortly."
+                : $"The server reported an error ({(int)status}): {detail}",
             status),
         _ => new CollectorApiException(ApiErrorKind.BadRequest, $"The server rejected the request ({(int)status}): {detail}", status),
     };
@@ -224,6 +227,8 @@ public sealed class CollectorApiClient(HttpClient http, RetryPolicy retry) : ICo
         }
     }
 
+    // The most useful text in a failed response: the validation messages, else the error, detail or title, with the
+    // server's reference when it sends one, so the failure can be found in the server log.
     private static async Task<string> ReadDetailAsync(HttpResponseMessage response, CancellationToken ct)
     {
         try
@@ -235,17 +240,67 @@ public sealed class CollectorApiClient(HttpClient http, RetryPolicy retry) : ICo
             }
 
             using var document = JsonDocument.Parse(text);
-            if (document.RootElement.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String)
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
             {
-                return error.GetString() ?? string.Empty;
+                return Trimmed(text);
             }
 
-            return text.Length > 200 ? text[..200] : text;
+            var validation = ValidationMessages(root);
+            if (validation.Count > 0)
+            {
+                return string.Join(" ", validation);
+            }
+
+            var message = FirstString(root, "error", "detail", "title", "message");
+            if (message is null)
+            {
+                return Trimmed(text);
+            }
+
+            var reference = FirstString(root, "correlationId", "traceId");
+            return reference is null ? message : $"{message} (reference {reference})";
         }
         catch (JsonException)
         {
             return response.ReasonPhrase ?? string.Empty;
         }
+    }
+
+    private static string Trimmed(string text) => text.Length > 200 ? text[..200] : text;
+
+    private static string? FirstString(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (element.TryGetProperty(name, out var value) &&
+                value.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(value.GetString()))
+            {
+                return value.GetString()!.Trim();
+            }
+        }
+
+        return null;
+    }
+
+    private static List<string> ValidationMessages(JsonElement root)
+    {
+        var messages = new List<string>();
+        if (!root.TryGetProperty("errors", out var errors) || errors.ValueKind != JsonValueKind.Array)
+        {
+            return messages;
+        }
+
+        foreach (var item in errors.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Object && FirstString(item, "errorMessage", "ErrorMessage") is { } text)
+            {
+                messages.Add(text);
+            }
+        }
+
+        return messages;
     }
 
     // Shape of GET api/collector/identities.

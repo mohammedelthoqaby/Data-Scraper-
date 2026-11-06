@@ -7,6 +7,7 @@ using LazyBean.Domain.Exceptions;
 using LazyBean.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace LazyBean.Infrastructure.Ads;
 
@@ -69,80 +70,168 @@ public class AdsIngestionService(
             return new AdsIngestResponse("Blocked", Message: "Advertiser identity marked Blocked for 24h.");
         }
 
+        var results = new List<AdsIngestItemResult>();
         var ingestedCount = 0;
-        if (request.Ads != null && request.Ads.Count > 0)
+
+        if (request.Ads is { Count: > 0 })
         {
+            var now = DateTimeOffset.UtcNow;
+            var accepted = new List<GoogleAdNormalized>();
+            var seenIds = new HashSet<string>(StringComparer.Ordinal);
+
             foreach (var rawAd in request.Ads)
             {
-                var creativeHash = CreativeHashHelper.Compute(rawAd.Title, rawAd.Body, rawAd.SnapshotUrl);
-
-                var campaign = await readContext.Query<AdCampaign>()
-                    .FirstOrDefaultAsync(c => c.IdentityId == identity.Id && c.CreativeHash == creativeHash, ct);
-
-                if (campaign == null)
+                var normalized = GoogleAdNormalizer.Normalize(rawAd, now);
+                if (normalized.Ad is null)
                 {
-                    campaign = new AdCampaign
-                    {
-                        CompetitorId = identity.CompetitorId,
-                        IdentityId = identity.Id,
-                        CreativeHash = creativeHash,
-                        Platform = AdPlatform.Google,
-                        FirstSeenAt = DateTimeOffset.UtcNow,
-                        LastSeenAt = DateTimeOffset.UtcNow,
-                        Status = AdStatus.Active
-                    };
-                    await unitOfWork.AdCampaigns.AddAsync(campaign, ct);
-                    await unitOfWork.SaveChangesAsync(ct);
-                }
-                else
-                {
-                    campaign.LastSeenAt = DateTimeOffset.UtcNow;
-                    unitOfWork.AdCampaigns.Update(campaign);
+                    results.Add(new AdsIngestItemResult(normalized.ExternalAdId ?? string.Empty, "skipped", normalized.SkipReason));
+                    logger.LogWarning(
+                        "Skipped a Google creative for '{Name}' ({AdvertiserId}): {Reason}",
+                        identity.Name, identity.ExternalId, normalized.SkipReason);
+                    continue;
                 }
 
-                var existingAd = await readContext.Query<Ad>()
-                    .FirstOrDefaultAsync(a => a.Platform == AdPlatform.Google && a.ExternalAdId == rawAd.ExternalAdId, ct);
+                if (!seenIds.Add(normalized.Ad.ExternalAdId))
+                {
+                    results.Add(new AdsIngestItemResult(
+                        normalized.Ad.ExternalAdId, "duplicate", "Listed more than once in this batch; the first copy was used."));
+                    continue;
+                }
 
-                if (existingAd == null)
-                {
-                    var newAd = new Ad
-                    {
-                        CompetitorId = identity.CompetitorId,
-                        IdentityId = identity.Id,
-                        CampaignId = campaign.Id,
-                        ExternalAdId = rawAd.ExternalAdId,
-                        Platform = AdPlatform.Google,
-                        Title = rawAd.Title ?? identity.Name,
-                        Body = rawAd.Body,
-                        LinkUrl = rawAd.LinkUrl,
-                        SnapshotUrl = rawAd.SnapshotUrl,
-                        DeliveryStartDate = rawAd.FirstSeen?.ToUniversalTime(),
-                        DeliveryStopDate = rawAd.LastSeen?.ToUniversalTime(),
-                        FirstSeenAt = (rawAd.FirstSeen ?? DateTimeOffset.UtcNow).ToUniversalTime(),
-                        LastSeenAt = (rawAd.LastSeen ?? DateTimeOffset.UtcNow).ToUniversalTime(),
-                        Status = AdStatus.Active,
-                        CreativeHash = creativeHash,
-                        RawDataJson = rawAd.RawJson
-                    };
-                    await unitOfWork.Ads.AddAsync(newAd, ct);
-                    ingestedCount++;
-                }
-                else
-                {
-                    existingAd.LastSeenAt = (rawAd.LastSeen ?? DateTimeOffset.UtcNow).ToUniversalTime();
-                    existingAd.DeliveryStopDate = rawAd.LastSeen?.ToUniversalTime();
-                    if (existingAd.Status == AdStatus.Blocked)
-                    {
-                        existingAd.Status = AdStatus.Active;
-                    }
-                    unitOfWork.Ads.Update(existingAd);
-                }
+                accepted.Add(normalized.Ad);
             }
 
-            await unitOfWork.SaveChangesAsync(ct);
+            // Existing ads and campaigns are read once, so every creative in the batch sees the same tracked state.
+            var acceptedIds = accepted.Select(a => a.ExternalAdId).ToList();
+            var existingAds = acceptedIds.Count == 0
+                ? new List<Ad>()
+                : await readContext.Query<Ad>()
+                    .Where(a => a.Platform == AdPlatform.Google && acceptedIds.Contains(a.ExternalAdId))
+                    .ToListAsync(ct);
+
+            var existingByExternalId = new Dictionary<string, Ad>(StringComparer.Ordinal);
+            foreach (var existing in existingAds)
+            {
+                existingByExternalId.TryAdd(existing.ExternalAdId, existing);
+            }
+
+            var existingCampaigns = await readContext.Query<AdCampaign>()
+                .Where(c => c.IdentityId == identity.Id)
+                .ToListAsync(ct);
+
+            var campaignsByHash = new Dictionary<string, AdCampaign>(StringComparer.Ordinal);
+            foreach (var existing in existingCampaigns)
+            {
+                campaignsByHash.TryAdd(existing.CreativeHash, existing);
+            }
+
+            // Each creative is saved on its own, so one rejected creative cannot fail the whole batch.
+            foreach (var ad in accepted)
+            {
+                try
+                {
+                    var creativeHash = CreativeHashHelper.Compute(ad.Title, ad.Body, ad.SnapshotUrl);
+
+                    if (!campaignsByHash.TryGetValue(creativeHash, out var campaign))
+                    {
+                        campaign = new AdCampaign
+                        {
+                            CompetitorId = identity.CompetitorId,
+                            IdentityId = identity.Id,
+                            CreativeHash = creativeHash,
+                            Platform = AdPlatform.Google,
+                            FirstSeenAt = now,
+                            LastSeenAt = now,
+                            Status = AdStatus.Active
+                        };
+                        await unitOfWork.AdCampaigns.AddAsync(campaign, ct);
+                        await unitOfWork.SaveChangesAsync(ct);
+                        campaignsByHash[creativeHash] = campaign;
+                    }
+                    else
+                    {
+                        campaign.LastSeenAt = now;
+                        unitOfWork.AdCampaigns.Update(campaign);
+                    }
+
+                    string outcome;
+                    if (existingByExternalId.TryGetValue(ad.ExternalAdId, out var existingAd))
+                    {
+                        existingAd.LastSeenAt = ad.LastSeen ?? now;
+                        existingAd.DeliveryStopDate = ad.LastSeen;
+                        if (existingAd.Status == AdStatus.Blocked)
+                        {
+                            existingAd.Status = AdStatus.Active;
+                        }
+
+                        unitOfWork.Ads.Update(existingAd);
+                        outcome = "updated";
+                    }
+                    else
+                    {
+                        var newAd = new Ad
+                        {
+                            CompetitorId = identity.CompetitorId,
+                            IdentityId = identity.Id,
+                            CampaignId = campaign.Id,
+                            ExternalAdId = ad.ExternalAdId,
+                            Platform = AdPlatform.Google,
+                            Title = ad.Title ?? identity.Name,
+                            Body = ad.Body,
+                            LinkUrl = ad.LinkUrl,
+                            SnapshotUrl = ad.SnapshotUrl,
+                            DeliveryStartDate = ad.FirstSeen,
+                            DeliveryStopDate = ad.LastSeen,
+                            FirstSeenAt = ad.FirstSeen ?? now,
+                            LastSeenAt = ad.LastSeen ?? now,
+                            Status = AdStatus.Active,
+                            CreativeHash = creativeHash,
+                            RawDataJson = ad.RawJson
+                        };
+                        await unitOfWork.Ads.AddAsync(newAd, ct);
+                        outcome = "created";
+                    }
+
+                    await unitOfWork.SaveChangesAsync(ct);
+                    results.Add(new AdsIngestItemResult(ad.ExternalAdId, outcome));
+                    if (outcome == "created")
+                    {
+                        ingestedCount++;
+                    }
+                }
+                catch (DbUpdateException ex) when (ex.InnerException is PostgresException)
+                {
+                    // Drop the rejected creative's pending changes, so the next creative starts from a clean tracker.
+                    unitOfWork.ClearTracker();
+                    var reason = DescribeRejection(ex);
+                    results.Add(new AdsIngestItemResult(ad.ExternalAdId, "skipped", reason));
+                    logger.LogWarning(ex, "Skipped Google creative {ExternalAdId} for '{Name}': {Reason}", ad.ExternalAdId, identity.Name, reason);
+                }
+            }
         }
 
-        return new AdsIngestResponse("Success", IngestedCount: ingestedCount);
+        var skipped = results.Count(r => r.Outcome == "skipped");
+        return new AdsIngestResponse(
+            "Success",
+            Message: skipped == 0 ? null : $"{skipped} creative(s) skipped; see items for the reason.",
+            IngestedCount: ingestedCount,
+            Items: results);
+    }
+
+    // Short, safe reason for a creative the database rejected. The raw database message is only logged.
+    private static string DescribeRejection(DbUpdateException ex)
+    {
+        var postgres = ex.InnerException as PostgresException;
+        var column = string.IsNullOrEmpty(postgres?.ColumnName) ? string.Empty : $" ({postgres.ColumnName})";
+
+        return postgres?.SqlState switch
+        {
+            "22001" => $"A field was longer than the database allows{column}.",
+            "23505" => "This creative is already stored under another advertiser.",
+            "23502" => $"A required field was empty{column}.",
+            var state when state is not null && state.StartsWith("22", StringComparison.Ordinal) => $"The database rejected a value{column}.",
+            _ => "The database rejected this creative."
+        };
     }
 
     public async Task<AdsIngestResponse> IngestMetaPageAsync(MetaAdsIngestRequest request, CancellationToken ct = default)
