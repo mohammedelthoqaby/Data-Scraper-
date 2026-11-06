@@ -73,7 +73,7 @@ public class AiReviewTriageService : IAiTriageService
         return Convert.ToHexStringLower(bytes);
     }
 
-    public async Task<AiTriageStats> TriagePendingReviewsAsync(int limit = 100, CancellationToken ct = default, Guid? runId = null)
+    public async Task<AiTriageStats> TriagePendingReviewsAsync(int limit = 20, CancellationToken ct = default, Guid? runId = null)
     {
         var setting = await _dbContext.AiSettings.FirstOrDefaultAsync(ct);
         if (setting == null || !setting.IsEnabled)
@@ -82,10 +82,28 @@ public class AiReviewTriageService : IAiTriageService
             return new AiTriageStats(0, 0, 0, 0, 0, 0);
         }
 
+        // Check daily request cap in AI Configuration
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (setting.UsageDate != today)
+        {
+            setting.UsageDate = today;
+            setting.RequestsUsedToday = 0;
+            await _dbContext.SaveChangesAsync(ct);
+        }
+
+        if (setting.RequestsUsedToday >= setting.DailyRequestCap)
+        {
+            _logger.LogWarning("Daily AI request cap reached ({Used}/{Cap}). Skipping Gemini review triage.", setting.RequestsUsedToday, setting.DailyRequestCap);
+            return new AiTriageStats(0, 0, 0, 0, 0, 0);
+        }
+
+        // Enforce maximum 20 candidates per collection run
+        var effectiveLimit = Math.Clamp(limit, 1, 20);
+
         var pendingItems = await _dbContext.ReviewItems
             .Where(r => r.Kind == ReviewItemKind.ProductMatch && r.Status == ReviewStatus.Pending)
             .OrderBy(r => r.CreatedAt)
-            .Take(limit)
+            .Take(effectiveLimit)
             .ToListAsync(ct);
 
         if (pendingItems.Count == 0)
@@ -168,8 +186,8 @@ public class AiReviewTriageService : IAiTriageService
             }
         }
 
-        // Process uncached in batches of up to 20
-        var batchSize = 20;
+        // Batch pairs per request (up to 10 pairs per prompt call)
+        var batchSize = 10;
         var totalBatches = (uncached.Count + batchSize - 1) / Math.Max(1, batchSize);
 
         for (var i = 0; i < uncached.Count; i += batchSize)
@@ -191,6 +209,24 @@ public class AiReviewTriageService : IAiTriageService
             }
             catch (Exception ex)
             {
+                var is429 = ex.Message.Contains("429") || ex.Message.Contains("quota", StringComparison.OrdinalIgnoreCase);
+                if (is429)
+                {
+                    _logger.LogWarning("Gemini API rate limit or quota exceeded (429). Halting AI triage phase immediately; keeping items as unsure.");
+                    setting.LastCallStatus = "429 quota";
+                    setting.LastCallAt = DateTimeOffset.UtcNow;
+
+                    var remainingTuples = uncached.Skip(i).ToList();
+                    foreach (var remaining in remainingTuples)
+                    {
+                        ApplyAiVerdictToPayload(remaining.RootNode, "unsure", 0.5m, "429 quota reached - review manually", remaining.Request.PairHash);
+                        remaining.Item.PayloadJson = remaining.RootNode.ToJsonString();
+                        unsureCount++;
+                    }
+
+                    break;
+                }
+
                 _logger.LogWarning(ex, "Gemini triage API call failed during batch {BatchIndex}/{TotalBatches}: {Message}", batchIndex, totalBatches, ex.Message);
                 // Apply whatever has been evaluated so far
                 await ApplyMatchingAutomationAsync(requests, CancellationToken.None);
@@ -222,6 +258,16 @@ public class AiReviewTriageService : IAiTriageService
                 else if (res.Verdict == "different") diffCount++;
                 else unsureCount++;
             }
+        }
+
+        if (apiCalls > 0)
+        {
+            setting.RequestsUsedToday += apiCalls;
+            if (setting.LastCallStatus != "429 quota")
+            {
+                setting.LastCallStatus = "200 OK";
+            }
+            setting.LastCallAt = DateTimeOffset.UtcNow;
         }
 
         // Apply matching automation for all evaluated items
@@ -305,10 +351,16 @@ public class AiReviewTriageService : IAiTriageService
                 if (match != null)
                 {
                     match.Status = MatchStatus.Rejected;
+                    match.Method = MatchMethod.AI;
                     match.UpdatedAt = DateTimeOffset.UtcNow;
                 }
             }
-            // Otherwise, items remain ReviewStatus.Pending (unsure or low confidence)
+            else
+            {
+                // Leave pending for manual review
+                pair.Item.Status = ReviewStatus.Pending;
+                pair.Item.UpdatedAt = DateTimeOffset.UtcNow;
+            }
         }
     }
 
@@ -355,7 +407,12 @@ public class AiReviewTriageService : IAiTriageService
         return true;
     }
 
-    private static void ApplyAiVerdictToPayload(JsonObject node, string verdict, decimal confidence, string reason, string pairHash)
+    private static void ApplyAiVerdictToPayload(
+        JsonObject node,
+        string verdict,
+        decimal confidence,
+        string reason,
+        string pairHash)
     {
         node["AiVerdict"] = verdict;
         node["AiConfidence"] = confidence;

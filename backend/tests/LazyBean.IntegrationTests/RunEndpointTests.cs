@@ -47,7 +47,8 @@ public class RunEndpointTests(TestDatabaseFixture testDb) : IAsyncLifetime
                     ["ConnectionStrings:Default"] = testDb.ConnectionString,
                     ["ConnectionStrings:Redis"] = "",
                     ["Admin:Username"] = "",
-                    ["Admin:Password"] = ""
+                    ["Admin:Password"] = "",
+                    ["Collection:AutoResumeInterruptedRuns"] = "false"
                 });
             });
         });

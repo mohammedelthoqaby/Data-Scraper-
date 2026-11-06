@@ -1,6 +1,7 @@
 using LazyBean.Application.Common.Interfaces;
 using LazyBean.Application.Runs.Dtos;
 using LazyBean.Domain.Entities;
+using LazyBean.Domain.Enums;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -44,7 +45,7 @@ public class GetRunsQueryHandler(IReadDbContext readContext, ICacheService cache
                             cr.Coverage.ToString(),
                             cr.Pages,
                             cr.Products,
-                            cr.Errors)
+                            cr.Status == CompetitorRunStatus.Failed ? Math.Max(1, cr.Errors) : cr.Errors)
                     }
                 ).ToListAsync(token);
 

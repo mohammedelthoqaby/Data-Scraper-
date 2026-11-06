@@ -12,6 +12,8 @@ public record GetAttentionItemsQuery : IRequest<IReadOnlyList<RankedAttentionIte
 
 public class GetAttentionItemsQueryHandler : IRequestHandler<GetAttentionItemsQuery, IReadOnlyList<RankedAttentionItem>>
 {
+    private sealed record VariantObsInfo(decimal Price, bool? InStock);
+
     private readonly IReadDbContext _readContext;
     private readonly IAiClient _aiClient;
 
@@ -27,13 +29,13 @@ public class GetAttentionItemsQueryHandler : IRequestHandler<GetAttentionItemsQu
 
         // 1. Query active product matches with variants and competitor
         var matches = await (
-            from m in _readContext.Query<ProductMatch>()
+            from m in _readContext.Query<ProductMatch>().AsNoTracking()
             where m.Status == MatchStatus.Auto || m.Status == MatchStatus.Approved || m.Status == MatchStatus.SizeVariant
-            join cv in _readContext.Query<Variant>() on m.CompetitorVariantId equals cv.Id
-            join cp in _readContext.Query<Product>() on cv.ProductId equals cp.Id
-            join c in _readContext.Query<Competitor>() on cp.CompetitorId equals c.Id
-            join rv in _readContext.Query<Variant>() on m.ReferenceVariantId equals rv.Id
-            join rp in _readContext.Query<Product>() on rv.ProductId equals rp.Id
+            join cv in _readContext.Query<Variant>().AsNoTracking() on m.CompetitorVariantId equals cv.Id
+            join cp in _readContext.Query<Product>().AsNoTracking() on cv.ProductId equals cp.Id
+            join c in _readContext.Query<Competitor>().AsNoTracking() on cp.CompetitorId equals c.Id
+            join rv in _readContext.Query<Variant>().AsNoTracking() on m.ReferenceVariantId equals rv.Id
+            join rp in _readContext.Query<Product>().AsNoTracking() on rv.ProductId equals rp.Id
             where !c.IsReference && cp.Status == ProductStatus.Active && rp.Status == ProductStatus.Active
             select new
             {
@@ -44,7 +46,7 @@ public class GetAttentionItemsQueryHandler : IRequestHandler<GetAttentionItemsQu
                 ReferenceUrl = rp.CanonicalUrl,
                 ReferenceVariantId = rv.Id,
                 CompetitorVariantId = cv.Id
-            }).Take(150).ToListAsync(ct);
+            }).Take(50).ToListAsync(ct);
 
         if (matches.Count > 0)
         {
@@ -52,13 +54,16 @@ public class GetAttentionItemsQueryHandler : IRequestHandler<GetAttentionItemsQu
             var compVarIds = matches.Select(m => m.CompetitorVariantId).Distinct().ToList();
 
             var latestObs = await _readContext.Query<PriceObservation>()
+                .AsNoTracking()
                 .Where(po => refVarIds.Contains(po.VariantId) || compVarIds.Contains(po.VariantId))
-                .OrderByDescending(po => po.ObservedAt)
+                .GroupBy(po => po.VariantId)
+                .Select(g => g.OrderByDescending(po => po.ObservedAt)
+                    .Select(po => new { po.VariantId, po.Price, po.InStock })
+                    .First())
                 .ToListAsync(ct);
 
             var obsByVariant = latestObs
-                .GroupBy(po => po.VariantId)
-                .ToDictionary(g => g.Key, g => g.First());
+                .ToDictionary(x => x.VariantId, x => new VariantObsInfo(x.Price, x.InStock));
 
             foreach (var m in matches)
             {

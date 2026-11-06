@@ -107,7 +107,7 @@ public class CollectionRunExecutor(
                 return;
             }
             run.Status = CollectionRunStatus.Running;
-            run.StartedAt = DateTimeOffset.UtcNow;
+            if (run.StartedAt == null) run.StartedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
         }
 
@@ -140,12 +140,48 @@ public class CollectionRunExecutor(
             }
         }
 
+        var completedCompetitorIds = new HashSet<Guid>();
+        await using (var db = await dbContextFactory.CreateDbContextAsync(ct))
+        {
+            var existingCompRuns = await db.CompetitorRuns
+                .Where(cr => cr.RunId == runId)
+                .ToListAsync(ct);
+
+            completedCompetitorIds = existingCompRuns
+                .Where(cr => cr.Status == CompetitorRunStatus.Completed)
+                .Select(cr => cr.CompetitorId)
+                .ToHashSet();
+        }
+
         progressTracker?.InitializeRun(runId, competitors, previousSizes);
+
+        foreach (var cid in completedCompetitorIds)
+        {
+            progressTracker?.UpdateCompetitorProgress(
+                runId,
+                cid,
+                "Completed",
+                1,
+                1,
+                previousSizes.GetValueOrDefault(cid, 0),
+                "Already completed in previous attempt (resumed)");
+        }
 
         try
         {
-            var serverCompetitors = competitors.Where(c => !string.Equals(c.CollectionHost, "github", StringComparison.OrdinalIgnoreCase)).ToList();
-            var githubCompetitors = competitors.Where(c => string.Equals(c.CollectionHost, "github", StringComparison.OrdinalIgnoreCase)).ToList();
+            var serverCompetitors = competitors
+                .Where(c => !completedCompetitorIds.Contains(c.Id) && !string.Equals(c.CollectionHost, "github", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var githubCompetitors = competitors
+                .Where(c => !completedCompetitorIds.Contains(c.Id) && string.Equals(c.CollectionHost, "github", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (completedCompetitorIds.Count > 0)
+            {
+                logger.LogInformation("CollectionRun {RunId}: resuming with {PendingCount} pending competitors ({CompletedCount} already completed).",
+                    runId, serverCompetitors.Count + githubCompetitors.Count, completedCompetitorIds.Count);
+            }
 
             var serverTasks = serverCompetitors.Select(c => ProcessCompetitorAsync(runId, c, ct));
             var githubTasks = githubCompetitors.Select(c => WaitForGithubCompetitorAsync(runId, c, ct));
@@ -154,15 +190,35 @@ public class CollectionRunExecutor(
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            logger.LogInformation("CollectionRun {RunId} execution was cancelled.", runId);
             await using (var db = await dbContextFactory.CreateDbContextAsync(CancellationToken.None))
             {
                 var run = await db.CollectionRuns.FirstAsync(r => r.Id == runId, CancellationToken.None);
-                run.Status = CollectionRunStatus.Cancelled;
+                var isUserCancelled = run.Status == CollectionRunStatus.Cancelled;
+                var targetStatus = isUserCancelled ? CollectionRunStatus.Cancelled : CollectionRunStatus.Interrupted;
+
+                logger.LogWarning("CollectionRun {RunId} execution interrupted. Reason: {Reason}, TargetStatus: {Status}",
+                    runId, isUserCancelled ? "User cancelled" : "Host shutdown / recycle", targetStatus);
+
+                run.Status = targetStatus;
                 run.FinishedAt = DateTimeOffset.UtcNow;
+
+                if (targetStatus == CollectionRunStatus.Interrupted)
+                {
+                    var activeCompRuns = await db.CompetitorRuns
+                        .Where(cr => cr.RunId == runId && cr.Status == CompetitorRunStatus.Running)
+                        .ToListAsync(CancellationToken.None);
+
+                    foreach (var cr in activeCompRuns)
+                    {
+                        cr.Status = CompetitorRunStatus.Interrupted;
+                        cr.Errors = Math.Max(1, cr.Errors + 1);
+                        cr.Coverage = RunCoverage.Partial;
+                    }
+                }
+
                 await db.SaveChangesAsync(CancellationToken.None);
+                progressTracker?.SetCompleted(runId, targetStatus.ToString());
             }
-            progressTracker?.SetCompleted(runId, CollectionRunStatus.Cancelled.ToString());
             await cache.RemoveByTagAsync("runs", CancellationToken.None);
             return;
         }
@@ -316,7 +372,7 @@ public class CollectionRunExecutor(
             var triageService = sp.GetService<IAiTriageService>();
             if (triageService != null)
             {
-                var triageRes = await triageService.TriagePendingReviewsAsync(100, aiCts.Token, runId);
+                var triageRes = await triageService.TriagePendingReviewsAsync(20, aiCts.Token, runId);
                 swAi.Stop();
                 var msg = $"{triageRes.TotalEvaluated} evaluated ({triageRes.SameCount} same, {triageRes.DifferentCount} different, {triageRes.UnsureCount} unsure)";
                 phases.Add(new { name = "ai_triage", status = "completed", durationMs = (int)swAi.ElapsedMilliseconds, message = msg });
@@ -451,8 +507,8 @@ public class CollectionRunExecutor(
                 var cr = await db.CompetitorRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
                 if (cr != null)
                 {
-                    cr.Status = CompetitorRunStatus.Degraded;
-                    cr.Errors = 1;
+                    cr.Status = CompetitorRunStatus.Failed;
+                    cr.Errors = Math.Max(1, cr.Errors + 1);
                     await db.SaveChangesAsync(ct);
                 }
 
@@ -514,8 +570,9 @@ public class CollectionRunExecutor(
                 var entity = await db.CompetitorRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
                 if (entity != null)
                 {
-                    entity.Status = CompetitorRunStatus.Degraded;
+                    entity.Status = CompetitorRunStatus.Failed;
                     entity.Coverage = RunCoverage.Partial;
+                    entity.Errors = Math.Max(1, entity.Errors + 1);
                     await db.SaveChangesAsync(ct);
                 }
 
@@ -539,13 +596,23 @@ public class CollectionRunExecutor(
 
         await using var db = await dbContextFactory.CreateDbContextAsync(ct);
 
-        var competitorRun = new CompetitorRun
+        var competitorRun = await db.CompetitorRuns
+            .FirstOrDefaultAsync(cr => cr.RunId == runId && cr.CompetitorId == competitor.Id, ct);
+
+        if (competitorRun == null)
         {
-            RunId = runId,
-            CompetitorId = competitor.Id,
-            Status = CompetitorRunStatus.Running
-        };
-        db.CompetitorRuns.Add(competitorRun);
+            competitorRun = new CompetitorRun
+            {
+                RunId = runId,
+                CompetitorId = competitor.Id,
+                Status = CompetitorRunStatus.Running
+            };
+            db.CompetitorRuns.Add(competitorRun);
+        }
+        else
+        {
+            competitorRun.Status = CompetitorRunStatus.Running;
+        }
         await db.SaveChangesAsync(ct);
         db.ChangeTracker.Clear();
 

@@ -10,11 +10,12 @@ namespace LazyBean.Application.Ads.Queries.GetAds;
 public class GetAdsQueryHandler(IReadDbContext readContext)
     : IRequestHandler<GetAdsQuery, GetAdsResponseDto>
 {
+    private sealed record AdPriceObs(decimal Price, bool InStock);
     public async Task<GetAdsResponseDto> Handle(GetAdsQuery request, CancellationToken ct)
     {
-        var query = from a in readContext.Query<Ad>()
-                    join c in readContext.Query<Competitor>() on a.CompetitorId equals c.Id
-                    join i in readContext.Query<AdvertiserIdentity>() on a.IdentityId equals i.Id
+        var query = from a in readContext.Query<Ad>().AsNoTracking()
+                    join c in readContext.Query<Competitor>().AsNoTracking() on a.CompetitorId equals c.Id
+                    join i in readContext.Query<AdvertiserIdentity>().AsNoTracking() on a.IdentityId equals i.Id
                     select new
                     {
                         Ad = a,
@@ -58,7 +59,7 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
 
         var rawItems = await query
             .OrderByDescending(x => x.Ad.LastSeenAt)
-            .Take(500)
+            .Take(100)
             .ToListAsync(ct);
 
         var productIds = rawItems
@@ -69,18 +70,20 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
 
         var compProducts = productIds.Count > 0
             ? await readContext.Query<Product>()
+                .AsNoTracking()
                 .Where(p => productIds.Contains(p.Id))
-                .ToDictionaryAsync(p => p.Id, ct)
-            : new Dictionary<Guid, Product>();
+                .Select(p => new { p.Id, p.Title, p.CanonicalUrl })
+                .ToDictionaryAsync(p => p.Id, p => (Title: p.Title, CanonicalUrl: p.CanonicalUrl), ct)
+            : new Dictionary<Guid, (string Title, string CanonicalUrl)>();
 
         var matches = productIds.Count > 0
             ? await (
-                from m in readContext.Query<ProductMatch>()
+                from m in readContext.Query<ProductMatch>().AsNoTracking()
                 where m.Status == MatchStatus.Auto || m.Status == MatchStatus.Approved || m.Status == MatchStatus.SizeVariant
-                join cv in readContext.Query<Variant>() on m.CompetitorVariantId equals cv.Id
+                join cv in readContext.Query<Variant>().AsNoTracking() on m.CompetitorVariantId equals cv.Id
                 where productIds.Contains(cv.ProductId)
-                join rv in readContext.Query<Variant>() on m.ReferenceVariantId equals rv.Id
-                join rp in readContext.Query<Product>() on rv.ProductId equals rp.Id
+                join rv in readContext.Query<Variant>().AsNoTracking() on m.ReferenceVariantId equals rv.Id
+                join rp in readContext.Query<Product>().AsNoTracking() on rv.ProductId equals rp.Id
                 select new
                 {
                     CompetitorProductId = cv.ProductId,
@@ -100,12 +103,14 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
 
         var latestObservations = variantIds.Count > 0
             ? await readContext.Query<PriceObservation>()
+                .AsNoTracking()
                 .Where(po => variantIds.Contains(po.VariantId))
-                .OrderByDescending(po => po.ObservedAt)
                 .GroupBy(po => po.VariantId)
-                .Select(g => g.First())
-                .ToDictionaryAsync(po => po.VariantId, ct)
-            : new Dictionary<Guid, PriceObservation>();
+                .Select(g => g.OrderByDescending(po => po.ObservedAt)
+                    .Select(po => new { po.VariantId, po.Price, po.InStock })
+                    .First())
+                .ToDictionaryAsync(po => po.VariantId, po => new AdPriceObs(po.Price, po.InStock ?? true), ct)
+            : new Dictionary<Guid, AdPriceObs>();
 
         var items = rawItems.Select(x =>
         {

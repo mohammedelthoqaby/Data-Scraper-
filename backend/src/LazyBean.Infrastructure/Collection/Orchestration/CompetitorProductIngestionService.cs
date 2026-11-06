@@ -361,6 +361,7 @@ public class CompetitorProductIngestionService(
         {
             competitorRun.Status = CompetitorRunStatus.Failed;
             competitorRun.Coverage = RunCoverage.Partial;
+            competitorRun.Errors = Math.Max(1, competitorRun.Errors + 1);
             var failMsg = error ?? "External collector reported failure.";
             progressTracker?.UpdateCompetitorProgress(
                 runId,
@@ -388,6 +389,7 @@ public class CompetitorProductIngestionService(
             competitorRun.Status = CompetitorRunStatus.Failed;
             competitorRun.Coverage = RunCoverage.Partial;
             competitorRun.Products = 0;
+            competitorRun.Errors = Math.Max(1, competitorRun.Errors + 1);
             var guardMsg = "Suspicious run: 0 products reported. Protected from product removals.";
             logger.LogWarning("Competitor {Slug} reported 0 products. Marking Failed to prevent removals.", competitorSlug);
             progressTracker?.UpdateCompetitorProgress(
@@ -409,6 +411,7 @@ public class CompetitorProductIngestionService(
             competitorRun.Status = CompetitorRunStatus.Failed;
             competitorRun.Coverage = RunCoverage.Partial;
             competitorRun.Products = totalProducts;
+            competitorRun.Errors = Math.Max(1, competitorRun.Errors + 1);
             var dropMsg = $"Suspicious catalog drop: {totalProducts} items vs previous {previousCount} (< 20%). Protected from removals.";
             logger.LogWarning("Competitor {Slug} catalog dropped from {Prev} to {Count}. Marking Failed to prevent removals.", competitorSlug, previousCount, totalProducts);
             progressTracker?.UpdateCompetitorProgress(

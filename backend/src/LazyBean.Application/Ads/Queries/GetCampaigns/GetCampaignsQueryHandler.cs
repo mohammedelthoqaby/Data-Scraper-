@@ -14,8 +14,8 @@ public class GetCampaignsQueryHandler(IReadDbContext readContext, ISender sender
     public async Task<IReadOnlyList<AdCampaignDto>> Handle(GetCampaignsQuery request, CancellationToken ct)
     {
         // 1. Fetch campaigns
-        var campaignQuery = from c in readContext.Query<AdCampaign>()
-                            join comp in readContext.Query<Competitor>() on c.CompetitorId equals comp.Id
+        var campaignQuery = from c in readContext.Query<AdCampaign>().AsNoTracking()
+                            join comp in readContext.Query<Competitor>().AsNoTracking() on c.CompetitorId equals comp.Id
                             select new
                             {
                                 Campaign = c,
@@ -33,7 +33,7 @@ public class GetCampaignsQueryHandler(IReadDbContext readContext, ISender sender
             campaignQuery = campaignQuery.Where(x => x.Campaign.Platform == platform);
         }
 
-        var campaigns = await campaignQuery.ToListAsync(ct);
+        var campaigns = await campaignQuery.Take(100).ToListAsync(ct);
         if (campaigns.Count == 0)
         {
             return [];

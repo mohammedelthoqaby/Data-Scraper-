@@ -713,6 +713,7 @@ export const RunsView: React.FC<RunsViewProps> = ({
                                   <th style={{ padding: '6px 12px' }}>Products Collected</th>
                                   <th style={{ padding: '6px 12px' }}>Pages Scraped</th>
                                   <th style={{ padding: '6px 12px' }}>Status</th>
+                                  <th style={{ padding: '6px 12px' }}>Errors</th>
                                   <th style={{ padding: '6px 12px' }}>Coverage</th>
                                 </tr>
                               </thead>
@@ -738,6 +739,15 @@ export const RunsView: React.FC<RunsViewProps> = ({
                                       >
                                         {c.status}
                                       </span>
+                                    </td>
+                                    <td style={{ padding: '6px 12px' }}>
+                                      {c.errors > 0 ? (
+                                        <span className="badge bad" style={{ fontSize: '10px' }}>
+                                          {c.errors} {c.errors === 1 ? 'error' : 'errors'}
+                                        </span>
+                                      ) : (
+                                        <span style={{ color: 'var(--muted)', fontSize: '11px' }}>0</span>
+                                      )}
                                     </td>
                                     <td style={{ padding: '6px 12px' }}>
                                       <span className="badge neutral" style={{ fontSize: '10px' }}>

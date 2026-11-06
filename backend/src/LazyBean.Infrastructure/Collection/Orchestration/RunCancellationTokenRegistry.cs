@@ -6,6 +6,7 @@ namespace LazyBean.Infrastructure.Collection.Orchestration;
 public class RunCancellationTokenRegistry : IRunCancellationTokenRegistry
 {
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _sources = new();
+    private readonly ConcurrentDictionary<Guid, bool> _userCancelled = new();
 
     public CancellationToken Register(Guid runId, CancellationToken parentToken)
     {
@@ -16,6 +17,7 @@ public class RunCancellationTokenRegistry : IRunCancellationTokenRegistry
 
     public bool TryCancel(Guid runId)
     {
+        _userCancelled[runId] = true;
         if (_sources.TryGetValue(runId, out var cts))
         {
             try
@@ -31,8 +33,19 @@ public class RunCancellationTokenRegistry : IRunCancellationTokenRegistry
         return false;
     }
 
+    public bool IsUserCancelled(Guid runId)
+    {
+        return _userCancelled.TryGetValue(runId, out var val) && val;
+    }
+
+    public void MarkUserCancelled(Guid runId)
+    {
+        _userCancelled[runId] = true;
+    }
+
     public void Unregister(Guid runId)
     {
+        _userCancelled.TryRemove(runId, out _);
         if (_sources.TryRemove(runId, out var cts))
         {
             try

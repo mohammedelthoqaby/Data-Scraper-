@@ -17,6 +17,7 @@ public class GetReferenceOffersQueryHandler(IReadDbContext readContext)
         if (effectiveRunId.HasValue)
         {
             var runExists = await readContext.Query<CollectionRun>()
+                .AsNoTracking()
                 .AnyAsync(r => r.Id == effectiveRunId.Value, ct);
 
             if (!runExists)
@@ -28,8 +29,8 @@ public class GetReferenceOffersQueryHandler(IReadDbContext readContext)
         {
             // Find latest run that contains reference offers
             effectiveRunId = await (
-                from o in readContext.Query<Offer>()
-                join c in readContext.Query<Competitor>() on o.CompetitorId equals c.Id
+                from o in readContext.Query<Offer>().AsNoTracking()
+                join c in readContext.Query<Competitor>().AsNoTracking() on o.CompetitorId equals c.Id
                 where c.IsReference
                 orderby o.CreatedAt descending
                 select (Guid?)o.RunId
@@ -41,24 +42,36 @@ public class GetReferenceOffersQueryHandler(IReadDbContext readContext)
             return new ReferenceOffersResponseDto(null, 0, []);
         }
 
-        var query = from o in readContext.Query<Offer>()
+        var query = from o in readContext.Query<Offer>().AsNoTracking()
                     where o.RunId == effectiveRunId.Value
-                    join c in readContext.Query<Competitor>() on o.CompetitorId equals c.Id
-                    join p in readContext.Query<Product>() on o.ProductId equals p.Id into pGroup
+                    join c in readContext.Query<Competitor>().AsNoTracking() on o.CompetitorId equals c.Id
+                    join p in readContext.Query<Product>().AsNoTracking() on o.ProductId equals p.Id into pGroup
                     from p in pGroup.DefaultIfEmpty()
                     where c.IsReference
                     select new
                     {
-                        Offer = o,
-                        Competitor = c,
-                        Product = p
+                        OfferId = o.Id,
+                        CompetitorId = c.Id,
+                        CompetitorKey = c.Key,
+                        CompetitorName = c.Name,
+                        ProductId = p != null ? (Guid?)p.Id : null,
+                        ProductTitle = p != null ? p.Title : "Unknown Product",
+                        CanonicalUrl = p != null ? p.CanonicalUrl : "",
+                        OfferType = o.Type.ToString(),
+                        DetailsJson = o.DetailsJson,
+                        CreatedAt = o.CreatedAt,
+                        Brand = p != null ? p.Brand : null,
+                        Vendor = p != null ? p.Vendor : null
                     };
 
+        var totalCount = await query.CountAsync(ct);
+
         var rawList = await query
-            .OrderByDescending(x => x.Offer.CreatedAt)
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(100)
             .ToListAsync(ct);
 
-        var offers = new List<ReferenceOfferDto>();
+        var offers = new List<ReferenceOfferDto>(rawList.Count);
 
         foreach (var item in rawList)
         {
@@ -70,7 +83,7 @@ public class GetReferenceOffersQueryHandler(IReadDbContext readContext)
 
             try
             {
-                using var doc = JsonDocument.Parse(item.Offer.DetailsJson);
+                using var doc = JsonDocument.Parse(item.DetailsJson);
                 var root = doc.RootElement;
                 if (root.TryGetProperty("price", out var pProp) && pProp.TryGetDecimal(out var pVal)) price = pVal;
                 if (root.TryGetProperty("compareAtPrice", out var cpProp) && cpProp.TryGetDecimal(out var cpVal)) compareAt = cpVal;
@@ -83,25 +96,25 @@ public class GetReferenceOffersQueryHandler(IReadDbContext readContext)
             }
 
             offers.Add(new ReferenceOfferDto(
-                item.Offer.Id,
-                item.Competitor.Id,
-                item.Competitor.Key,
-                item.Competitor.Name,
-                item.Product?.Id,
-                item.Product?.Title ?? "Unknown Product",
-                item.Product?.CanonicalUrl ?? "",
-                item.Offer.Type.ToString(),
+                item.OfferId,
+                item.CompetitorId,
+                item.CompetitorKey,
+                item.CompetitorName,
+                item.ProductId,
+                item.ProductTitle,
+                item.CanonicalUrl,
+                item.OfferType,
                 price,
                 compareAt,
                 discountAmount,
                 discountPct,
                 currency,
-                item.Offer.CreatedAt,
+                item.CreatedAt,
                 "new",
-                item.Product?.Brand ?? item.Product?.Vendor,
-                item.Product?.Vendor));
+                item.Brand,
+                item.Vendor));
         }
 
-        return new ReferenceOffersResponseDto(effectiveRunId, offers.Count, offers);
+        return new ReferenceOffersResponseDto(effectiveRunId, totalCount, offers);
     }
 }

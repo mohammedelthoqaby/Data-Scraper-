@@ -55,18 +55,28 @@ public class StartupRecoveryTests(TestDatabaseFixture testDb)
             db.CompetitorRuns.Add(stuckCompetitorRun);
             await db.SaveChangesAsync();
 
-            // Run recovery
-            await DbInitializer.RecoverInterruptedRunsAsync(sp);
+            try
+            {
+                // Run recovery
+                await DbInitializer.RecoverInterruptedRunsAsync(sp);
 
-            // Assertions
-            var recoveredRun = await db.CollectionRuns.AsNoTracking().SingleAsync(r => r.Id == stuckRun.Id);
-            Assert.Equal(CollectionRunStatus.Interrupted, recoveredRun.Status);
-            Assert.NotNull(recoveredRun.FinishedAt);
+                // Assertions
+                var recoveredRun = await db.CollectionRuns.AsNoTracking().SingleAsync(r => r.Id == stuckRun.Id);
+                Assert.Equal(CollectionRunStatus.Interrupted, recoveredRun.Status);
+                Assert.NotNull(recoveredRun.FinishedAt);
 
-            var recoveredCr = await db.CompetitorRuns.AsNoTracking().SingleAsync(cr => cr.Id == stuckCompetitorRun.Id);
-            Assert.Equal(CompetitorRunStatus.Interrupted, recoveredCr.Status);
-            Assert.Equal(RunCoverage.Partial, recoveredCr.Coverage);
-            Assert.Equal(1, recoveredCr.Errors);
+                var recoveredCr = await db.CompetitorRuns.AsNoTracking().SingleAsync(cr => cr.Id == stuckCompetitorRun.Id);
+                Assert.Equal(CompetitorRunStatus.Interrupted, recoveredCr.Status);
+                Assert.Equal(RunCoverage.Partial, recoveredCr.Coverage);
+                Assert.Equal(1, recoveredCr.Errors);
+            }
+            finally
+            {
+                db.CompetitorRuns.RemoveRange(db.CompetitorRuns.Where(cr => cr.RunId == stuckRun.Id));
+                db.CollectionRuns.RemoveRange(db.CollectionRuns.Where(r => r.Id == stuckRun.Id));
+                db.Competitors.RemoveRange(db.Competitors.Where(c => c.Id == competitor.Id));
+                await db.SaveChangesAsync();
+            }
         }
     }
 }

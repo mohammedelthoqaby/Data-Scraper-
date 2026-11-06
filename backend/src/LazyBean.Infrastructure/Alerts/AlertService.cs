@@ -194,6 +194,7 @@ public class AlertService : IAlertService
             .ThenByDescending(a => a.IsBestseller)
             .ThenByDescending(a => a.EgpImpact)
             .ThenByDescending(a => a.CreatedAt)
+            .Take(100)
             .ToListAsync(ct);
 
         return list.Select(ToDto).ToList();
@@ -201,20 +202,23 @@ public class AlertService : IAlertService
 
     public async Task<AlertSummaryDto> GetAlertSummaryAsync(CancellationToken ct = default)
     {
-        var activeAlerts = await _dbContext.Alerts
+        var activeQuery = _dbContext.Alerts
             .AsNoTracking()
-            .Where(a => a.Status == AlertStatus.Active)
+            .Where(a => a.Status == AlertStatus.Active);
+
+        var total = await activeQuery.CountAsync(ct);
+        var urgent = await activeQuery.CountAsync(a => a.Severity == AlertSeverity.Urgent, ct);
+        var opp = await activeQuery.CountAsync(a => a.Severity == AlertSeverity.Opportunity, ct);
+        var watch = await activeQuery.CountAsync(a => a.Severity == AlertSeverity.Watch, ct);
+
+        var byTypeGroup = await activeQuery
+            .GroupBy(a => a.Type)
+            .Select(g => new { Type = g.Key.ToString(), Count = g.Count() })
             .ToListAsync(ct);
 
-        var urgent = activeAlerts.Count(a => a.Severity == AlertSeverity.Urgent);
-        var opp = activeAlerts.Count(a => a.Severity == AlertSeverity.Opportunity);
-        var watch = activeAlerts.Count(a => a.Severity == AlertSeverity.Watch);
+        var byType = byTypeGroup.ToDictionary(x => x.Type, x => x.Count);
 
-        var byType = activeAlerts
-            .GroupBy(a => a.Type.ToString())
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        return new AlertSummaryDto(activeAlerts.Count, urgent, opp, watch, byType);
+        return new AlertSummaryDto(total, urgent, opp, watch, byType);
     }
 
     public async Task<AlertDto> PerformActionAsync(Guid alertId, string action, string? note, string user, CancellationToken ct = default)

@@ -155,41 +155,7 @@ Output MUST be a JSON array of objects matching this schema:
         try
         {
             var responseJson = await PostWithRetryAsync(model, key, requestBody, ct);
-            using var doc = JsonDocument.Parse(responseJson);
-
-            var root = doc.RootElement;
-            var textPart = root.GetProperty("candidates")[0]
-                .GetProperty("content")
-                .GetProperty("parts")[0]
-                .GetProperty("text")
-                .GetString();
-
-            if (string.IsNullOrWhiteSpace(textPart))
-                return [];
-
-            using var resultsDoc = JsonDocument.Parse(textPart);
-            var results = new List<AiReviewTriageResult>();
-
-            foreach (var item in resultsDoc.RootElement.EnumerateArray())
-            {
-                var rIdStr = item.TryGetProperty("reviewId", out var rProp) ? rProp.GetString() : null;
-                if (!Guid.TryParse(rIdStr, out var rId))
-                    continue;
-
-                var verdict = item.TryGetProperty("verdict", out var vProp) ? vProp.GetString()?.ToLowerInvariant() ?? "unsure" : "unsure";
-                if (verdict != "same" && verdict != "different" && verdict != "unsure")
-                    verdict = "unsure";
-
-                var conf = item.TryGetProperty("confidence", out var cProp) && cProp.TryGetDecimal(out var cVal) ? cVal : 0.5m;
-                var reason = item.TryGetProperty("reason", out var reasProp) ? reasProp.GetString() ?? "" : "";
-
-                var matchingReq = batch.FirstOrDefault(b => b.ReviewId == rId);
-                var pairHash = matchingReq?.PairHash ?? string.Empty;
-
-                results.Add(new AiReviewTriageResult(rId, pairHash, verdict, conf, reason));
-            }
-
-            return results;
+            return GeminiResponseParser.ParseTriageResults(responseJson, batch, _logger);
         }
         catch (Exception ex)
         {

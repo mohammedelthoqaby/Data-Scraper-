@@ -42,7 +42,36 @@ public record AiReviewTriagePairRequest(
     int? CompUnitCount,
     string? CompCapsuleSystem,
     string? CompFormat,
-    string PairHash);
+    string PairHash = "")
+{
+    public AiReviewTriagePairRequest(
+        Guid reviewId,
+        string refTitle,
+        string compTitle,
+        string? refBrand = null,
+        string? compBrand = null,
+        int? refWeightGrams = null,
+        int? compWeightGrams = null)
+        : this(
+            reviewId,
+            refTitle,
+            refBrand,
+            null,
+            refWeightGrams,
+            null,
+            null,
+            null,
+            compTitle,
+            compBrand,
+            null,
+            compWeightGrams,
+            null,
+            null,
+            null,
+            "")
+    {
+    }
+}
 
 public record AiReviewTriageResult(
     Guid ReviewId,

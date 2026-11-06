@@ -269,6 +269,7 @@ app.UseMiddleware<NetlifyForwardedHeadersMiddleware>();
 app.UseForwardedHeaders();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<MemoryMonitoringMiddleware>();
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
@@ -328,6 +329,30 @@ app.MapControllers();
 app.MapHealthChecks("/health");
 
 app.MapFallbackToFile("{*path:regex(^(?!api|health|swagger).*$)}", "index.html", staticFileOptions);
+
+var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+var curProc = System.Diagnostics.Process.GetCurrentProcess();
+
+lifetime.ApplicationStarted.Register(() =>
+{
+    var wsMb = curProc.WorkingSet64 / (1024.0 * 1024.0);
+    app.Logger.LogInformation(
+        "Application started. Process ID: {Pid}, Machine: {Machine}, WorkingSet: {WsMb:F1} MB, 64-bit: {Is64Bit}",
+        curProc.Id, Environment.MachineName, wsMb, Environment.Is64BitProcess);
+});
+
+lifetime.ApplicationStopping.Register(() =>
+{
+    var wsMb = curProc.WorkingSet64 / (1024.0 * 1024.0);
+    app.Logger.LogWarning(
+        "Application stopping (shutdown/recycle triggered). WorkingSet: {WsMb:F1} MB, ActiveRun: {ActiveRun}",
+        wsMb, LazyBean.Infrastructure.Collection.Orchestration.CollectionRunBackgroundService.IsRunActive);
+});
+
+lifetime.ApplicationStopped.Register(() =>
+{
+    app.Logger.LogInformation("Application stopped cleanly.");
+});
 
 app.Run();
 

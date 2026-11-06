@@ -269,16 +269,27 @@ public static class DbInitializer
         var context = scope.ServiceProvider.GetRequiredService<LazyBeanDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbInitializer");
         var matchingQueue = scope.ServiceProvider.GetService<LazyBean.Application.Matching.IMatchingQueue>();
+        var runQueue = scope.ServiceProvider.GetService<LazyBean.Application.Collection.Orchestration.IRunQueue>();
+        var config = scope.ServiceProvider.GetService<IConfiguration>();
+        var autoResume = config?.GetValue("Collection:AutoResumeInterruptedRuns", true) ?? true;
 
+        // Find runs that were running or interrupted during server shutdown
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-24);
         var candidateRuns = await context.CollectionRuns
-            .Where(r => r.Status == CollectionRunStatus.Running || (r.PhasesJson != null && r.PhasesJson.Contains("\"Running\"")))
+            .Where(r => r.Status == CollectionRunStatus.Running || 
+                        (r.Status == CollectionRunStatus.Interrupted && r.CreatedAt >= cutoff) ||
+                        (r.PhasesJson != null && r.PhasesJson.Contains("\"Running\"")))
+            .OrderByDescending(r => r.CreatedAt)
             .ToListAsync(ct);
 
         var runsToResumeMatching = new List<Guid>();
+        Guid? runToResumeCollection = null;
 
         if (candidateRuns.Count > 0)
         {
             var now = DateTimeOffset.UtcNow;
+            var isFirstCandidate = true;
+
             foreach (var run in candidateRuns)
             {
                 var matchingWasInterrupted = false;
@@ -331,7 +342,7 @@ public static class DbInitializer
                 }
 
                 var hasUnfinishedCompetitors = await context.CompetitorRuns
-                    .AnyAsync(cr => cr.RunId == run.Id && (cr.Status == CompetitorRunStatus.Running || cr.Status == CompetitorRunStatus.Queued), ct);
+                    .AnyAsync(cr => cr.RunId == run.Id && (cr.Status == CompetitorRunStatus.Running || cr.Status == CompetitorRunStatus.Queued || cr.Status == CompetitorRunStatus.Interrupted), ct);
 
                 if (matchingWasInterrupted && !hasUnfinishedCompetitors && matchingQueue != null)
                 {
@@ -344,7 +355,20 @@ public static class DbInitializer
                     run.Status = CollectionRunStatus.Interrupted;
                     run.FinishedAt = now;
                     logger.LogWarning("Marked interrupted CollectionRun {RunId} as Interrupted (reason: server restart).", run.Id);
+
+                    if (isFirstCandidate && hasUnfinishedCompetitors && autoResume && runQueue != null)
+                    {
+                        runToResumeCollection = run.Id;
+                        logger.LogInformation("Auto-resuming interrupted CollectionRun {RunId} on startup.", run.Id);
+                    }
                 }
+                else if (isFirstCandidate && run.Status == CollectionRunStatus.Interrupted && hasUnfinishedCompetitors && autoResume && runQueue != null)
+                {
+                    runToResumeCollection = run.Id;
+                    logger.LogInformation("Auto-resuming previously interrupted CollectionRun {RunId} on startup.", run.Id);
+                }
+
+                isFirstCandidate = false;
             }
         }
 
@@ -368,6 +392,12 @@ public static class DbInitializer
         if (candidateRuns.Count > 0 || runningCompetitorRuns.Count > 0)
         {
             await context.SaveChangesAsync(ct);
+        }
+
+        if (runToResumeCollection.HasValue && runQueue != null)
+        {
+            logger.LogInformation("Enqueuing resumed CollectionRun {RunId} to IRunQueue.", runToResumeCollection.Value);
+            await runQueue.EnqueueAsync(runToResumeCollection.Value, CancellationToken.None);
         }
 
         if (matchingQueue != null)
