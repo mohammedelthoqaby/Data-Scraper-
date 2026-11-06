@@ -7,6 +7,8 @@ export const SettingsAiView: React.FC = () => {
   const [modelName, setModelName] = useState('gemini-3.5-flash');
   const [isEnabled, setIsEnabled] = useState(false);
   const [dailyCap, setDailyCap] = useState(500);
+  const [visionEnabled, setVisionEnabled] = useState(false);
+  const [visionCap, setVisionCap] = useState(20);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -25,6 +27,8 @@ export const SettingsAiView: React.FC = () => {
       setIsEnabled(data.isEnabled);
       setModelName(data.modelName || 'gemini-3.8-flash');
       setDailyCap(data.dailyRequestCap || 500);
+      setVisionEnabled(data.creativeVisionEnabled ?? false);
+      setVisionCap(data.creativeVisionDailyCap || 20);
       if (data.lastTestSuccess !== null && data.lastTestMessage) {
         setTestResult({ success: data.lastTestSuccess, message: data.lastTestMessage });
       }
@@ -63,6 +67,8 @@ export const SettingsAiView: React.FC = () => {
         isEnabled,
         modelName: modelName.trim(),
         dailyRequestCap: dailyCap,
+        creativeVisionEnabled: visionEnabled,
+        creativeVisionDailyCap: visionCap,
         apiKey: apiKeyInput.trim() ? apiKeyInput.trim() : undefined,
       });
 
@@ -245,6 +251,40 @@ export const SettingsAiView: React.FC = () => {
             />
             <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
               Usage today: <strong>{settings?.requestsUsedToday ?? 0}</strong> / {dailyCap} requests
+            </span>
+          </div>
+        </div>
+
+        {/* Creative image reading (AI-read): off by default */}
+        <div style={{ marginBottom: '24px', padding: '12px 16px', border: '1px solid var(--line)', borderRadius: '6px' }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontWeight: 600 }}>
+            <input
+              type="checkbox"
+              checked={visionEnabled}
+              onChange={(e) => setVisionEnabled(e.target.checked)}
+              style={{ marginTop: '3px' }}
+            />
+            <span>
+              Read Google ad images with Gemini (AI-read)
+              <span style={{ display: 'block', fontSize: '12px', fontWeight: 400, color: 'var(--muted)', marginTop: '2px' }}>
+                Off by default. For Google image ads that no product matches, Gemini reads the product name and price from the
+                stored preview. Results are marked AI-read. Each read counts toward the cap below.
+              </span>
+            </span>
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px' }}>
+            <span style={{ fontSize: '13px' }}>Image reads per day</span>
+            <input
+              type="number"
+              min="0"
+              max="500"
+              value={visionCap}
+              disabled={!visionEnabled}
+              onChange={(e) => setVisionCap(Math.max(0, Math.min(500, parseInt(e.target.value, 10) || 0)))}
+              style={{ width: '100px', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: '6px' }}
+            />
+            <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
+              Used today: <strong>{settings?.creativeVisionUsedToday ?? 0}</strong> / {visionCap}
             </span>
           </div>
         </div>

@@ -276,7 +276,12 @@ public class GetAdsQueryHandler(IReadDbContext readContext, AdsOptions options)
                 x.Ad.CreativeFormat,
                 x.Ad.AdvertisedQuantity,
                 unitPrice,
-                x.Ad.LinkMethod);
+                x.Ad.LinkMethod,
+                prodId is null ? LazyBean.Application.Ads.Common.AdLinkReasons.Label(x.Ad.LinkReason ?? LazyBean.Application.Ads.Common.AdLinkReasons.Pending, x.Competitor.Name) : null,
+                x.Ad.LinkReason,
+                x.Ad.AiReadName,
+                x.Ad.AiReadPrice,
+                x.Ad.AiReadAt);
         }).ToList();
 
         return new GetAdsResponseDto(totalCount, items, page, pageSize);

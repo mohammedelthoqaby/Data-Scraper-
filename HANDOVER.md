@@ -188,6 +188,9 @@ For a development database, set the same two keys with user-secrets (`dotnet use
 
 ## 6. Ads Intelligence
 
+- **Why an ad is not linked.** An unlinked ad says why: **No product info in this ad** (no copy and no landing link), **Links to homepage/collection** (the landing link is not a product page), or **No matching product in <competitor> catalog**. Google's listing has no landing link or copy, so most Google ads show "No product info" until creative details are read. Reading creative details is not implemented yet.
+- **Google formats** are Text, Image or Video. The listing gives the format, and the preview decides when it does not.
+- **AI-read (optional, off by default).** In AI Configuration, Gemini can read the product name and price from the stored preview of up to N Google image ads a day. Only unlinked image ads are read, and each read counts toward the daily cap. Results are marked **AI-read**. The read runs inside the ingest request, with a 60-second budget, so the ads are saved even if it stops early.
 - **Meta identities.** Approved automatically on startup for the seeded Page IDs. To stop collecting a page, reject its identity under **Manage Sources > Advertiser Identities**. A rejection survives restarts.
 - **Google identities.** Click **Discover Google Advertisers** next to a competitor, review the candidates, and approve the right one. The result says either how many advertisers were found, or that none were found.
 - **Collect ads now.** Starts Meta and Google collection without a full run. It is on **Settings > Collector**, and in the desktop app (its window and tray menu).

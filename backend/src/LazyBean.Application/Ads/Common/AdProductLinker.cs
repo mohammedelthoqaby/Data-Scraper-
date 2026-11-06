@@ -85,6 +85,10 @@ public static class AdProductLinker
         return best.Count == 1 ? new AdProductLink(best[0].Product.Id, "title") : AdProductLink.NotLinked;
     }
 
+    // True when a landing link is a product page, not the store's homepage or a collection. The link reason uses this.
+    public static bool IsProductPage(string? landingUrl) =>
+        !string.IsNullOrWhiteSpace(landingUrl) && IsSpecificPage(CreativeHashHelper.NormalizeProductUrl(landingUrl));
+
     // A product page has a path: the store's root and collection pages are not a product.
     private static bool IsSpecificPage(string normalizedUrl)
     {

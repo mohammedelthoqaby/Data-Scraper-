@@ -35,6 +35,17 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.Property<int?>("AdvertisedQuantity")
                         .HasColumnType("integer");
 
+                    b.Property<DateTimeOffset?>("AiReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AiReadName")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<decimal?>("AiReadPrice")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
                     b.Property<string>("Body")
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
@@ -80,6 +91,10 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.Property<string>("LinkMethod")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<string>("LinkReason")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<string>("LinkUrl")
                         .HasMaxLength(2000)
@@ -377,6 +392,18 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreativeVisionDailyCap")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("CreativeVisionEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateOnly>("CreativeVisionUsageDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("CreativeVisionUsedToday")
+                        .HasColumnType("integer");
 
                     b.Property<int>("DailyRequestCap")
                         .HasColumnType("integer");

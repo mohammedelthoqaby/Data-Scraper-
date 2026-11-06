@@ -23,6 +23,9 @@ public class AdConfiguration : IEntityTypeConfiguration<Ad>
         builder.Property(a => a.AdvertisedPrice).HasPrecision(12, 2);
         builder.Property(a => a.LinkMethod).HasMaxLength(20);
         builder.Property(a => a.LinkVersion).HasDefaultValue(0);
+        builder.Property(a => a.LinkReason).HasMaxLength(40);
+        builder.Property(a => a.AiReadName).HasMaxLength(300);
+        builder.Property(a => a.AiReadPrice).HasPrecision(12, 2);
         builder.Property(a => a.RawDataJson).HasColumnType("jsonb");
         builder.Property(a => a.MissingCount).HasDefaultValue(0);
         builder.Property(a => a.ProductId).IsRequired(false);

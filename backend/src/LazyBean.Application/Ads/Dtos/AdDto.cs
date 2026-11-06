@@ -36,4 +36,9 @@ public record AdDto(
     string? CreativeFormat = null,
     int? AdvertisedQuantity = null,
     decimal? UnitPrice = null,
-    string? LinkMethod = null);
+    string? LinkMethod = null,
+    string? LinkReasonLabel = null,
+    string? LinkReason = null,
+    string? AiReadName = null,
+    decimal? AiReadPrice = null,
+    DateTimeOffset? AiReadAt = null);

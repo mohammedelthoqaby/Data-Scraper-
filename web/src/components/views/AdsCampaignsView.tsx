@@ -329,7 +329,7 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       <div key={ad.id} className="ad-variant-card">
         <div className="ad-variant-header">
           <span className="badge neutral" style={{ fontSize: '10px' }}>
-            {ad.creativeFormat ?? (isGoogle ? 'Creative' : 'Meta ad')}
+            {ad.creativeFormat ?? (isGoogle ? 'Format pending' : 'Meta ad')}
           </span>
           <span className={`badge ${isActive ? 'good' : 'neutral'}`} style={{ fontSize: '10px' }}>
             {ad.status}
@@ -387,6 +387,11 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
               ) : (
                 <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>No Lazy Bean product matched</div>
               )}
+              {ad.linkMethod === 'ai-read' && (
+                <span className="badge neutral" style={{ fontSize: '10px', marginTop: '4px' }}>
+                  AI-read link
+                </span>
+              )}
               {ad.hasPriceDiscrepancy && (
                 <span className="badge warn" style={{ fontSize: '10px', marginTop: '4px' }}>
                   Ad price differs from the store price
@@ -394,9 +399,19 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
               )}
             </>
           ) : (
-            <span className="badge neutral" style={{ fontSize: '11px' }}>
-              Not linked
-            </span>
+            <>
+              <span className="badge neutral" style={{ fontSize: '11px' }}>
+                {ad.linkReasonLabel ?? 'Link not checked yet'}
+              </span>
+              {ad.aiReadAt && (
+                <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
+                  <span className="badge neutral" style={{ fontSize: '10px', marginRight: '6px' }}>AI-read</span>
+                  {ad.aiReadName
+                    ? `${ad.aiReadName}${ad.aiReadPrice != null ? ` · ${formatEgp(ad.aiReadPrice)}` : ''}`
+                    : 'No product name could be read from the image'}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

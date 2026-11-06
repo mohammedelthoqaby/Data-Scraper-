@@ -34,4 +34,12 @@ public class Ad : BaseEntity, IAggregateRoot
     // Version of the link and price rules that produced the fields above. Rows below the current version are
     // recomputed by the backfill.
     public int LinkVersion { get; set; }
+
+    // Why an ad is not linked to a product (AdLinkReasons), or null when it is linked.
+    public string? LinkReason { get; set; }
+
+    // Set by the optional Gemini read of an unlinked image ad (off by default). Marked "AI-read" on the ads page.
+    public string? AiReadName { get; set; }
+    public decimal? AiReadPrice { get; set; }
+    public DateTimeOffset? AiReadAt { get; set; }
 }

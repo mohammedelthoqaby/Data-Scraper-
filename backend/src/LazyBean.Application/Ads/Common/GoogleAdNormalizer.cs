@@ -45,6 +45,7 @@ public static class GoogleAdNormalizer
                 $"The creative ID is longer than {MaxExternalAdIdLength} characters.");
         }
 
+        var previewUrl = LinkOrNull(item.PreviewUrl);
         return GoogleAdNormalizationResult.Accepted(new GoogleAdNormalized(
             externalId,
             Truncate(Clean(item.Title), MaxTitleLength),
@@ -54,8 +55,8 @@ public static class GoogleAdNormalizer
             ClampDate(item.FirstSeen, now),
             ClampDate(item.LastSeen, now),
             CleanRawJson(item.RawJson),
-            LinkOrNull(item.PreviewUrl),
-            FormatName(item.Format)));
+            previewUrl,
+            GoogleCreativeFormat.Resolve(FormatName(item.Format), previewUrl)));
     }
 
     // Returns the raw JSON only when it parses and jsonb will accept it; anything else is stored as null.
@@ -136,14 +137,13 @@ public static class GoogleAdNormalizer
         return value[..end];
     }
 
-    // The creative format as shown in the Ads page badge: Text, Image, Video or Display.
+    // The format the listing gives. Any other value is null here, and the preview decides (GoogleCreativeFormat).
     private static string? FormatName(string? format) => format?.Trim().ToLowerInvariant() switch
     {
-        null or "" => null,
-        "text" => "Text",
-        "image" => "Image",
-        "video" => "Video",
-        _ => "Display",
+        "text" => GoogleCreativeFormat.Text,
+        "image" => GoogleCreativeFormat.Image,
+        "video" => GoogleCreativeFormat.Video,
+        _ => null,
     };
 
     private static string? LinkOrNull(string? value)

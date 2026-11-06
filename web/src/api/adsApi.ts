@@ -39,6 +39,13 @@ export interface AdVariant {
   advertisedQuantity: number | null;
   unitPrice: number | null;
   linkMethod: string | null;
+  // Why the ad is not linked, as the page shows it (null when linked).
+  linkReason: string | null;
+  linkReasonLabel: string | null;
+  // The optional AI-read of the creative image (off by default). Null when the ad was not read.
+  aiReadName: string | null;
+  aiReadPrice: number | null;
+  aiReadAt: string | null;
 }
 
 export interface AdCampaignCard {

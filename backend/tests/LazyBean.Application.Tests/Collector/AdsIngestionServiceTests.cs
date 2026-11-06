@@ -50,7 +50,19 @@ public class AdsIngestionServiceTests
     }
 
     private static AdsIngestionService NewService(LazyBeanDbContext db) =>
-        new(new UnitOfWork(db), db, NullLogger<AdsIngestionService>.Instance);
+        new(
+            new UnitOfWork(db),
+            db,
+            new LazyBean.Application.Ads.Common.CreativeVisionService(
+                new UnitOfWork(db), new NoCreativeImageReader(), TimeProvider.System, NullLogger<LazyBean.Application.Ads.Common.CreativeVisionService>.Instance),
+            NullLogger<AdsIngestionService>.Instance);
+
+    // The AI-read is off in these tests (no AI settings row), so the reader is never called.
+    private sealed class NoCreativeImageReader : LazyBean.Application.Common.Interfaces.ICreativeImageReader
+    {
+        public Task<LazyBean.Application.Common.Interfaces.CreativeImageReading?> ReadAsync(string imageUrl, CancellationToken ct = default) =>
+            Task.FromResult<LazyBean.Application.Common.Interfaces.CreativeImageReading?>(null);
+    }
 
     private static MetaAdsIngestRequest Batch(string status = "Success") => new(
         PageId,

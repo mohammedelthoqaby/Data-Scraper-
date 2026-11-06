@@ -33,7 +33,10 @@ public class GetAiSettingsQueryHandler : IRequestHandler<GetAiSettingsQuery, AiS
                 LastTestSuccess: null,
                 LastTestMessage: null,
                 LastCallAt: null,
-                LastCallStatus: null);
+                LastCallStatus: null,
+                CreativeVisionEnabled: false,
+                CreativeVisionDailyCap: 20,
+                CreativeVisionUsedToday: 0);
         }
 
         var masked = !string.IsNullOrWhiteSpace(setting.KeyLastFour)
@@ -50,6 +53,9 @@ public class GetAiSettingsQueryHandler : IRequestHandler<GetAiSettingsQuery, AiS
             setting.LastTestSuccess,
             setting.LastTestMessage,
             setting.LastCallAt,
-            setting.LastCallStatus);
+            setting.LastCallStatus,
+            setting.CreativeVisionEnabled,
+            setting.CreativeVisionDailyCap,
+            setting.CreativeVisionUsedToday);
     }
 }

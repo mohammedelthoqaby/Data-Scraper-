@@ -119,6 +119,8 @@ public static class DependencyInjection
         });
         services.AddScoped<IAiKeyProtector, AiKeyProtector>();
         services.AddScoped<IAiClient, GeminiAiClient>();
+        services.AddScoped<LazyBean.Application.Common.Interfaces.ICreativeImageReader, LazyBean.Infrastructure.Ai.GeminiCreativeImageReader>();
+        services.AddScoped<LazyBean.Application.Ads.Common.CreativeVisionService>();
         services.AddScoped<IAiTriageService, AiReviewTriageService>();
         services.AddScoped<IAlertService, AlertService>();
         services.AddSingleton<ICollectionProgressTracker, CollectionProgressTracker>();

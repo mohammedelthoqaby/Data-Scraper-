@@ -18,6 +18,7 @@ namespace LazyBean.Infrastructure.Ads;
 public class AdsIngestionService(
     IUnitOfWork unitOfWork,
     IReadDbContext readContext,
+    LazyBean.Application.Ads.Common.CreativeVisionService creativeVision,
     ILogger<AdsIngestionService> logger) : IAdsIngestionService
 {
     public async Task<AdsIngestResponse> IngestGoogleAdvertiserAsync(GoogleAdsIngestRequest request, CancellationToken ct = default)
@@ -122,6 +123,9 @@ public class AdsIngestionService(
                 existingByExternalId.TryAdd(existing.ExternalAdId, existing);
             }
 
+            // The creatives saved in this batch: the optional AI-read may read them after the loop.
+            var touched = new List<Ad>();
+
             // Each creative is saved on its own, so one rejected creative cannot fail the whole batch.
             foreach (var ad in accepted)
             {
@@ -131,6 +135,7 @@ public class AdsIngestionService(
                     unitOfWork.AdCampaigns.Update(campaign);
 
                     string outcome;
+                    Ad saved;
                     if (existingByExternalId.TryGetValue(ad.ExternalAdId, out var existingAd))
                     {
                         existingAd.LastSeenAt = ad.LastSeen ?? now;
@@ -142,6 +147,7 @@ public class AdsIngestionService(
                         AdDerivedFields.Apply(existingAd, catalog);
                         unitOfWork.Ads.Update(existingAd);
                         outcome = "updated";
+                        saved = existingAd;
                     }
                     else
                     {
@@ -169,9 +175,11 @@ public class AdsIngestionService(
                         AdDerivedFields.Apply(newAd, catalog);
                         await unitOfWork.Ads.AddAsync(newAd, ct);
                         outcome = "created";
+                        saved = newAd;
                     }
 
                     await unitOfWork.SaveChangesAsync(ct);
+                    touched.Add(saved);
                     results.Add(new AdsIngestItemResult(ad.ExternalAdId, outcome));
                 }
                 catch (DbUpdateException ex) when (ex.InnerException is PostgresException)
@@ -181,6 +189,21 @@ public class AdsIngestionService(
                     var reason = DescribeRejection(ex);
                     results.Add(new AdsIngestItemResult(ad.ExternalAdId, "skipped", reason));
                     logger.LogWarning(ex, "Skipped Google creative {ExternalAdId} for '{Name}': {Reason}", ad.ExternalAdId, identity.Name, reason);
+                }
+            }
+
+            // The optional AI-read runs after the ads are saved. If it fails, the saved ads stay as they are.
+            if (touched.Count > 0)
+            {
+                try
+                {
+                    await creativeVision.ApplyAsync(touched, catalog, ct);
+                    await unitOfWork.SaveChangesAsync(ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    unitOfWork.ClearTracker();
+                    logger.LogWarning(ex, "The AI-read step failed for '{Name}'. The ads were saved without it.", identity.Name);
                 }
             }
         }
