@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api, type CompetitorOffer, type ReferenceOffer } from '../../api/client';
+import { PageHeader } from '../shell/PageHeader';
 
 interface OffersViewProps {
   selectedRunId: string | null;
   onOpenProductDetail?: (productId: string, title?: string) => void;
+  // The report date bar, shown in the page header row.
+  toolbar?: React.ReactNode;
 }
 
-export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenProductDetail }) => {
+export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenProductDetail, toolbar }) => {
   // Offer Source: 'competitor' vs 'reference'
   const [sourceType, setSourceType] = useState<'competitor' | 'reference'>('competitor');
   
@@ -152,16 +155,11 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
 
   return (
     <div className="offers-view">
-      {/* Page Heading */}
-      <div className="page-heading">
-        <div>
-          <div className="eyebrow">MARKET INTELLIGENCE</div>
-          <h1 className="view-title">Promotions & Offers</h1>
-          <p className="subtitle">
-            Review active discounts, newly started promotional deals, and catalog price cuts across monitored coffee stores in Egypt.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Promotions & Offers"
+        info="Review active discounts, newly started promotional deals, and catalog price cuts across monitored coffee stores in Egypt."
+        actions={toolbar}
+      />
 
       {/* Top Source Switcher (Competitor vs Reference) */}
       <div className="tab-bar">

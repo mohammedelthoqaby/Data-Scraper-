@@ -4,10 +4,13 @@ import { fetchAdGallery, type AdGalleryCard } from '../../api/adGallery';
 import { AdCard } from './AdCard';
 import { AdSidePanel } from './AdSidePanel';
 import { OurAdsSection } from './OurAdsSection';
+import { PageHeader } from '../shell/PageHeader';
 import './ads-gallery.css';
 
 interface AdsCampaignsViewProps {
   onOpenProductDetail?: (productId: string, title?: string) => void;
+  // The report date bar, shown in the page header row.
+  toolbar?: React.ReactNode;
 }
 
 type Tab = 'competitor' | 'ours' | 'compare';
@@ -22,7 +25,7 @@ const TABS: { key: Tab; label: string }[] = [
 
 // The ads gallery: competitor ads by default, our own ads on their own tab, and the price comparison on the third.
 // Cards are a flat grid of 24 per page. Each card opens the side panel.
-export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProductDetail }) => {
+export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProductDetail, toolbar }) => {
   const [tab, setTab] = useState<Tab>('competitor');
   const [sources, setSources] = useState<Competitor[]>([]);
   const [identities, setIdentities] = useState<AdvertiserIdentity[]>([]);
@@ -258,26 +261,18 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
 
   return (
     <div className="ads-gallery ads-campaigns-view">
-      <div
-        className="page-heading"
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}
-      >
-        <div>
-          <div className="eyebrow">MARKET INTELLIGENCE</div>
-          <h1 className="view-title">Ads & campaigns</h1>
-          <p className="subtitle">
-            Competitor ads from Meta and Google, with the price each one advertises and the product of ours it matches.
-          </p>
-        </div>
-        <button
-          className="btn btn-secondary"
-          disabled={isSyncing}
-          onClick={handleSyncGoogleAds}
-          style={{ whiteSpace: 'nowrap', marginTop: 4 }}
-        >
-          {isSyncing ? 'Syncing Google Ads...' : 'Sync Google Ads'}
-        </button>
-      </div>
+      <PageHeader
+        title="Ads & campaigns"
+        info="Competitor ads from Meta and Google, with the price each one advertises and the product of ours it matches."
+        actions={
+          <>
+            {toolbar}
+            <button className="btn btn-secondary" disabled={isSyncing} onClick={handleSyncGoogleAds}>
+              {isSyncing ? 'Syncing Google Ads...' : 'Sync Google Ads'}
+            </button>
+          </>
+        }
+      />
 
       <div className="ads-tabs" role="tablist" aria-label="Ads views">
         {TABS.map((t) => (

@@ -338,6 +338,18 @@ export const App: React.FC = () => {
     }
   }, [isSidebarCollapsed]);
 
+  // The report date bar. On the pages that have a compact page header it sits in that header row; elsewhere it stays on top.
+  const INLINE_TOOLBAR_VIEWS = ['overview', 'offers', 'weekly-actions', 'price-comparisons', 'ads-campaigns'];
+  const reportToolbar = (
+    <Toolbar
+      runs={runs}
+      selectedRunId={selectedRunId}
+      onSelectRun={(id) => setSelectedRunId(id)}
+      onReload={handleReloadAll}
+      isLoading={isLoading}
+    />
+  );
+
   return (
     <div className="app-shell">
       {/* Sidebar Navigation */}
@@ -402,13 +414,7 @@ export const App: React.FC = () => {
             <>
               <CollectorBanner runActive={Boolean(activeRunProgress)} />
 
-              <Toolbar
-                runs={runs}
-                selectedRunId={selectedRunId}
-                onSelectRun={(id) => setSelectedRunId(id)}
-                onReload={handleReloadAll}
-                isLoading={isLoading}
-              />
+              {!INLINE_TOOLBAR_VIEWS.includes(activeView) && reportToolbar}
 
               {/* Active View Outlet */}
               {activeView === 'overview' && (
@@ -418,6 +424,7 @@ export const App: React.FC = () => {
                   reviewCount={reviewCount}
                   onNavigate={navigateTo}
                   onRefreshCollection={handleStartRun}
+                  toolbar={reportToolbar}
                 />
               )}
 
@@ -425,6 +432,7 @@ export const App: React.FC = () => {
                 <OffersView
                   selectedRunId={selectedRunId}
                   onOpenProductDetail={openProductDetail}
+                  toolbar={reportToolbar}
                 />
               )}
 
@@ -436,12 +444,14 @@ export const App: React.FC = () => {
                   isLoading={isLoading}
                   onOpenProductDetail={openProductDetail}
                   onRetry={() => fetchMatrix(selectedRunId)}
+                  toolbar={reportToolbar}
                 />
               )}
 
               {activeView === 'ads-campaigns' && (
                 <AdsCampaignsView
                   onOpenProductDetail={openProductDetail}
+                  toolbar={reportToolbar}
                 />
               )}
 

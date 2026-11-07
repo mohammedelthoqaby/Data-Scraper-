@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { PriceMatrixResponse, CompetitorOffersResponse } from '../../api/client';
 import { aiApi, type RankedAttentionItem } from '../../api/ai';
 import { fetchAlerts, type AlertItem } from '../../api/alerts';
+import { PageHeader } from '../shell/PageHeader';
 
 interface OverviewViewProps {
   matrix: PriceMatrixResponse | null;
@@ -9,6 +10,8 @@ interface OverviewViewProps {
   reviewCount: number;
   onNavigate: (view: string) => void;
   onRefreshCollection: () => void;
+  // The report date bar, shown in the page header row.
+  toolbar?: React.ReactNode;
 }
 
 export const OverviewView: React.FC<OverviewViewProps> = ({
@@ -17,6 +20,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   reviewCount,
   onNavigate,
   onRefreshCollection,
+  toolbar,
 }) => {
   const totalComparisons = matrix?.totalRows ?? 0;
   const suggestedActionsCount = matrix?.rows?.filter(r => r.position === 'more expensive' || r.position === 'lazyBeanOutOfStock').length ?? 0;
@@ -66,17 +70,18 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
   return (
     <div className="overview-view">
-      {/* Page Heading */}
-      <div className="page-heading">
-        <div>
-          <div className="eyebrow">OPERATOR DASHBOARD</div>
-          <h1 className="view-title">Overview</h1>
-          <p className="subtitle">See what needs attention this week across monitored coffee stores in Egypt.</p>
-        </div>
-        <button type="button" className="btn-primary" onClick={onRefreshCollection}>
-          ▶ Run Collection
-        </button>
-      </div>
+      <PageHeader
+        title="Overview"
+        info="See what needs attention this week across monitored coffee stores in Egypt."
+        actions={
+          <>
+            {toolbar}
+            <button type="button" className="btn-primary" onClick={onRefreshCollection}>
+              ▶ Run Collection
+            </button>
+          </>
+        }
+      />
 
 
       {/* 3 KPI Summary Cards */}
