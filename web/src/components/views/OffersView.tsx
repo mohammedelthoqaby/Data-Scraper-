@@ -13,8 +13,10 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
   // Offer Source: 'competitor' vs 'reference'
   const [sourceType, setSourceType] = useState<'competitor' | 'reference'>('competitor');
   
-  // Status filter: 'new' (default) | 'ongoing' | 'ended' | 'all'
-  const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'ongoing' | 'ended'>('new');
+  // Status filter: 'ongoing' (default on every fresh visit) | 'new' | 'ended' | 'all'. A manual pick holds while
+  // the page is open: switching top tabs, Reload and the report date keep it. Leaving the page unmounts this
+  // component, so the next visit starts on Ongoing again. An empty Ongoing list stays open; it does not jump.
+  const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'ongoing' | 'ended'>('ongoing');
   
   // Search & Competitor filters
   const [search, setSearch] = useState('');
@@ -189,7 +191,7 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
         </button>
       </div>
 
-      {/* Status Tabs - Defaults to New, All is opt-in */}
+      {/* Status Tabs - Defaults to Ongoing, All is opt-in */}
       <div className="tab-bar" style={{ borderBottom: '1px solid var(--line)', marginBottom: '16px' }}>
         <button
           type="button"
