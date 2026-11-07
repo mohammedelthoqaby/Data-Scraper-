@@ -184,6 +184,9 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       }
     };
     const onScroll = () => {
+      // Scroll events while the page is still loading describe a short page, not the user's place. Ignore them until the
+      // saved position has been restored.
+      if (!restoredRef.current) return;
       window.clearTimeout(timer);
       timer = window.setTimeout(remember, 150);
     };
