@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchOwnAdComparison, type OwnAdComparisonRow, type OwnAdKind } from '../../api/ownAds';
+import { hashView, readHashParams, writeHashParams } from '../../lib/pageUrlState';
 
 type Filter = 'all' | 'both' | 'opportunity' | 'higher';
 
@@ -37,7 +38,19 @@ function formatPlatform(platform: string | null): string {
 // ads are not listed here; they are on the Our ads tab, and they never count toward the competitor totals.
 export const OurAdsSection: React.FC = () => {
   const [rows, setRows] = useState<OwnAdComparisonRow[]>([]);
-  const [filter, setFilter] = useState<Filter>('all');
+  // The chosen filter lives in the URL (cmp=...), so a reload or a return restores it.
+  const [filter, setFilter] = useState<Filter>(() => {
+    const value = readHashParams().get('cmp');
+    return value === 'both' || value === 'opportunity' || value === 'higher' ? value : 'all';
+  });
+
+  // Written with replaceState. The parameter is removed when this tab is left.
+  useEffect(() => {
+    writeHashParams(hashView(), { cmp: filter === 'all' ? undefined : filter });
+    return () => {
+      writeHashParams(hashView(), { cmp: undefined });
+    };
+  }, [filter]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 

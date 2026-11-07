@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { PriceMatrixResponse, PriceMatrixRow } from '../../api/client';
 import { undoMatch } from '../../api/alerts';
 import { PageHeader } from '../shell/PageHeader';
+import { hashView, readHashParams, writeHashParams } from '../../lib/pageUrlState';
 
 interface PriceMatrixViewProps {
   matrix: PriceMatrixResponse | null;
@@ -31,10 +32,12 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
   onRetry,
   toolbar,
 }) => {
-  const [search, setSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
-  const [selectedBrand, setSelectedBrand] = useState('ALL');
-  const [selectedPosition, setSelectedPosition] = useState('ALL');
+  // Filters start from the URL hash, so a reload or a return to the page restores them.
+  const [initial] = useState(() => readHashParams());
+  const [search, setSearch] = useState(() => initial.get('q') ?? '');
+  const [selectedCategory, setSelectedCategory] = useState(() => initial.get('category') ?? 'ALL');
+  const [selectedBrand, setSelectedBrand] = useState(() => initial.get('brand') ?? 'ALL');
+  const [selectedPosition, setSelectedPosition] = useState(() => initial.get('position') ?? 'ALL');
 
   const rows = matrix?.rows ?? [];
 
@@ -87,6 +90,16 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
       return true;
     });
   }, [rows, search, selectedCategory, selectedBrand, selectedPosition]);
+
+  // The filters go to the URL with replaceState, so Back returns to the previous section and not to a filter state.
+  useEffect(() => {
+    writeHashParams(hashView(), {
+      q: search.trim() || undefined,
+      category: selectedCategory === 'ALL' ? undefined : selectedCategory,
+      brand: selectedBrand === 'ALL' ? undefined : selectedBrand,
+      position: selectedPosition === 'ALL' ? undefined : selectedPosition,
+    });
+  }, [search, selectedCategory, selectedBrand, selectedPosition]);
 
   // All filtered rows displayed on a single page
   const pageRows = filteredRows;
@@ -194,10 +207,7 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
             className="filter-input"
             placeholder="Search product, brand, seller..."
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setSearch(e.target.value)}
           />
 
           <select

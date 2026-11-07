@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api, type Competitor, type AdvertiserIdentity } from '../../api/client';
 import { addIdentityFromUrl } from '../../api/ownAds';
+import { hashView, readHashParams, writeHashParams } from '../../lib/pageUrlState';
 import { GOOGLE_ADVERTISER_ID_ERROR, parseGoogleAdvertiserId } from '../../api/googleAdvertiser';
 import { apiErrorMessage } from '../../api/errors';
 
 export const SourcesIdentitiesView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'sources' | 'identities'>('sources');
+  // The sub-tab is kept in the URL (tab=identities), so a reload or a return opens the same one.
+  const [activeTab, setActiveTab] = useState<'sources' | 'identities'>(() =>
+    readHashParams().get('tab') === 'identities' ? 'identities' : 'sources'
+  );
 
   // Sources State
   const [sources, setSources] = useState<Competitor[]>([]);
@@ -14,9 +18,19 @@ export const SourcesIdentitiesView: React.FC = () => {
   // Identities State
   const [identities, setIdentities] = useState<AdvertiserIdentity[]>([]);
   const [isIdentitiesLoading, setIsIdentitiesLoading] = useState(true);
-  const [platformFilter, setPlatformFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  // Filters start from the URL hash, so a reload or a return restores them.
+  const [platformFilter, setPlatformFilter] = useState<string>(() => readHashParams().get('platform') ?? 'all');
+  const [statusFilter, setStatusFilter] = useState<string>(() => readHashParams().get('status') ?? 'all');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  // The filters go to the URL with replaceState, so Back returns to the previous section and not to a filter state.
+  useEffect(() => {
+    writeHashParams(hashView(), {
+      tab: activeTab === 'identities' ? 'identities' : undefined,
+      platform: platformFilter === 'all' ? undefined : platformFilter,
+      status: statusFilter === 'all' ? undefined : statusFilter,
+    });
+  }, [activeTab, platformFilter, statusFilter]);
 
   // Discover & Add Identity State
   const [discoveringId, setDiscoveringId] = useState<string | null>(null);

@@ -17,11 +17,14 @@ export function readHashParams(): URLSearchParams {
   return new URLSearchParams(index >= 0 ? hash.slice(index + 1) : '');
 }
 
-// Replaces the current history entry with this view and these parameters. Empty values are left out.
+// Replaces the current history entry's view and parameters. Only the keys given are changed: a key set to an empty
+// value or undefined is removed, and every other parameter is kept. Several components can share one page this way.
 export function writeHashParams(view: string, params: Record<string, string | undefined>): string {
-  const search = new URLSearchParams();
+  const search = readHashParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') {
+    if (value === undefined || value === '') {
+      search.delete(key);
+    } else {
       search.set(key, value);
     }
   }
