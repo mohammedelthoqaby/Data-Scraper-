@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { RunSourcesPanel } from './RunSourcesPanel';
+import { useSectionActive } from '../shell/KeepAliveSection';
 import {
   api,
   fetchRunProgress,
@@ -65,7 +66,11 @@ export const RunsView: React.FC<RunsViewProps> = ({
 
   // Poll real-time active run progress every 3s
   // Source of truth is always the server's /api/runs/active endpoint (DB + ProgressTracker)
+  // The poll runs only while this section is on screen. The first poll is made once; coming back does not poll at once.
+  const sectionActive = useSectionActive();
+  const progressStarted = useRef(false);
   useEffect(() => {
+    if (!sectionActive) return;
     let timer: any = null;
     let isMounted = true;
 
@@ -93,14 +98,17 @@ export const RunsView: React.FC<RunsViewProps> = ({
       }
     };
 
-    pollActiveProgress();
+    if (!progressStarted.current) {
+      progressStarted.current = true;
+      pollActiveProgress();
+    }
     timer = setInterval(pollActiveProgress, 3000);
 
     return () => {
       isMounted = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [sectionActive]);
 
   const handleStartRun = async () => {
     if (!user) {

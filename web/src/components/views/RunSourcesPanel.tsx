@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { fetchRunJobs, type CollectorJobSummary } from '../../api/collector';
+import { useSectionActive } from '../shell/KeepAliveSection';
 
 interface RunSourcesPanelProps {
   runId: string;
@@ -48,6 +49,9 @@ function desktopBanner(jobs: CollectorJobSummary[]): { text: string; tone: 'open
 export const RunSourcesPanel: React.FC<RunSourcesPanelProps> = ({ runId }) => {
   const [jobs, setJobs] = useState<CollectorJobSummary[]>([]);
 
+  // Loads when the run changes; polls every 10 s only while the section is on screen. Coming back does not reload.
+  const active = useSectionActive();
+  const loadedFor = useRef<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -58,13 +62,21 @@ export const RunSourcesPanel: React.FC<RunSourcesPanelProps> = ({ runId }) => {
         // Keep the last loaded state.
       }
     };
-    load();
+    if (loadedFor.current !== runId) {
+      loadedFor.current = runId;
+      load();
+    }
+    if (!active) {
+      return () => {
+        cancelled = true;
+      };
+    }
     const timer = window.setInterval(load, 10000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [runId]);
+  }, [runId, active]);
 
   if (jobs.length === 0) {
     return null;

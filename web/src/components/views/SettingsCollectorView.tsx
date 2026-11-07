@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useSectionActive } from '../shell/KeepAliveSection';
 import {
   collectAdsNow,
   fetchCollectorAppInfo,
@@ -52,11 +53,18 @@ export const SettingsCollectorView: React.FC = () => {
     }
   }, []);
 
+  // Loads once when the section first opens; polls every 10 s only while the section is on screen.
+  const active = useSectionActive();
+  const loadedOnce = useRef(false);
   useEffect(() => {
-    load();
+    if (!loadedOnce.current) {
+      loadedOnce.current = true;
+      load();
+    }
+    if (!active) return;
     const timer = window.setInterval(load, 10000);
     return () => window.clearInterval(timer);
-  }, [load]);
+  }, [load, active]);
 
   const handleRevoke = async (device: CollectorDevice) => {
     if (!window.confirm(`Revoke "${device.name}"? That app will need to be paired again to collect.`)) return;

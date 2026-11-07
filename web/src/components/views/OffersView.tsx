@@ -315,7 +315,7 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
       </div>
 
       {/* Offers List */}
-      {isLoading ? (
+      {isLoading && competitorOffers.length === 0 && referenceOffers.length === 0 ? (
         <div className="offers-list">
           <div className="skeleton-card" style={{ marginBottom: '12px' }}>
             <div className="skeleton skeleton-row" style={{ width: '40%', height: '20px' }} />

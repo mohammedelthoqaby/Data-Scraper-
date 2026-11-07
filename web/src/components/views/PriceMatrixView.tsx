@@ -267,7 +267,7 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
 
         {/* Matrix Table */}
         <div className="matrix-table-wrap">
-          {isLoading ? (
+          {isLoading && !matrix ? (
             <div style={{ padding: '24px' }}>
               <div className="skeleton skeleton-row" style={{ height: '42px', marginBottom: '12px' }} />
               <div className="skeleton skeleton-row" style={{ height: '42px', marginBottom: '12px' }} />
