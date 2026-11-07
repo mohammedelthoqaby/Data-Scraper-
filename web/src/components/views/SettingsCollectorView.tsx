@@ -9,6 +9,7 @@ import {
   type CollectorDevice,
   type CollectorStatus,
 } from '../../api/collector';
+import { AdsCoverageTable } from './AdsCoverageTable';
 
 const DEFAULT_SERVER_URL = 'https://lazy-bean.runasp.net';
 
@@ -155,6 +156,8 @@ export const SettingsCollectorView: React.FC = () => {
           username and password.
         </p>
       </section>
+
+      <AdsCoverageTable />
 
       <section className="panel">
         <h3 style={{ marginTop: 0 }}>Paired devices</h3>

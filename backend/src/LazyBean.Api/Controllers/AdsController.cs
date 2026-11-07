@@ -28,7 +28,7 @@ public record CreateManualAdRequest(
 [ApiController]
 [Route("api/ads")]
 [EnableRateLimiting("api")]
-public class AdsController(ISender sender) : ControllerBase
+public class AdsController(ISender sender, IAdThumbnailService thumbnails) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(GetAdsResponseDto), StatusCodes.Status200OK)]
@@ -75,6 +75,70 @@ public class AdsController(ISender sender) : ControllerBase
     public async Task<ActionResult<AdsSummaryDto>> GetSummary(CancellationToken ct)
     {
         return Ok(await sender.Send(new LazyBean.Application.Ads.Queries.GetAdsSummary.GetAdsSummaryQuery(), ct));
+    }
+
+    // The ads gallery: one page of cards. A card is a group of identical ads from one store; it shows the newest ad.
+    [HttpGet("gallery")]
+    [ProducesResponseType(typeof(AdGalleryResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<AdGalleryResponseDto>> GetGallery(
+        [FromQuery] Guid? competitorId,
+        [FromQuery] string? platform,
+        [FromQuery] string? status,
+        [FromQuery] bool? hasPrice,
+        [FromQuery] bool? linkedToOurs,
+        [FromQuery] string? search,
+        [FromQuery] bool sortByStore = false,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 24,
+        CancellationToken ct = default)
+    {
+        var query = new LazyBean.Application.Ads.Queries.GetAdGallery.GetAdGalleryQuery(
+            competitorId, platform, status, hasPrice, linkedToOurs, search, sortByStore, page, pageSize);
+        return Ok(await sender.Send(query, ct));
+    }
+
+    // One card of the gallery with all the ads in its group, for the side panel.
+    [HttpGet("gallery/{id:guid}")]
+    [ProducesResponseType(typeof(AdGalleryDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AdGalleryDetailDto>> GetGalleryDetail(Guid id, CancellationToken ct = default)
+    {
+        var detail = await sender.Send(new LazyBean.Application.Ads.Queries.GetAdGallery.GetAdGalleryDetailQuery(id), ct);
+        return detail is null ? NotFound() : Ok(detail);
+    }
+
+    // One stored image of an ad (position 0 is the card image). Browsers keep it for a week, and revalidate it by its ETag
+    // (the image's SHA-256). Images are not counted against the API rate limit: a page of cards loads many of them at once.
+    [HttpGet("{id:guid}/thumbnail")]
+    [DisableRateLimiting]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status304NotModified)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetThumbnail(Guid id, [FromQuery] int position = 0, CancellationToken ct = default)
+    {
+        if (position < 0 || position >= AdThumbnailRules.MaxImagesPerAd)
+        {
+            return NotFound();
+        }
+
+        var image = await thumbnails.GetImageAsync(id, position, ct);
+        if (image is null)
+        {
+            return NotFound();
+        }
+
+        var etag = $"\"{image.Sha256}\"";
+        Response.Headers.CacheControl = "private, max-age=604800";
+        Response.Headers.ETag = etag;
+        Response.Headers.LastModified = image.UpdatedAt.UtcDateTime.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
+        var requested = Request.Headers["If-None-Match"].ToString();
+        if (requested == "*" || requested.Split(',').Any(v => v.Trim() == etag))
+        {
+            return StatusCode(StatusCodes.Status304NotModified);
+        }
+
+        return File(image.Data, image.ContentType);
     }
 
     [HttpPost]

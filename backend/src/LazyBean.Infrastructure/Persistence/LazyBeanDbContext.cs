@@ -28,6 +28,7 @@ public class LazyBeanDbContext(DbContextOptions<LazyBeanDbContext> options) : Db
     public DbSet<AdCampaign> AdCampaigns => Set<AdCampaign>();
     public DbSet<Ad> Ads => Set<Ad>();
     public DbSet<AdIngestBatch> AdIngestBatches => Set<AdIngestBatch>();
+    public DbSet<AdThumbnail> AdThumbnails => Set<AdThumbnail>();
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<AlertHistory> AlertHistories => Set<AlertHistory>();
     public DbSet<AlertSetting> AlertSettings => Set<AlertSetting>();

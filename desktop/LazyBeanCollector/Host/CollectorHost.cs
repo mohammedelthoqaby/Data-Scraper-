@@ -44,6 +44,9 @@ public sealed class CollectorHost : IAsyncDisposable
     private readonly TimeSpan _signOutTimeout;
 
     private ICollectorApi? _api;
+    // Downloads the ad images from the Meta and Google CDNs. Its own client, so it does not share the API's settings.
+    private static readonly HttpClient ImageHttp = CreateImageHttp();
+
     private HttpClient? _apiHttp;
     private CancellationTokenSource? _loopCts;
     private Task? _loop;
@@ -261,14 +264,23 @@ public sealed class CollectorHost : IAsyncDisposable
         }
     }
 
+    private static HttpClient CreateImageHttp()
+    {
+        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+        return client;
+    }
+
     private JobRunner CreateRunner(ICollectorApi api)
     {
         var google = _options.GoogleClient ?? _services.GetRequiredService<IGoogleAdsTransparencyClient>();
+        var thumbnails = new AdThumbnailSync(api, new AdThumbnailProcessor(ImageHttp), _log, _delay);
         return new JobRunner(
             api,
             new StoreJobHandler(api, _woo, _log, _state),
-            new MetaJobHandler(api, _metaCollector, _log, _state, _delay),
-            new GoogleJobHandler(api, google, _log, _state, _delay),
+            new MetaJobHandler(api, _metaCollector, _log, _state, _delay, thumbnails),
+            new GoogleJobHandler(api, google, _log, _state, _delay, thumbnails),
             _log,
             _state,
             _delay,

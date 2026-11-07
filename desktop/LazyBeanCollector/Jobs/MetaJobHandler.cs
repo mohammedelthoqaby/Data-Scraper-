@@ -26,7 +26,8 @@ public sealed class MetaJobHandler(
     IMetaPageCollector collector,
     ActivityLog log,
     CollectorState state,
-    Func<TimeSpan, CancellationToken, Task> delay)
+    Func<TimeSpan, CancellationToken, Task> delay,
+    AdThumbnailSync? thumbnails = null)
 {
     public const int MaxAdsPerPage = 50;
 
@@ -72,7 +73,21 @@ public sealed class MetaJobHandler(
 
             try
             {
-                await api.IngestMetaAdsAsync(request, ct);
+                var ingest = await api.IngestMetaAdsAsync(request, ct);
+
+                // The images of the ads the server flagged. A carousel's images are kept in card order.
+                if (thumbnails is not null)
+                {
+                    var wanted = (ingest.Items ?? []).Where(i => i.NeedsThumbnail).Select(i => i.ExternalAdId).ToHashSet(StringComparer.Ordinal);
+                    var candidates = result.Ads
+                        .Where(a => wanted.Contains(a.Id))
+                        .Select(a => new AdThumbnailSync.Candidate(
+                            a.Id,
+                            a.ImageUrls ?? (a.ImageUrl is null ? Array.Empty<string>() : new[] { a.ImageUrl })))
+                        .Where(c => c.ImageUrls.Count > 0)
+                        .ToList();
+                    await thumbnails.SyncAsync("Meta", identity.PageId, candidates, ct);
+                }
             }
             catch (CollectorApiException ex) when (ex.Kind is ApiErrorKind.NotFound or ApiErrorKind.BadRequest)
             {

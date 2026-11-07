@@ -106,6 +106,15 @@ public sealed class CollectorApiClient(HttpClient http, RetryPolicy retry) : ICo
 
     // A batch of creative details that the server does not store is not retried here: the creatives keep their missing detail,
     // so the next run reads them again.
+    // A batch the server refuses is not retried: its ads keep their images, and the next run asks for them again.
+    public Task<AdThumbnailUploadResponse> UploadAdThumbnailsAsync(AdThumbnailUploadRequest request, CancellationToken ct) =>
+        retry.ExecuteAsync(async c =>
+        {
+            using var response = await SendAsync(HttpMethod.Post, "api/collector/ads/thumbnails", request, auth: true, c);
+            return await ReadBodyAsync<AdThumbnailUploadResponse>(response, c)
+                ?? throw new CollectorApiException(ApiErrorKind.ServerError, "The server returned no image result.");
+        }, ct);
+
     public Task<GoogleCreativeDetailsResponse> IngestGoogleCreativeDetailsAsync(GoogleCreativeDetailsRequest request, CancellationToken ct) =>
         retry.ExecuteAsync(async c =>
         {

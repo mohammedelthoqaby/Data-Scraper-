@@ -43,6 +43,11 @@ public class Ad : BaseEntity, IAggregateRoot
     public DateTimeOffset? DetailLastShownAt { get; set; }
     public string? PreviewVariationsJson { get; set; }
 
+    // The stored images (AdThumbnail rows) and the source they were made from, without its signed query string. A changed
+    // source means the creative changed, and its images are read again.
+    public int ThumbnailCount { get; set; }
+    public string? ThumbnailSourceKey { get; set; }
+
     // Why an ad is not linked to a product (AdLinkReasons), or null when it is linked.
     public string? LinkReason { get; set; }
 

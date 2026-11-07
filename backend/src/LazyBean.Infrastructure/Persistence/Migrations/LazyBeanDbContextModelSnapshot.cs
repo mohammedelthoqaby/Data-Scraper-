@@ -151,6 +151,12 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<int>("ThumbnailCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ThumbnailSourceKey")
+                        .HasColumnType("text");
+
                     b.Property<string>("Title")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -287,6 +293,52 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.HasIndex("IdentityId", "ReceivedAt");
 
                     b.ToTable("ad_ingest_batches", (string)null);
+                });
+
+            modelBuilder.Entity("LazyBean.Domain.Entities.AdThumbnail", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AdId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AdId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("ad_thumbnails", (string)null);
                 });
 
             modelBuilder.Entity("LazyBean.Domain.Entities.AdvertiserIdentity", b =>
@@ -1421,6 +1473,15 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("DataProtectionKeys");
+                });
+
+            modelBuilder.Entity("LazyBean.Domain.Entities.AdThumbnail", b =>
+                {
+                    b.HasOne("LazyBean.Domain.Entities.Ad", null)
+                        .WithMany()
+                        .HasForeignKey("AdId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

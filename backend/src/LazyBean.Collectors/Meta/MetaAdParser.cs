@@ -32,7 +32,31 @@ public static class MetaAdParser
             Link: creative.LinkUrl,
             SnapshotUrl: snapshotUrl,
             ImageUrl: creative.ImageUrl ?? creative.OriginalImageUrl ?? creative.ThumbnailUrl,
-            PublisherPlatforms: Strings(data, "publisher_platforms"));
+            PublisherPlatforms: Strings(data, "publisher_platforms"),
+            ImageUrls: CardImages(data, creative.ImageUrl ?? creative.OriginalImageUrl ?? creative.ThumbnailUrl));
+    }
+
+    private const int MaxCardImages = 5;
+
+    // The primary image first, then each card's image (or a video card's poster), without repeats. Up to five.
+    private static IReadOnlyList<string> CardImages(JsonObject data, string? primary)
+    {
+        var images = new List<string>();
+        if (!string.IsNullOrWhiteSpace(primary))
+        {
+            images.Add(primary);
+        }
+
+        foreach (var card in ObjectArray(data, "cards"))
+        {
+            var url = FirstTruthyString(card, "resized_image_url", "original_image_url") ?? Scalar(card, "video_preview_image_url");
+            if (!string.IsNullOrWhiteSpace(url))
+            {
+                images.Add(url);
+            }
+        }
+
+        return images.Distinct(StringComparer.Ordinal).Take(MaxCardImages).ToList();
     }
 
     private sealed record Creative(

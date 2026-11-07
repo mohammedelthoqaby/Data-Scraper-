@@ -13,7 +13,9 @@ public sealed record MetaAdDto(
     [property: JsonPropertyName("link")] string? Link,
     [property: JsonPropertyName("snapshotUrl")] string? SnapshotUrl,
     [property: JsonPropertyName("imageUrl")] string? ImageUrl,
-    [property: JsonPropertyName("publisherPlatforms")] IReadOnlyList<string> PublisherPlatforms);
+    [property: JsonPropertyName("publisherPlatforms")] IReadOnlyList<string> PublisherPlatforms,
+    // The card images of the ad, primary first (a carousel has several; a video card contributes its poster). Up to five.
+    [property: JsonPropertyName("imageUrls")] IReadOnlyList<string>? ImageUrls = null);
 
 // Outcome of collecting one Meta page ID. Status is "Success", "Blocked" (rate limit, session or
 // verification challenge) or "Failed", exactly as the Python collector reported it.

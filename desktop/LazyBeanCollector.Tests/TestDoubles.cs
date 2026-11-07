@@ -128,6 +128,22 @@ public sealed class FakeCollectorApi : ICollectorApi
 
     public Func<GoogleCreativeDetailsRequest, Exception?>? GoogleDetailFailure { get; set; }
 
+    public List<AdThumbnailUploadRequest> ThumbnailUploads { get; } = [];
+
+    public Func<AdThumbnailUploadRequest, Exception?>? ThumbnailUploadFailure { get; set; }
+
+    public Task<AdThumbnailUploadResponse> UploadAdThumbnailsAsync(AdThumbnailUploadRequest request, CancellationToken ct)
+    {
+        Calls.Add($"thumbnails:{request.IdentityExternalId}:{request.Items.Count}");
+        if (ThumbnailUploadFailure?.Invoke(request) is { } failure)
+        {
+            throw failure;
+        }
+
+        ThumbnailUploads.Add(request);
+        return Task.FromResult(new AdThumbnailUploadResponse(request.Items.Count, request.Items.Sum(i => i.ImagesBase64.Count), []));
+    }
+
     public Task<GoogleCreativeDetailsResponse> IngestGoogleCreativeDetailsAsync(GoogleCreativeDetailsRequest request, CancellationToken ct)
     {
         Calls.Add($"google-details:{request.AdvertiserId}:{request.Items.Count}");

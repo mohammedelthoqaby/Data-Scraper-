@@ -228,6 +228,29 @@ public class CollectorController(
         return Ok(await adsIngestion.IngestGoogleAdvertiserAsync(request, ct));
     }
 
+    // The images the desktop app downloaded for ads: at most 50 ads per request, five images each (JPEG, 96 KB, 480 px wide).
+    [HttpPost("ads/thumbnails")]
+    [Authorize(Policy = CollectorPolicies.AdsIngest)]
+    [ProducesResponseType(typeof(AdThumbnailUploadResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> UploadAdThumbnails(
+        [FromBody] AdThumbnailUploadRequest request,
+        [FromServices] IAdThumbnailService thumbnails,
+        CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.Platform) || string.IsNullOrWhiteSpace(request.IdentityExternalId))
+        {
+            return BadRequest(new { error = "Platform and IdentityExternalId are required." });
+        }
+
+        if (request.Items is null)
+        {
+            return BadRequest(new { error = "Items is required." });
+        }
+
+        return Ok(await thumbnails.UploadAsync(request, ct));
+    }
+
     // The creative details the desktop app read (LookupService/GetCreativeById), for one advertiser's creatives.
     [HttpPost("google/creative-details")]
     [Authorize(Policy = CollectorPolicies.AdsIngest)]

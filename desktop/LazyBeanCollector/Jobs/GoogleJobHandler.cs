@@ -18,7 +18,8 @@ public sealed class GoogleJobHandler(
     IGoogleAdsTransparencyClient client,
     ActivityLog log,
     CollectorState state,
-    Func<TimeSpan, CancellationToken, Task> delay)
+    Func<TimeSpan, CancellationToken, Task> delay,
+    AdThumbnailSync? thumbnails = null)
 {
     private const int MaxPagesPerAdvertiser = 4;
     private const int MaxCreativesPerAdvertiser = 100;
@@ -71,9 +72,16 @@ public sealed class GoogleJobHandler(
                 items = unique.Select(ToPayload).ToList();
                 log.Info($"{identity.CompetitorName}: {creatives.Count} creative(s) collected, {unique.Count} unique, uploading now.");
 
-                var needDetail = await UploadAsync(identity, items, ct);
+                var uploaded = await UploadAsync(identity, items, ct);
+                var needDetail = uploaded.Where(r => r.NeedsDetail).Select(r => r.ExternalAdId).ToList();
                 totalAds += items.Count;
                 detailsBlocked = await FetchDetailsAsync(identity, needDetail, ct);
+
+                // The images of the creatives the server flagged. Only plain image addresses are read (a video's preview is a script).
+                if (thumbnails is not null)
+                {
+                    await thumbnails.SyncAsync("Google", identity.ExternalId, ThumbnailCandidates(uploaded, items), ct);
+                }
                 pages.Add(new CollectorPageReport(identity.ExternalId, "Success", items.Count, null));
                 log.Info($"{identity.CompetitorName}: {items.Count} Google ad(s).");
             }
@@ -106,8 +114,8 @@ public sealed class GoogleJobHandler(
     }
 
     // Uploads the ads. A server error is retried once, after 30 seconds, with the same ads kept in memory. Any other
-    // failure goes to the caller at once. Returns the creative IDs whose details the server asks for.
-    private async Task<IReadOnlyList<string>> UploadAsync(GoogleIdentityDto identity, List<GoogleAdPayloadItem> items, CancellationToken ct)
+    // failure goes to the caller at once. Returns what the server answered for each ad.
+    private async Task<IReadOnlyList<AdsIngestItemResult>> UploadAsync(GoogleIdentityDto identity, List<GoogleAdPayloadItem> items, CancellationToken ct)
     {
         var request = new GoogleAdsIngestRequest(identity.ExternalId, "Success", null, null, items);
         AdsIngestResponse response;
@@ -134,8 +142,21 @@ public sealed class GoogleJobHandler(
             log.Warn($"{identity.CompetitorName}: the server skipped {skipped.Count} Google ad(s). First reason: {skipped[0].Reason}");
         }
 
-        return results.Where(item => item.NeedsDetail && item.Outcome is "created" or "updated")
-            .Select(item => item.ExternalAdId)
+        return results;
+    }
+
+    // The creatives whose image should be read now, with the preview address they came with.
+    private static IReadOnlyList<AdThumbnailSync.Candidate> ThumbnailCandidates(
+        IReadOnlyList<AdsIngestItemResult> results,
+        IReadOnlyList<GoogleAdPayloadItem> items)
+    {
+        var previews = items
+            .Where(i => i.PreviewUrl is not null)
+            .ToDictionary(i => i.ExternalAdId, i => i.PreviewUrl!, StringComparer.Ordinal);
+
+        return results
+            .Where(r => r.NeedsThumbnail && previews.ContainsKey(r.ExternalAdId))
+            .Select(r => new AdThumbnailSync.Candidate(r.ExternalAdId, new[] { previews[r.ExternalAdId] }))
             .ToList();
     }
 

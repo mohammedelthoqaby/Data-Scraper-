@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api } from '../../api/client';
 import { fetchOwnAdComparison, type OwnAdComparisonRow, type OwnAdKind } from '../../api/ownAds';
-import { fetchOurAds, type AdVariant } from '../../api/adsApi';
 
 type Filter = 'all' | 'both' | 'opportunity' | 'higher';
 
@@ -35,33 +33,26 @@ function formatPlatform(platform: string | null): string {
   return 'Catalog';
 }
 
-// Our ads (Lazy Bean): one row per our product, competitor product and platform, with our catalog price even when
-// we do not advertise it. Below it, our own Google and Meta ads. Our ads never count toward the competitor totals.
+// Compare tab: our catalog price against each competitor for the same matched product, one row per platform. Our own
+// ads are not listed here; they are on the Our ads tab, and they never count toward the competitor totals.
 export const OurAdsSection: React.FC = () => {
   const [rows, setRows] = useState<OwnAdComparisonRow[]>([]);
-  const [ourAds, setOurAds] = useState<AdVariant[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      try {
-        const [comparison, sources] = await Promise.all([fetchOwnAdComparison(), api.GET('/api/sources')]);
-        const reference = (sources.data ?? []).find((s) => s.isReference);
-        const own = reference?.id ? await fetchOurAds(reference.id) : null;
-        if (!cancelled) {
-          setRows(comparison);
-          setOurAds(own?.ads ?? []);
-        }
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message || 'Could not load our ads.');
-      } finally {
+    fetchOwnAdComparison()
+      .then((comparison) => {
+        if (!cancelled) setRows(comparison);
+      })
+      .catch((err) => {
+        if (!cancelled) setError((err as Error).message || 'Could not load the comparison.');
+      })
+      .finally(() => {
         if (!cancelled) setLoading(false);
-      }
-    };
-    load();
+      });
     return () => {
       cancelled = true;
     };
@@ -81,10 +72,9 @@ export const OurAdsSection: React.FC = () => {
   return (
     <section className="panel" style={{ marginBottom: '16px', padding: '14px 16px' }}>
       <div className="eyebrow">Lazy Bean</div>
-      <h3 style={{ marginTop: 0 }}>Our ads (Lazy Bean)</h3>
+      <h3 style={{ marginTop: 0 }}>Compare with competitors</h3>
       <p className="subtitle" style={{ marginTop: 0 }}>
-        Our catalog price against each competitor for the same matched product, one row per platform. Our ads are not
-        counted as competitor ads.
+        Our catalog price against each competitor for the same matched product, one row per platform.
       </p>
 
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
@@ -102,7 +92,7 @@ export const OurAdsSection: React.FC = () => {
       </div>
 
       {loading ? (
-        <p className="subtitle">Loading our ads…</p>
+        <p className="subtitle">Loading the comparison…</p>
       ) : error ? (
         <div className="warning-banner">{error}</div>
       ) : visible.length === 0 ? (
@@ -168,52 +158,6 @@ export const OurAdsSection: React.FC = () => {
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <h4 style={{ margin: '18px 0 8px 0' }}>Lazy Bean ads</h4>
-      {loading ? null : ourAds.length === 0 ? (
-        <p className="subtitle">No Lazy Bean ads collected yet.</p>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', color: 'var(--muted)' }}>
-                <th style={{ padding: '4px 8px' }}>Platform</th>
-                <th style={{ padding: '4px 8px' }}>Format</th>
-                <th style={{ padding: '4px 8px' }}>Creative</th>
-                <th style={{ padding: '4px 8px' }}>Advertised</th>
-                <th style={{ padding: '4px 8px' }}>Shown</th>
-                <th style={{ padding: '4px 8px' }}>Status</th>
-                <th style={{ padding: '4px 8px' }}>Link</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ourAds.map((ad) => (
-                <tr key={ad.id} style={{ borderTop: '1px solid #f0f0f0' }}>
-                  <td style={{ padding: '6px 8px' }}>{ad.platform}</td>
-                  <td style={{ padding: '6px 8px' }}>{ad.creativeFormat ?? '—'}</td>
-                  <td style={{ padding: '6px 8px' }}>{ad.title || ad.externalAdId}</td>
-                  <td style={{ padding: '6px 8px' }}>
-                    {ad.advertisedPrice != null
-                      ? ad.advertisedQuantity && ad.advertisedQuantity > 1
-                        ? `${ad.advertisedQuantity} for ${formatPrice(ad.advertisedPrice)} (${formatPrice(ad.unitPrice)} each)`
-                        : formatPrice(ad.advertisedPrice)
-                      : '—'}
-                  </td>
-                  <td style={{ padding: '6px 8px' }}>{new Date(ad.lastSeenAt).toLocaleDateString('en-GB')}</td>
-                  <td style={{ padding: '6px 8px' }}>{ad.status}</td>
-                  <td style={{ padding: '6px 8px' }}>
-                    {ad.snapshotUrl && (
-                      <a href={ad.snapshotUrl} target="_blank" rel="noreferrer">
-                        View ad
-                      </a>
-                    )}
-                  </td>
-                </tr>
-              ))}
             </tbody>
           </table>
         </div>

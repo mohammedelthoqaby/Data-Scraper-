@@ -180,7 +180,12 @@ public class AdsIngestionService(
 
                     await unitOfWork.SaveChangesAsync(ct);
                     touched.Add(saved);
-                    results.Add(new AdsIngestItemResult(ad.ExternalAdId, outcome, null, GoogleCreativeDetailApplier.NeedsDetail(saved)));
+                    results.Add(new AdsIngestItemResult(
+                        ad.ExternalAdId,
+                        outcome,
+                        null,
+                        GoogleCreativeDetailApplier.NeedsDetail(saved),
+                        AdThumbnailRules.NeedsThumbnail(saved, ad.PreviewUrl)));
                 }
                 catch (DbUpdateException ex) when (ex.InnerException is PostgresException)
                 {
@@ -355,6 +360,7 @@ public class AdsIngestionService(
         var seenAdIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var ingestedCount = 0;
         var updatedCount = 0;
+        var itemResults = new List<AdsIngestItemResult>();
         var duplicateCount = 0;
         var received = request.Ads?.Count ?? 0;
 
@@ -444,6 +450,8 @@ public class AdsIngestionService(
                     }
                     unitOfWork.Ads.Update(existing);
                     updatedCount++;
+                    itemResults.Add(new AdsIngestItemResult(
+                        rawAd.Id, "updated", null, false, AdThumbnailRules.NeedsThumbnail(existing, rawAd.ImageUrl)));
                 }
                 else
                 {
@@ -483,6 +491,8 @@ public class AdsIngestionService(
                         await unitOfWork.ChangeEvents.AddAsync(startEvent, ct);
                     }
                     ingestedCount++;
+                    itemResults.Add(new AdsIngestItemResult(
+                        rawAd.Id, "created", null, false, AdThumbnailRules.NeedsThumbnail(newAd, rawAd.ImageUrl)));
                 }
             }
         }
@@ -536,7 +546,7 @@ public class AdsIngestionService(
             "Meta ads from '{Name}' ({PageId}): received {Received}, created {Created}, updated {Updated}, duplicate {Duplicate}, marked stopped {Stopped}.",
             identity.Name, identity.ExternalId, received, ingestedCount, updatedCount, duplicateCount, missingMarked);
 
-        return new AdsIngestResponse("Success", IngestedCount: ingestedCount, TotalProcessed: seenAdIds.Count);
+        return new AdsIngestResponse("Success", IngestedCount: ingestedCount, TotalProcessed: seenAdIds.Count, Items: itemResults);
     }
 
     // One Google advertiser has one campaign: the first one stored for it, or a new one.

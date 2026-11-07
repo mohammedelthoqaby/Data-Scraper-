@@ -57,6 +57,8 @@ public static class DependencyInjection
         services.AddSingleton(configuration.GetSection("Ads").Get<LazyBean.Application.Ads.Common.AdsOptions>()
             ?? new LazyBean.Application.Ads.Common.AdsOptions());
         services.AddHostedService<LazyBean.Infrastructure.Ads.AdsBackfillService>();
+        services.AddScoped<LazyBean.Application.Common.Interfaces.IAdThumbnailService, LazyBean.Infrastructure.Ads.AdThumbnailService>();
+        services.AddHostedService<LazyBean.Infrastructure.Ads.AdThumbnailRetentionService>();
         services.AddSingleton<ICollectorServerFallback, CollectorServerFallback>();
         services.AddHostedService<CollectorMaintenanceService>();
 
