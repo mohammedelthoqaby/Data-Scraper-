@@ -1,3 +1,6 @@
+using LazyBean.Collectors.Google;
+using LazyBean.Collectors.Http;
+using LazyBean.Collectors.Woo;
 using LazyBean.Domain.Entities;
 using LazyBean.Domain.Enums;
 using LazyBean.Infrastructure.Collection.Adapters;

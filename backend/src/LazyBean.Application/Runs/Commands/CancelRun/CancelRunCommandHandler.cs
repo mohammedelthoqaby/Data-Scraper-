@@ -24,11 +24,13 @@ public class CancelRunCommandHandler(
             return new CancelRunResultDto(run.Id, run.Status.ToString().ToLowerInvariant());
         }
 
-        cancellationRegistry.TryCancel(request.RunId);
-
         run.Status = CollectionRunStatus.Cancelled;
         run.FinishedAt = DateTimeOffset.UtcNow;
         await unitOfWork.SaveChangesAsync(ct);
+
+        // Signal the executor only after Cancelled is saved. Otherwise it can read the run while it is still
+        // Running, record it as Interrupted, and overwrite the user's cancel.
+        cancellationRegistry.TryCancel(request.RunId);
         await cache.RemoveByTagAsync("runs", ct);
 
         return new CancelRunResultDto(run.Id, "cancelled");

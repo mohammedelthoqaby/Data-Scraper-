@@ -109,7 +109,8 @@ public class CollectionProgressTracker : ICollectionProgressTracker
         private readonly Dictionary<Guid, int> _previousSizes;
         private readonly double _totalCatalogExpected;
 
-        private const double CollectionWeight = 0.70;
+        private const double CollectionWeight = 0.60;
+        private const double AdsWeight = 0.10;
         private const double ClassificationWeight = 0.05;
         private const double MatchingWeight = 0.15;
         private const double AiTriageWeight = 0.05;
@@ -135,6 +136,7 @@ public class CollectionProgressTracker : ICollectionProgressTracker
             _phases["classification"] = new PhaseProgressDto("classification", "Queued", "Waiting for collection to finish", null);
             _phases["matching"] = new PhaseProgressDto("matching", "Queued", "Waiting for classification", null);
             _phases["ai_triage"] = new PhaseProgressDto("ai_triage", "Queued", "Waiting for matching", null);
+            _phases["ads"] = new PhaseProgressDto("ads", "Queued", "Waiting for collection to finish", null);
             _phases["alerts"] = new PhaseProgressDto("alerts", "Queued", "Waiting for matching/triage", null);
         }
 
@@ -177,11 +179,11 @@ public class CollectionProgressTracker : ICollectionProgressTracker
         public RunProgressDto ToDto()
         {
             var now = DateTimeOffset.UtcNow;
-            var anyGithubWaiting = _competitors.Values.Any(c =>
-                string.Equals(c.CollectionHost, "github", StringComparison.OrdinalIgnoreCase) &&
+            var anyDesktopWaiting = _competitors.Values.Any(c =>
+                string.Equals(c.CollectionHost, "desktop", StringComparison.OrdinalIgnoreCase) &&
                 (c.Status == "Running" || c.Status == "Queued"));
 
-            var isStalled = !anyGithubWaiting && (Status == "Running" || Status == "Queued") && (now - LastProgressAt > TimeSpan.FromMinutes(3));
+            var isStalled = !anyDesktopWaiting && (Status == "Running" || Status == "Queued") && (now - LastProgressAt > TimeSpan.FromMinutes(3));
 
             var compDtos = _competitors.Values.Select(c => c.ToDto()).ToList();
 
@@ -222,6 +224,7 @@ public class CollectionProgressTracker : ICollectionProgressTracker
                 }
 
                 // 2. Post-processing phases progress
+                percent += CalculatePhaseContribution("ads", AdsWeight);
                 percent += CalculatePhaseContribution("classification", ClassificationWeight);
                 percent += CalculatePhaseContribution("matching", MatchingWeight);
                 percent += CalculatePhaseContribution("ai_triage", AiTriageWeight);
@@ -232,6 +235,7 @@ public class CollectionProgressTracker : ICollectionProgressTracker
 
             var phaseList = new List<PhaseProgressDto>
             {
+                _phases.GetValueOrDefault("ads", new PhaseProgressDto("ads", "Queued", null, null)),
                 _phases.GetValueOrDefault("classification", new PhaseProgressDto("classification", "Queued", null, null)),
                 _phases.GetValueOrDefault("matching", new PhaseProgressDto("matching", "Queued", null, null)),
                 _phases.GetValueOrDefault("ai_triage", new PhaseProgressDto("ai_triage", "Queued", null, null)),
@@ -253,11 +257,12 @@ public class CollectionProgressTracker : ICollectionProgressTracker
         private double CalculatePhaseContribution(string phaseName, double phaseWeight)
         {
             if (!_phases.TryGetValue(phaseName, out var p)) return 0;
-            if (p.Status == "Completed" || p.Status == "Skipped")
+            if (string.Equals(p.Status, "completed", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(p.Status, "skipped", StringComparison.OrdinalIgnoreCase))
             {
                 return phaseWeight * 100.0;
             }
-            if (p.Status == "Running")
+            if (string.Equals(p.Status, "running", StringComparison.OrdinalIgnoreCase))
             {
                 return (phaseWeight * 0.5) * 100.0;
             }

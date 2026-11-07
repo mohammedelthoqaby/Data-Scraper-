@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { RunSourcesPanel } from './RunSourcesPanel';
+import { useSectionActive } from '../shell/KeepAliveSection';
 import {
   api,
   fetchRunProgress,
   fetchActiveRun,
-  triggerMatchingNow,
-  redispatchGithubCollector,
   type RunDto,
   type AuthenticatedUser,
   type RunProgress,
@@ -30,29 +30,8 @@ export const RunsView: React.FC<RunsViewProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [isMatching, setIsMatching] = useState(false);
-  const [matchNotice, setMatchNotice] = useState<string | null>(null);
   const [activeProgress, setActiveProgress] = useState<RunProgress | null>(null);
   const [expandedRunIds, setExpandedRunIds] = useState<Set<string>>(new Set());
-  const [redispatchingSlug, setRedispatchingSlug] = useState<string | null>(null);
-  const [redispatchNotice, setRedispatchNotice] = useState<string | null>(null);
-
-  const handleRedispatch = async (runId: string, slug: string) => {
-    setRedispatchingSlug(slug);
-    setRedispatchNotice(null);
-    try {
-      const res = await redispatchGithubCollector(runId, slug);
-      if (res.success) {
-        setRedispatchNotice(`Workflow dispatched to GitHub Actions for ${slug}.`);
-      } else {
-        alert(res.message || 'Failed to re-dispatch.');
-      }
-    } catch (err: any) {
-      alert(err?.message || 'Error re-dispatching GitHub Actions collector.');
-    } finally {
-      setRedispatchingSlug(null);
-    }
-  };
 
   const fetchRunsList = async () => {
     setIsLoading(true);
@@ -87,7 +66,11 @@ export const RunsView: React.FC<RunsViewProps> = ({
 
   // Poll real-time active run progress every 3s
   // Source of truth is always the server's /api/runs/active endpoint (DB + ProgressTracker)
+  // The poll runs only while this section is on screen. The first poll is made once; coming back does not poll at once.
+  const sectionActive = useSectionActive();
+  const progressStarted = useRef(false);
   useEffect(() => {
+    if (!sectionActive) return;
     let timer: any = null;
     let isMounted = true;
 
@@ -115,14 +98,17 @@ export const RunsView: React.FC<RunsViewProps> = ({
       }
     };
 
-    pollActiveProgress();
+    if (!progressStarted.current) {
+      progressStarted.current = true;
+      pollActiveProgress();
+    }
     timer = setInterval(pollActiveProgress, 3000);
 
     return () => {
       isMounted = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [sectionActive]);
 
   const handleStartRun = async () => {
     if (!user) {
@@ -165,27 +151,6 @@ export const RunsView: React.FC<RunsViewProps> = ({
       alert(err?.message || 'Failed to start collection run');
     } finally {
       setIsStarting(false);
-    }
-  };
-
-  const handleRunMatching = async () => {
-    if (!user) {
-      onOpenLogin();
-      return;
-    }
-    setIsMatching(true);
-    setMatchNotice(null);
-    try {
-      const res = await triggerMatchingNow();
-      setMatchNotice(
-        `Matching complete: ${res?.autoAcceptedCount ?? 0} auto-accepted, ${res?.reviewItemCount ?? 0} reviews flagged.`
-      );
-      await fetchRunsList();
-      onRefreshRuns();
-    } catch (err: any) {
-      alert(err?.message || 'Failed to execute product matching');
-    } finally {
-      setIsMatching(false);
     }
   };
 
@@ -250,19 +215,10 @@ export const RunsView: React.FC<RunsViewProps> = ({
           <div className="eyebrow">SCRAPER PIPELINE & ORCHESTRATION</div>
           <h1 className="view-title">Collection Runs</h1>
           <p className="subtitle">
-            Trigger new collection passes across the 5 competitor stores, monitor real-time weighted scraping progress, or run matching manually.
+            Trigger new collection passes across the 5 competitor stores and monitor real-time weighted scraping progress. Matching runs automatically after each run.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={isMatching || isStarting}
-            onClick={handleRunMatching}
-            style={{ fontWeight: 600 }}
-          >
-            ⚡ {isMatching ? 'Matching in progress...' : 'Run Matching Now'}
-          </button>
           <button
             type="button"
             className="btn-primary"
@@ -319,16 +275,6 @@ export const RunsView: React.FC<RunsViewProps> = ({
         )}
       </div>
 
-      {matchNotice && (
-        <div
-          className="warning-banner"
-          style={{ background: '#e7f3ec', borderColor: '#9bc9b1', color: '#1b5238', marginBottom: '20px' }}
-        >
-          <span>✓</span>
-          <span>{matchNotice}</span>
-        </div>
-      )}
-
       {/* Active Run Real-Time Progress Banner */}
       {activeProgress ? (
         <div className="run-live-banner" style={{ marginBottom: '24px' }}>
@@ -350,13 +296,13 @@ export const RunsView: React.FC<RunsViewProps> = ({
             </button>
           </div>
 
-          {/* Stalled Alert if no progress for > 3 minutes (suppressed if waiting on GitHub collector) */}
+          {/* Stalled alert after 3 minutes without progress (suppressed while the desktop app is working) */}
           {(() => {
-            const isAnyGithubCollectorWaiting = activeProgress.competitors?.some(
-              (c) => (c.collectionHost === 'github' || (c.lastMessage || '').includes('GitHub collector')) &&
+            const isAnyDesktopCollectorWaiting = activeProgress.competitors?.some(
+              (c) => c.collectionHost === 'desktop' &&
                      ((c.status || '').toLowerCase() === 'running' || (c.status || '').toLowerCase() === 'queued')
             );
-            return activeProgress.isStalled && !isAnyGithubCollectorWaiting ? (
+            return activeProgress.isStalled && !isAnyDesktopCollectorWaiting ? (
               <div
                 className="warning-banner"
                 style={{
@@ -380,24 +326,8 @@ export const RunsView: React.FC<RunsViewProps> = ({
             ) : null;
           })()}
 
-          {/* Redispatch notification */}
-          {redispatchNotice && (
-            <div
-              className="success-banner"
-              style={{
-                background: '#d4edda',
-                borderColor: '#c3e6cb',
-                color: '#155724',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                marginTop: '12px',
-                marginBottom: '12px',
-                fontSize: '13px',
-              }}
-            >
-              ✓ {redispatchNotice}
-            </div>
-          )}
+          {/* Per-source status for this run: desktop app, server, or skipped */}
+          <RunSourcesPanel runId={activeProgress.runId} />
 
           {/* Real Weighted Progress Bar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>
@@ -445,7 +375,7 @@ export const RunsView: React.FC<RunsViewProps> = ({
                 <tbody>
                   {activeProgress.competitors.map((c) => {
                     const st = (c.status || '').toLowerCase();
-                    const badgeClass = st === 'completed' ? 'good' : st === 'running' ? 'warn' : st === 'degraded' || st === 'suspicious' ? 'warn' : 'bad';
+                    const badgeClass = st === 'completed' ? 'good' : st === 'running' ? 'warn' : st === 'degraded' || st === 'suspicious' || st === 'skipped' ? 'warn' : 'bad';
                     return (
                       <tr key={c.competitorId} style={{ borderBottom: '1px solid #f0f0f0' }}>
                         <td style={{ padding: '8px 12px', fontWeight: 600 }}>
@@ -455,9 +385,9 @@ export const RunsView: React.FC<RunsViewProps> = ({
                               Reference
                             </span>
                           )}
-                          {c.collectionHost === 'github' && (
-                            <span className="badge info" style={{ fontSize: '9px', marginLeft: '6px', background: '#e9ecef', color: '#495057' }}>
-                              GitHub Actions
+                          {c.collectionHost === 'desktop' && (
+                            <span className="badge info" style={{ fontSize: '9px', marginLeft: '6px', background: '#e0f2fe', color: '#0369a1' }}>
+                              Desktop app
                             </span>
                           )}
                         </td>
@@ -474,29 +404,6 @@ export const RunsView: React.FC<RunsViewProps> = ({
                         </td>
                         <td style={{ padding: '8px 12px', color: 'var(--muted)' }}>
                           <div>{c.lastMessage || '—'}</div>
-                          {c.collectionHost === 'github' && (
-                            <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px' }}>
-                              <a
-                                href="https://github.com/mohammedelthoqaby/Data-Scraper-/actions/workflows/github-collect.yml"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ color: '#0366d6', textDecoration: 'underline' }}
-                              >
-                                View GitHub Actions ↗
-                              </a>
-                              {(st === 'running' || st === 'queued' || st === 'failed' || st === 'waiting') && (
-                                <button
-                                  type="button"
-                                  className="btn-xs"
-                                  style={{ padding: '2px 8px', fontSize: '10px' }}
-                                  disabled={redispatchingSlug === c.competitorKey}
-                                  onClick={() => handleRedispatch(activeProgress.runId, c.competitorKey)}
-                                >
-                                  {redispatchingSlug === c.competitorKey ? 'Dispatching...' : '↻ Re-dispatch'}
-                                </button>
-                              )}
-                            </div>
-                          )}
                         </td>
                       </tr>
                     );

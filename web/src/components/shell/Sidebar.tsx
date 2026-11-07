@@ -113,6 +113,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <>
               <button
                 type="button"
+                aria-current={activeView === 'settings-account' ? 'page' : undefined}
+                onClick={() => onNavigate('settings-account')}
+              >
+                <span>Account & password</span>
+              </button>
+              <button
+                type="button"
                 aria-current={activeView === 'settings-alerts' ? 'page' : undefined}
                 onClick={() => onNavigate('settings-alerts')}
               >
@@ -136,6 +143,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => onNavigate('settings-ai')}
               >
                 <span>AI Configuration (Gemini)</span>
+              </button>
+              <button
+                type="button"
+                aria-current={activeView === 'settings-collector' ? 'page' : undefined}
+                onClick={() => onNavigate('settings-collector')}
+              >
+                <span>Collector (desktop app)</span>
               </button>
             </>
           )}

@@ -91,7 +91,7 @@ public class InternalIngestionTests(TestDatabaseFixture testDb) : IAsyncLifetime
                 BaseUrl = "https://example.com",
                 Platform = CompetitorPlatform.WooCommerce,
                 MinDelayMs = 1000,
-                CollectionHost = "github",
+                CollectionHost = "desktop",
                 Enabled = true
             };
             db.Competitors.Add(comp);
@@ -275,7 +275,7 @@ public class InternalIngestionTests(TestDatabaseFixture testDb) : IAsyncLifetime
         Assert.NotNull(config);
         Assert.Equal("strong-coffee", config.Slug);
         Assert.Equal("https://strongcoffee-eg.com", config.BaseUrl);
-        Assert.Equal("github", config.CollectionHost);
+        Assert.Equal("desktop", config.CollectionHost);
         Assert.Equal("WooCommerce", config.Platform);
     }
 }

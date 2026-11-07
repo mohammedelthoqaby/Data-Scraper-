@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import {
   fetchAlerts,
   fetchAlertSummary,
@@ -44,7 +44,12 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
   const [loadError, setLoadError] = useState<{ status?: number; message: string } | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState<boolean>(false);
 
+  // The list is kept on screen while it reloads, and the page keeps the scroll position it had before the reload.
+  const listRef = useRef<HTMLDivElement>(null);
+  const scrollAnchorRef = useRef<number | null>(null);
+
   const loadData = useCallback(async () => {
+    if (scrollAnchorRef.current === null) scrollAnchorRef.current = window.scrollY;
     setIsLoading(true);
     try {
       const [alertList, summaryData, healthData] = await Promise.all([
@@ -76,6 +81,20 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // When new rows arrive, the list keeps enough height for the page to stay at the same scroll position, then the position is set.
+  useLayoutEffect(() => {
+    const saved = scrollAnchorRef.current;
+    if (saved === null || isLoading) return;
+    scrollAnchorRef.current = null;
+    const list = listRef.current;
+    if (list) {
+      const top = list.getBoundingClientRect().top + window.scrollY;
+      const needed = Math.ceil(saved + window.innerHeight - top);
+      list.style.minHeight = needed > 0 ? `${needed}px` : '';
+    }
+    window.scrollTo(0, saved);
+  }, [alerts, isLoading]);
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -214,7 +233,9 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
 
       {/* 2. KPI Metrics Summary */}
       <div className="action-center-kpis">
-        <div
+        <button
+          type="button"
+          aria-pressed={severityFilter === 'Urgent'}
           className={`action-kpi-card urgent ${severityFilter === 'Urgent' ? 'selected' : ''}`}
           onClick={() => setSeverityFilter(severityFilter === 'Urgent' ? 'All' : 'Urgent')}
         >
@@ -223,9 +244,11 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
           </div>
           <div className="kpi-label">{language === 'ar' ? 'تنبيهات عاجلة' : 'Urgent Alerts'}</div>
           <div className="kpi-hint">{language === 'ar' ? 'فوارق أسعار، إعلانات، ونفاد مخزون' : 'Gaps ≥10%, ad threats, OOS'}</div>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
+          aria-pressed={severityFilter === 'Opportunity'}
           className={`action-kpi-card opportunity ${severityFilter === 'Opportunity' ? 'selected' : ''}`}
           onClick={() => setSeverityFilter(severityFilter === 'Opportunity' ? 'All' : 'Opportunity')}
         >
@@ -234,9 +257,11 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
           </div>
           <div className="kpi-label">{language === 'ar' ? 'فرص ربحية' : 'Opportunities'}</div>
           <div className="kpi-hint">{language === 'ar' ? 'مخزون حصري وهامش زيادة أسعار' : 'Exclusive inventory, margin room'}</div>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
+          aria-pressed={severityFilter === 'Watch'}
           className={`action-kpi-card watch ${severityFilter === 'Watch' ? 'selected' : ''}`}
           onClick={() => setSeverityFilter(severityFilter === 'Watch' ? 'All' : 'Watch')}
         >
@@ -245,9 +270,11 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
           </div>
           <div className="kpi-label">{language === 'ar' ? 'مراقبة ومتابعة' : 'Watch Items'}</div>
           <div className="kpi-hint">{language === 'ar' ? 'حملات خصم وفوارق زمنية > 14 يوماً' : 'Big campaigns, prolonged gaps'}</div>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
+          aria-pressed={severityFilter === 'All'}
           className={`action-kpi-card total ${severityFilter === 'All' ? 'selected' : ''}`}
           onClick={() => setSeverityFilter('All')}
         >
@@ -256,7 +283,7 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
           </div>
           <div className="kpi-label">{language === 'ar' ? 'إجمالي النشطة' : 'Total Active'}</div>
           <div className="kpi-hint">{language === 'ar' ? 'تتطلب قراراً من المدير' : 'Requiring manager decision'}</div>
-        </div>
+        </button>
       </div>
 
       {/* 3. Action Filters Bar */}
@@ -267,10 +294,12 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
             <button
               key={st}
               type="button"
+              aria-pressed={statusFilter === st}
               className={`tab-btn ${statusFilter === st ? 'active' : ''}`}
               onClick={() => setStatusFilter(st)}
             >
               {st}
+              {st === 'Active' && summary && <span className="tab-count">{summary.totalActive}</span>}
             </button>
           ))}
         </div>
@@ -279,6 +308,7 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
         <button
           type="button"
           className={`bestseller-toggle ${bestsellerOnly ? 'active' : ''}`}
+          aria-pressed={bestsellerOnly}
           onClick={() => setBestsellerOnly(!bestsellerOnly)}
           title="Filter to Lazy Bean Bestsellers"
         >
@@ -297,45 +327,45 @@ export const ActionCenterView: React.FC<ActionCenterViewProps> = ({
       </div>
 
       {/* 4. Alert Cards List */}
-      <div className="alert-cards-container">
-        {loadError ? (
-          <div
-            style={{
-              padding: '16px 20px',
-              background: '#fee2e2',
-              border: '1px solid #f87171',
-              borderRadius: '8px',
-              marginBottom: '20px',
-              color: '#991b1b',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>
-                ⚠️ Failed to load Action Center data (HTTP {loadError.status || 500})
-              </div>
-              <div style={{ fontSize: '13px' }}>{loadError.message}</div>
-            </div>
-            <button
-              type="button"
-              className="btn-secondary"
-              style={{
-                background: '#fff',
-                borderColor: '#dc2626',
-                color: '#dc2626',
-                fontWeight: 600,
-                padding: '6px 16px',
-                flexShrink: 0,
-              }}
-              onClick={loadData}
-            >
-              Retry
-            </button>
-          </div>
-        ) : isLoading ? (
+      <div ref={listRef} className={`alert-cards-container ${isLoading ? 'is-loading' : ''}`} aria-busy={isLoading}>
+        {loadError ? (
+          <div
+            style={{
+              padding: '16px 20px',
+              background: '#fee2e2',
+              border: '1px solid #f87171',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              color: '#991b1b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>
+                ⚠️ Failed to load Action Center data (HTTP {loadError.status || 500})
+              </div>
+              <div style={{ fontSize: '13px' }}>{loadError.message}</div>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{
+                background: '#fff',
+                borderColor: '#dc2626',
+                color: '#dc2626',
+                fontWeight: 600,
+                padding: '6px 16px',
+                flexShrink: 0,
+              }}
+              onClick={loadData}
+            >
+              Retry
+            </button>
+          </div>
+        ) : isLoading && !summary ? (
           <div>
             <div className="skeleton-card" style={{ marginBottom: '16px' }}>
               <div className="skeleton skeleton-row" style={{ width: '30%', height: '20px' }} />

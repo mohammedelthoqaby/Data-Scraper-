@@ -9,6 +9,9 @@ export interface AiSettingsDto {
   lastTestMessage: string | null;
   lastCallAt?: string | null;
   lastCallStatus?: string | null;
+  creativeVisionEnabled?: boolean;
+  creativeVisionDailyCap?: number;
+  creativeVisionUsedToday?: number;
 }
 
 export interface UpdateAiSettingsRequest {
@@ -16,6 +19,8 @@ export interface UpdateAiSettingsRequest {
   apiKey?: string;
   modelName?: string;
   dailyRequestCap?: number;
+  creativeVisionEnabled?: boolean;
+  creativeVisionDailyCap?: number;
 }
 
 export interface AiTestResultDto {

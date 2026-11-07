@@ -5,6 +5,9 @@ publish/
 *.user
 .vs/
 *.zip
+# Release executables and artifacts are built by tools/package-release.ps1 and are never committed.
+*.exe
+artifacts/
 backend/src/LazyBean.Api/wwwroot/
 web/dist/
 web/scripts/ai-triage-*.json

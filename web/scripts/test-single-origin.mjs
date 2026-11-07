@@ -32,7 +32,7 @@ async function testSingleOrigin() {
 
     // 2. Log in
     console.log('2. Entering admin credentials...');
-    await page.type('#unlock-password', 'Dev-Only-P@ssw0rd!');
+    await page.type('#unlock-password', process.env.LAZYBEAN_ADMIN_PASSWORD);
     const submitBtn = await page.$('button[type="submit"]');
     assert.ok(submitBtn, 'Submit button not found');
     await submitBtn.click();

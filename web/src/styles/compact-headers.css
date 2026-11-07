@@ -1,0 +1,213 @@
+/* Compact page headers and the viewport-fitted price comparison table.
+   Loaded after dashboard.css so these rules win. Layout only: row height, cell padding and cell content are unchanged. */
+
+/* One row for the top of a page: title on the left, report controls and buttons on the right. */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: 32px;
+  margin-bottom: 8px;
+}
+
+.page-header__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.page-header h1.view-title {
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.3px;
+}
+
+.page-header__info {
+  color: var(--muted);
+  font-size: 14px;
+  cursor: help;
+  line-height: 1;
+}
+
+.page-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* The report date bar sits inside the header row now: no card, no bottom margin. */
+.page-header .toolbar {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  gap: 8px;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+}
+
+.page-header .toolbar-group {
+  gap: 8px;
+}
+
+.page-header select.toolbar-select {
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 8px;
+}
+
+.page-header .btn-primary,
+.page-header .btn-secondary {
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* Price comparisons: a slim stats strip, one filter row with the count on the right, and a table that fills the rest. */
+.price-matrix-view .price-stats-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  height: 26px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.price-matrix-view .price-stats-strip strong {
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.price-matrix-view .price-stats-strip .sep {
+  color: #c2c9cf;
+}
+
+.price-matrix-view .matrix-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.price-matrix-view .matrix-filters-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+
+.price-matrix-view .matrix-filters-bar .filter-input,
+.price-matrix-view .matrix-filters-bar .filter-select {
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.price-matrix-view .matrix-filters-bar .filter-input {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.price-matrix-view .matrix-filters-bar .filter-select {
+  flex: 0 1 auto;
+}
+
+.price-matrix-view .matrix-filters-bar .matrix-count {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.price-matrix-view .matrix-table-wrap {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+/* The page keeps its outer padding to 12px so the table gets the height. */
+main.main-content.main-content-matrix {
+  padding: 12px;
+}
+
+/* Phones: the page scrolls as a whole, the header and filters wrap, and the product column is not pinned. */
+@media (max-width: 768px) {
+  body:has(.workspace-fixed-matrix) {
+    overflow: auto;
+  }
+
+  .workspace.workspace-fixed-matrix {
+    height: auto;
+    overflow: visible;
+  }
+
+  main.main-content.main-content-matrix {
+    height: auto;
+    overflow: visible;
+  }
+
+  .price-matrix-view {
+    overflow: visible;
+    height: auto;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-header__actions {
+    width: 100%;
+  }
+
+  .page-header .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .price-matrix-view .price-stats-strip {
+    height: auto;
+    white-space: normal;
+    overflow: visible;
+  }
+
+  .price-matrix-view .matrix-filters-bar {
+    flex-wrap: wrap;
+  }
+
+  .price-matrix-view .matrix-filters-bar .filter-input {
+    flex: 1 1 100%;
+  }
+
+  .price-matrix-view .matrix-filters-bar .matrix-count {
+    margin-left: 0;
+  }
+
+  .price-matrix-view .matrix-table-wrap {
+    flex: none;
+    max-height: 70vh;
+    min-height: 240px;
+  }
+
+  table.matrix-table th.sticky-col,
+  table.matrix-table td.sticky-col {
+    position: static;
+    box-shadow: none;
+  }
+}

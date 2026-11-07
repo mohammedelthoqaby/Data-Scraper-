@@ -1,24 +1,39 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { api, type CompetitorOffer, type ReferenceOffer } from '../../api/client';
+import { PageHeader } from '../shell/PageHeader';
+import { useKeepScroll } from '../shell/useKeepScroll';
+import { hashView, readHashParams, writeHashParams } from '../../lib/pageUrlState';
 
 interface OffersViewProps {
   selectedRunId: string | null;
   onOpenProductDetail?: (productId: string, title?: string) => void;
+  // The report date bar, shown in the page header row.
+  toolbar?: React.ReactNode;
 }
 
-export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenProductDetail }) => {
+export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenProductDetail, toolbar }) => {
   // Offer Source: 'competitor' vs 'reference'
-  const [sourceType, setSourceType] = useState<'competitor' | 'reference'>('competitor');
+  // The tab and filters start from the URL hash, so a reload or a return to the page restores them.
+  const [initial] = useState(() => readHashParams());
+  const [sourceType, setSourceType] = useState<'competitor' | 'reference'>(() =>
+    initial.get('source') === 'reference' ? 'reference' : 'competitor'
+  );
   
-  // Status filter: 'new' (default) | 'ongoing' | 'ended' | 'all'
-  const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'ongoing' | 'ended'>('new');
+  // Status filter: 'ongoing' (default on every fresh visit) | 'new' | 'ended' | 'all'. A manual pick holds while
+  // the page is open: switching top tabs, Reload and the report date keep it. Leaving the page unmounts this
+  // component, so the next visit starts on Ongoing again. An empty Ongoing list stays open; it does not jump.
+  const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'ongoing' | 'ended'>(() => {
+    const value = initial.get('status');
+    return value === 'new' || value === 'ended' || value === 'all' ? value : 'ongoing';
+  });
   
   // Search & Competitor filters
-  const [search, setSearch] = useState('');
-  const [selectedCompetitor, setSelectedCompetitor] = useState<string>('all');
+  const [search, setSearch] = useState(() => initial.get('q') ?? '');
+  const [selectedCompetitor, setSelectedCompetitor] = useState<string>(() => initial.get('store') ?? 'all');
   
-  // Pagination
-  const [displayLimit, setDisplayLimit] = useState(25);
+  // The page keeps its scroll position when a tab or pill changes the list.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const keepScroll = useKeepScroll(rootRef, `${sourceType}|${statusFilter}|${selectedCompetitor}|${search}`);
 
   // Data state
   const [competitorOffers, setCompetitorOffers] = useState<CompetitorOffer[]>([]);
@@ -26,48 +41,51 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch competitor offers
-  useEffect(() => {
-    let isMounted = true;
-    const fetchOffers = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        if (selectedRunId) {
-          // Fetch competitor offers for this run with status=all
-          const res = await api.GET('/api/runs/{id}/competitor-offers', {
-            params: { path: { id: selectedRunId }, query: { status: 'all' } },
-          });
-          if (isMounted && res.data?.offers) {
-            setCompetitorOffers(res.data.offers);
-          }
-
-          // Fetch reference offers
-          const refRes = await api.GET('/api/runs/{id}/reference-offers', {
-            params: { path: { id: selectedRunId } },
-          });
-          if (isMounted && refRes.data?.offers) {
-            setReferenceOffers(refRes.data.offers);
-          }
-        } else {
-          // Fallback to reference offers endpoint without runId
-          const refRes = await api.GET('/api/reference-offers');
-          if (isMounted && refRes.data?.offers) {
-            setReferenceOffers(refRes.data.offers);
-          }
+  // Fetches the offers for the selected run. Retry calls the same function. A response for a run that is no longer
+  // selected is ignored.
+  const latestRequest = useRef(0);
+  const fetchOffers = useCallback(async () => {
+    const request = ++latestRequest.current;
+    const isCurrent = () => request === latestRequest.current;
+    setIsLoading(true);
+    setError(null);
+    try {
+      if (selectedRunId) {
+        // Competitor offers for this run with status=all, then the reference offers.
+        const res = await api.GET('/api/runs/{id}/competitor-offers', {
+          params: { path: { id: selectedRunId }, query: { status: 'all' } },
+        });
+        if (isCurrent() && res.data?.offers) {
+          setCompetitorOffers(res.data.offers);
         }
-      } catch (err: any) {
-        if (isMounted) setError(err?.message || 'Failed to load offers');
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    };
 
-    fetchOffers();
-    return () => {
-      isMounted = false;
-    };
+        const refRes = await api.GET('/api/runs/{id}/reference-offers', {
+          params: { path: { id: selectedRunId } },
+        });
+        if (isCurrent() && refRes.data?.offers) {
+          setReferenceOffers(refRes.data.offers);
+        }
+      } else {
+        // Fallback to the reference offers endpoint without a run id.
+        const refRes = await api.GET('/api/reference-offers');
+        if (isCurrent() && refRes.data?.offers) {
+          setReferenceOffers(refRes.data.offers);
+        }
+      }
+    } catch (err: any) {
+      if (isCurrent()) setError(err?.message || 'Failed to load offers');
+    } finally {
+      if (isCurrent()) setIsLoading(false);
+    }
   }, [selectedRunId]);
+
+  useEffect(() => {
+    void fetchOffers();
+    return () => {
+      // Responses that arrive after this run is left are ignored.
+      latestRequest.current++;
+    };
+  }, [fetchOffers]);
 
   // Compute status counts for competitor offers
   const competitorCounts = useMemo(() => {
@@ -148,20 +166,27 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
     }
   }, [sourceType, competitorOffers, referenceOffers, statusFilter, selectedCompetitor, search]);
 
-  const displayedOffers = filteredOffers.slice(0, displayLimit);
+  // The tab and filters are written to the URL with replaceState, so Back returns to the previous section and not to the
+  // last filter state.
+  useEffect(() => {
+    writeHashParams(hashView(), {
+      source: sourceType === 'reference' ? 'reference' : undefined,
+      status: statusFilter === 'ongoing' ? undefined : statusFilter,
+      store: selectedCompetitor === 'all' ? undefined : selectedCompetitor,
+      q: search.trim() || undefined,
+    });
+  }, [sourceType, statusFilter, selectedCompetitor, search]);
+
+  // Every matching offer is listed. The list scrolls inside its box, so the page stays put.
+  const displayedOffers = filteredOffers;
 
   return (
-    <div className="offers-view">
-      {/* Page Heading */}
-      <div className="page-heading">
-        <div>
-          <div className="eyebrow">MARKET INTELLIGENCE</div>
-          <h1 className="view-title">Promotions & Offers</h1>
-          <p className="subtitle">
-            Review active discounts, newly started promotional deals, and catalog price cuts across monitored coffee stores in Egypt.
-          </p>
-        </div>
-      </div>
+    <div className="offers-view" ref={rootRef}>
+      <PageHeader
+        title="Promotions & Offers"
+        info="Review active discounts, newly started promotional deals, and catalog price cuts across monitored coffee stores in Egypt."
+        actions={toolbar}
+      />
 
       {/* Top Source Switcher (Competitor vs Reference) */}
       <div className="tab-bar">
@@ -170,8 +195,8 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
           className={`tab-btn ${sourceType === 'competitor' ? 'active' : ''}`}
           aria-selected={sourceType === 'competitor'}
           onClick={() => {
+            keepScroll();
             setSourceType('competitor');
-            setDisplayLimit(25);
           }}
         >
           Competitor Offers
@@ -182,8 +207,8 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
           className={`tab-btn ${sourceType === 'reference' ? 'active' : ''}`}
           aria-selected={sourceType === 'reference'}
           onClick={() => {
+            keepScroll();
             setSourceType('reference');
-            setDisplayLimit(25);
           }}
         >
           Lazy Bean Reference Offers
@@ -191,12 +216,12 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
         </button>
       </div>
 
-      {/* Status Tabs - Defaults to New, All is opt-in */}
+      {/* Status Tabs - Defaults to Ongoing, All is opt-in */}
       <div className="tab-bar" style={{ borderBottom: '1px solid var(--line)', marginBottom: '16px' }}>
         <button
           type="button"
           className={`tab-btn ${statusFilter === 'new' ? 'active' : ''}`}
-          onClick={() => setStatusFilter('new')}
+          onClick={() => { keepScroll(); setStatusFilter('new'); }}
         >
           New (Last 7 Days)
           <span className="tab-count" style={{ background: '#e7f3ec', color: '#1b5238' }}>
@@ -212,7 +237,7 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
         <button
           type="button"
           className={`tab-btn ${statusFilter === 'ongoing' ? 'active' : ''}`}
-          onClick={() => setStatusFilter('ongoing')}
+          onClick={() => { keepScroll(); setStatusFilter('ongoing'); }}
         >
           Ongoing
           <span className="tab-count">
@@ -228,7 +253,7 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
         <button
           type="button"
           className={`tab-btn ${statusFilter === 'ended' ? 'active' : ''}`}
-          onClick={() => setStatusFilter('ended')}
+          onClick={() => { keepScroll(); setStatusFilter('ended'); }}
         >
           Ended
           <span className="tab-count">
@@ -244,7 +269,7 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
         <button
           type="button"
           className={`tab-btn ${statusFilter === 'all' ? 'active' : ''}`}
-          onClick={() => setStatusFilter('all')}
+          onClick={() => { keepScroll(); setStatusFilter('all'); }}
         >
           All Offers (Opt-in)
           <span className="tab-count">
@@ -285,12 +310,12 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
         )}
 
         <div style={{ fontSize: '13px', color: 'var(--muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>
-          Showing <strong>{displayedOffers.length}</strong> of <strong>{filteredOffers.length}</strong> offers
+          Showing all <strong>{filteredOffers.length}</strong> offers
         </div>
       </div>
 
       {/* Offers List */}
-      {isLoading ? (
+      {isLoading && competitorOffers.length === 0 && referenceOffers.length === 0 ? (
         <div className="offers-list">
           <div className="skeleton-card" style={{ marginBottom: '12px' }}>
             <div className="skeleton skeleton-row" style={{ width: '40%', height: '20px' }} />
@@ -343,7 +368,7 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
           No offers found matching the current filters.
         </div>
       ) : (
-        <div className="offers-list">
+        <div className="offers-list" style={{ maxHeight: 'calc(100vh - 360px)', minHeight: 240, overflowY: 'auto', paddingRight: 4 }}>
           {displayedOffers.map((offer: any) => {
             const isNew = (offer.status || '').toLowerCase() === 'new';
             const isEnded = (offer.status || '').toLowerCase() === 'ended';
@@ -428,17 +453,6 @@ export const OffersView: React.FC<OffersViewProps> = ({ selectedRunId, onOpenPro
             );
           })}
 
-          {displayedOffers.length < filteredOffers.length && (
-            <div style={{ textAlign: 'center', marginTop: '20px' }}>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setDisplayLimit((prev) => prev + 25)}
-              >
-                Show more offers (+25)
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>

@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: lazybean
       POSTGRES_USER: lazybean
-      POSTGRES_PASSWORD: changeme
+      POSTGRES_PASSWORD: ${LAZYBEAN_DB_PASSWORD:?set LAZYBEAN_DB_PASSWORD before starting this stack}
     ports:
       - "15432:5432"
     volumes:
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
     environment:
       DB_USER: lazybean
-      DB_PASSWORD: changeme
+      DB_PASSWORD: ${LAZYBEAN_DB_PASSWORD:?set LAZYBEAN_DB_PASSWORD before starting this stack}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: "*"

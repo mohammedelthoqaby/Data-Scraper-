@@ -10,13 +10,18 @@ public record AiSettingsDto(
     bool? LastTestSuccess,
     string? LastTestMessage,
     DateTimeOffset? LastCallAt = null,
-    string? LastCallStatus = null);
+    string? LastCallStatus = null,
+    bool CreativeVisionEnabled = false,
+    int CreativeVisionDailyCap = 20,
+    int CreativeVisionUsedToday = 0);
 
 public record UpdateAiSettingsRequestDto(
     bool? IsEnabled,
     string? ApiKey,
     string? ModelName,
-    int? DailyRequestCap);
+    int? DailyRequestCap,
+    bool? CreativeVisionEnabled = null,
+    int? CreativeVisionDailyCap = null);
 
 public record TestAiConnectionRequestDto(
     string? ApiKey,

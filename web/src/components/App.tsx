@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import {
   api,
   onUnauthorized,
@@ -26,13 +26,46 @@ import { SourcesIdentitiesView } from './views/SourcesIdentitiesView';
 import { SettingsAiView } from './views/SettingsAiView';
 import { ActionCenterView } from './views/ActionCenterView';
 import { SettingsAlertsView } from './views/SettingsAlertsView';
+import { SettingsCollectorView } from './views/SettingsCollectorView';
+import { SettingsAccountView } from './views/SettingsAccountView';
+import { CollectorBanner } from './shell/CollectorBanner';
 import { DataQualityView } from './views/DataQualityView';
 import { ProductDetailModal } from './views/ProductDetailModal';
 import { fetchAlertSummary } from '../api/alerts';
+import { KeepAliveSection, type SectionHandle } from './shell/KeepAliveSection';
+
+// Each view belongs to a section. Views that share one component (Promotions and weekly actions, Runs and history,
+// Data quality and review queue) share a section, so they keep the same mounted instance.
+const SECTION_OF_VIEW: Record<string, string> = {
+  overview: 'overview',
+  offers: 'offers',
+  'weekly-actions': 'offers',
+  'price-comparisons': 'price',
+  'ads-campaigns': 'ads',
+  attention: 'attention',
+  'settings-alerts': 'settings-alerts',
+  'settings-account': 'settings-account',
+  'settings-collector': 'settings-collector',
+  'settings-ai': 'settings-ai',
+  'data-quality': 'data-quality',
+  'review-queue': 'data-quality',
+  runs: 'runs',
+  history: 'runs',
+  sources: 'sources',
+  'improve-recommendations': 'improve-recommendations',
+};
+
+const sectionOf = (view: string): string => SECTION_OF_VIEW[view] ?? view;
 
 export const App: React.FC = () => {
   // Navigation State
   const [activeView, setActiveView] = useState<string>('overview');
+  // The latest view, for the handlers that run outside render (the hash and the sidebar).
+  const activeViewRef = useRef(activeView);
+  activeViewRef.current = activeView;
+  // Per section: the window scroll position when it was left, and the handles that save and reset its inner scroll.
+  const windowScrollRef = useRef<Record<string, number>>({});
+  const sectionRegistry = useRef(new Map<string, SectionHandle>());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Auth State
@@ -113,11 +146,13 @@ export const App: React.FC = () => {
           'history',
           'settings-ai',
           'settings-alerts',
+          'settings-collector',
+          'settings-account',
           'data-quality',
           'improve-recommendations',
         ].includes(hash)
       ) {
-        setActiveView(hash);
+        switchView(hash);
       }
     };
 
@@ -126,10 +161,46 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const navigateTo = (view: string) => {
-    window.location.hash = `#/${view}`;
-    setActiveView(view);
+  // Switching saves the window scroll and the inner scroll positions of the section that is left.
+  const switchView = (next: string) => {
+    const current = activeViewRef.current;
+    if (next === current) return;
+    const fromSection = sectionOf(current);
+    windowScrollRef.current[fromSection] = window.scrollY;
+    sectionRegistry.current.get(fromSection)?.save();
+    activeViewRef.current = next;
+    setActiveView(next);
   };
+
+  // The sidebar item of the section that is already open scrolls it back to the top.
+  const resetSectionScroll = (section: string) => {
+    window.scrollTo(0, 0);
+    sectionRegistry.current.get(section)?.reset();
+  };
+
+  const navigateTo = (view: string) => {
+    if (view === activeViewRef.current) {
+      resetSectionScroll(sectionOf(view));
+    } else {
+      switchView(view);
+    }
+    window.location.hash = `#/${view}`;
+  };
+
+  // Sections stay mounted once they have been opened. The section of the current view is shown; the others are hidden.
+  const activeSection = sectionOf(activeView);
+  const [visitedSections, setVisitedSections] = useState<string[]>([]);
+  useEffect(() => {
+    setVisitedSections((prev) => (prev.includes(activeSection) ? prev : [...prev, activeSection]));
+  }, [activeSection]);
+  const sectionsToRender = visitedSections.includes(activeSection)
+    ? visitedSections
+    : [...visitedSections, activeSection];
+
+  // Back in the window where the section was left. A section opened for the first time starts at the top.
+  useLayoutEffect(() => {
+    window.scrollTo(0, windowScrollRef.current[activeSection] ?? 0);
+  }, [activeSection]);
 
   // Check existing session
   const checkSession = useCallback(async () => {
@@ -333,6 +404,101 @@ export const App: React.FC = () => {
     }
   }, [isSidebarCollapsed]);
 
+  // The report date bar. On the pages that have a compact page header it sits in that header row; elsewhere it stays on top.
+  const INLINE_TOOLBAR_VIEWS = ['overview', 'offers', 'weekly-actions', 'price-comparisons', 'ads-campaigns'];
+  const reportToolbar = (
+    <Toolbar
+      runs={runs}
+      selectedRunId={selectedRunId}
+      onSelectRun={(id) => setSelectedRunId(id)}
+      onReload={handleReloadAll}
+      isLoading={isLoading}
+    />
+  );
+
+  // The content of each section, with the props its view takes.
+  const renderSection = (section: string): React.ReactNode => {
+    switch (section) {
+      case 'overview':
+        return (
+          <OverviewView
+            matrix={matrix}
+            offers={offers}
+            reviewCount={reviewCount}
+            onNavigate={navigateTo}
+            onRefreshCollection={handleStartRun}
+            toolbar={reportToolbar}
+          />
+        );
+      case 'offers':
+        return (
+          <OffersView
+            selectedRunId={selectedRunId}
+            onOpenProductDetail={openProductDetail}
+            toolbar={reportToolbar}
+          />
+        );
+      case 'price':
+        return (
+          <PriceMatrixView
+            matrix={matrix}
+            matrixError={matrixError}
+            selectedRunId={selectedRunId}
+            isLoading={isLoading}
+            onOpenProductDetail={openProductDetail}
+            onRetry={() => fetchMatrix(selectedRunId)}
+            toolbar={reportToolbar}
+          />
+        );
+      case 'ads':
+        return <AdsCampaignsView onOpenProductDetail={openProductDetail} toolbar={reportToolbar} />;
+      case 'attention':
+        return <ActionCenterView onOpenProductDetail={openProductDetail} onRefreshAlertCount={fetchAlertCount} />;
+      case 'settings-alerts':
+        return <SettingsAlertsView />;
+      case 'settings-account':
+        return <SettingsAccountView />;
+      case 'settings-collector':
+        return <SettingsCollectorView />;
+      case 'data-quality':
+        return <DataQualityView onOpenProductDetail={openProductDetail} onRefreshReviewCount={fetchReviewCount} />;
+      case 'runs':
+        return (
+          <RunsView
+            user={user}
+            onOpenLogin={() => setIsLoginOpen(true)}
+            onNavigateToMatrix={(runId) => {
+              setSelectedRunId(runId);
+              navigateTo('price-comparisons');
+            }}
+            onRefreshRuns={handleReloadAll}
+            onActiveProgressChange={setActiveRunProgress}
+          />
+        );
+      case 'sources':
+        return <SourcesIdentitiesView />;
+      case 'settings-ai':
+        return <SettingsAiView />;
+      case 'improve-recommendations':
+        return (
+          <div className="panel" style={{ padding: '40px', textAlign: 'center' }}>
+            <div className="eyebrow">INTERNAL BUSINESS DATA</div>
+            <h2 style={{ marginTop: '8px' }}>Internal Data Import</h2>
+            <p style={{ color: 'var(--muted)', marginTop: '8px', maxWidth: '500px', margin: '8px auto 0' }}>
+              Upload internal sales velocity, inventory, or margins (CSV/XLSX) to enrich market positioning recommendations.
+            </p>
+            <div style={{ marginTop: '20px', border: '2px dashed var(--line)', padding: '30px', borderRadius: '8px', background: '#fafbfc' }}>
+              <p style={{ margin: 0, color: 'var(--muted)', fontSize: '13px' }}>
+                Drag and drop <code>.csv</code> or <code>.xlsx</code> file here, or click to browse
+              </p>
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="app-shell">
       {/* Sidebar Navigation */}
@@ -395,102 +561,21 @@ export const App: React.FC = () => {
             />
           ) : (
             <>
-              <Toolbar
-                runs={runs}
-                selectedRunId={selectedRunId}
-                onSelectRun={(id) => setSelectedRunId(id)}
-                onReload={handleReloadAll}
-                isLoading={isLoading}
-              />
+              <CollectorBanner runActive={Boolean(activeRunProgress)} />
 
-              {/* Active View Outlet */}
-              {activeView === 'overview' && (
-                <OverviewView
-                  matrix={matrix}
-                  offers={offers}
-                  reviewCount={reviewCount}
-                  onNavigate={navigateTo}
-                  onRefreshCollection={handleStartRun}
-                />
-              )}
+              {!INLINE_TOOLBAR_VIEWS.includes(activeView) && reportToolbar}
 
-              {(activeView === 'offers' || activeView === 'weekly-actions') && (
-                <OffersView
-                  selectedRunId={selectedRunId}
-                  onOpenProductDetail={openProductDetail}
-                />
-              )}
-
-              {activeView === 'price-comparisons' && (
-                <PriceMatrixView
-                  matrix={matrix}
-                  matrixError={matrixError}
-                  selectedRunId={selectedRunId}
-                  isLoading={isLoading}
-                  onOpenProductDetail={openProductDetail}
-                  onRetry={() => fetchMatrix(selectedRunId)}
-                />
-              )}
-
-              {activeView === 'ads-campaigns' && (
-                <AdsCampaignsView
-                  onOpenProductDetail={openProductDetail}
-                />
-              )}
-
-              {activeView === 'attention' && (
-                <ActionCenterView
-                  onOpenProductDetail={openProductDetail}
-                  onRefreshAlertCount={fetchAlertCount}
-                />
-              )}
-
-              {activeView === 'settings-alerts' && (
-                <SettingsAlertsView />
-              )}
-
-              {(activeView === 'data-quality' || activeView === 'review-queue') && (
-                <DataQualityView
-                  onOpenProductDetail={openProductDetail}
-                  onRefreshReviewCount={fetchReviewCount}
-                />
-              )}
-
-              {(activeView === 'runs' || activeView === 'history') && (
-                <RunsView
-                  user={user}
-                  onOpenLogin={() => setIsLoginOpen(true)}
-                  onNavigateToMatrix={(runId) => {
-                    setSelectedRunId(runId);
-                    navigateTo('price-comparisons');
-                  }}
-                  onRefreshRuns={handleReloadAll}
-                  onActiveProgressChange={setActiveRunProgress}
-                />
-              )}
-
-              {activeView === 'sources' && (
-                <SourcesIdentitiesView />
-              )}
-
-              {activeView === 'settings-ai' && (
-                <SettingsAiView />
-              )}
-
-              {activeView === 'improve-recommendations' && (
-                <div className="panel" style={{ padding: '40px', textAlign: 'center' }}>
-                  <div className="eyebrow">INTERNAL BUSINESS DATA</div>
-                  <h2 style={{ marginTop: '8px' }}>Internal Data Import</h2>
-                  <p style={{ color: 'var(--muted)', marginTop: '8px', maxWidth: '500px', margin: '8px auto 0' }}>
-                    Upload internal sales velocity, inventory, or margins (CSV/XLSX) to enrich market positioning recommendations.
-                  </p>
-                  <div style={{ marginTop: '20px', border: '2px dashed var(--line)', padding: '30px', borderRadius: '8px', background: '#fafbfc' }}>
-                    <p style={{ margin: 0, color: 'var(--muted)', fontSize: '13px' }}>
-                      Drag and drop <code>.csv</code> or <code>.xlsx</code> file here, or click to browse
-                    </p>
-                  </div>
-                </div>
-              )}
+              {/* Sections: each one that has been opened stays mounted; only the section of the current view is shown. */}
+              {sectionsToRender.map((section) => (
+                <KeepAliveSection
+                  key={section}
+                  id={section}
+                  active={section === activeSection}
+                  registry={sectionRegistry.current}
+                >
+                  {renderSection(section)}
+                </KeepAliveSection>
+              ))}
             </>
           )}
         </main>

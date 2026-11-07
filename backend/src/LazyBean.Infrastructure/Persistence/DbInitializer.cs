@@ -10,12 +10,14 @@ using Microsoft.Extensions.Logging;
 
 namespace LazyBean.Infrastructure.Persistence;
 
-// Dev/ops convenience: creates one bootstrap login if the users table is empty, from
-// Admin:Username / Admin:Password (set via user-secrets or environment - never appsettings.json).
-// Syncs/creates bootstrap admin login from Admin:Username / Admin:Password
-// (set via user-secrets or environment - never appsettings.json).
-// If the user exists and the stored hash doesn't verify against Admin:Password,
-// re-hashes and updates the user so environment variables stay the source of truth.
+// Admin:Username / Admin:Password (user-secrets or environment, never appsettings.json) bootstrap the dashboard login.
+//
+// - No user yet: the user is created with Admin:Password.
+// - Until the password is changed on the website (users.PasswordUpdatedAt is null), a changed Admin:Password is
+//   applied at startup, so the environment stays the source of truth during setup.
+// - Once it has been changed on the website, startup never overwrites the stored password.
+// - Admin:ResetPassword=true (with Admin:Password) is the explicit recovery. It applies the configured password once
+//   per distinct value and logs a warning. Remove Admin__ResetPassword after use; see HANDOVER.md.
 public static class DbInitializer
 {
     public static async Task SeedAdminUserAsync(IServiceProvider services, CancellationToken ct = default)
@@ -30,9 +32,15 @@ public static class DbInitializer
 
         var username = configuration["Admin:Username"];
         var password = configuration["Admin:Password"];
+        var resetRequested = string.Equals(configuration["Admin:ResetPassword"], "true", StringComparison.OrdinalIgnoreCase);
 
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
+            if (resetRequested)
+            {
+                logger.LogError("Admin:ResetPassword is true, but Admin:Username and Admin:Password must both be set. No password was reset.");
+            }
+
             if (!await context.Users.AnyAsync(ct))
             {
                 logger.LogWarning(
@@ -45,15 +53,57 @@ public static class DbInitializer
         var adminUser = await context.Users.FirstOrDefaultAsync(u => u.Username == username, ct);
         if (adminUser is null)
         {
-            context.Users.Add(new User { Username = username, PasswordHash = passwordHasher.Hash(password) });
+            adminUser = new User { Username = username, PasswordHash = passwordHasher.Hash(password) };
+            if (resetRequested)
+            {
+                adminUser.RecoveryMarkerHash = passwordHasher.Hash(password);
+            }
+
+            context.Users.Add(adminUser);
             await context.SaveChangesAsync(ct);
             logger.LogInformation("Seeded bootstrap admin user {Username}.", username);
+            return;
         }
-        else if (!passwordHasher.Verify(adminUser.PasswordHash, password))
+
+        if (resetRequested)
         {
+            if (adminUser.RecoveryMarkerHash is not null && passwordHasher.Verify(adminUser.RecoveryMarkerHash, password))
+            {
+                logger.LogWarning(
+                    "Admin:ResetPassword is still set, but it was already applied for this Admin:Password. " +
+                    "Remove Admin__ResetPassword from the environment.");
+                return;
+            }
+
             adminUser.PasswordHash = passwordHasher.Hash(password);
+            adminUser.PasswordUpdatedAt = DateTimeOffset.UtcNow;
+            adminUser.SecurityStamp = User.NewSecurityStamp();
+            adminUser.RecoveryMarkerHash = passwordHasher.Hash(password);
             await context.SaveChangesAsync(ct);
-            logger.LogInformation("admin credential synced from configuration");
+            logger.LogWarning(
+                "Admin:ResetPassword was applied: the password for {Username} was reset from configuration at startup, " +
+                "and its sessions were signed out. Remove Admin__ResetPassword (and Admin__Password) from the environment now.",
+                username);
+            return;
+        }
+
+        if (adminUser.PasswordUpdatedAt is null)
+        {
+            if (!passwordHasher.Verify(adminUser.PasswordHash, password))
+            {
+                adminUser.PasswordHash = passwordHasher.Hash(password);
+                await context.SaveChangesAsync(ct);
+                logger.LogInformation("admin credential synced from configuration");
+            }
+            return;
+        }
+
+        if (!passwordHasher.Verify(adminUser.PasswordHash, password))
+        {
+            logger.LogInformation(
+                "Admin:Password differs from the stored password, which was changed on the website on {ChangedOn:u}. " +
+                "The stored password is kept. To override it, set Admin__ResetPassword=true once.",
+                adminUser.PasswordUpdatedAt);
         }
     }
 
@@ -65,7 +115,9 @@ public static class DbInitializer
         bool IsReference,
         int MinDelayMs,
         List<string>? MetaPageIds = null,
-        string? CollectionHost = null);
+        string? CollectionHost = null,
+        List<string>? PendingMetaPageIds = null,
+        List<string>? ApprovedGoogleAdvertiserIds = null);
 
     public static async Task SeedCompetitorsAsync(IServiceProvider services, CancellationToken ct = default)
     {
@@ -269,10 +321,99 @@ public static class DbInitializer
             }
         }
 
+        // Our own Meta pages: seeded as Pending, so an admin approves them before they are collected.
+        // An identity that already exists keeps its status.
+        foreach (var item in items)
+        {
+            if (item.PendingMetaPageIds == null || item.PendingMetaPageIds.Count == 0)
+                continue;
+
+            if (!allCompetitorsByKey.TryGetValue(item.Key, out var comp))
+                continue;
+
+            foreach (var pageId in item.PendingMetaPageIds)
+            {
+                var cleanPageId = pageId.Trim();
+                if (string.IsNullOrWhiteSpace(cleanPageId) || existingMetaById.ContainsKey(cleanPageId))
+                    continue;
+
+                var pending = new AdvertiserIdentity
+                {
+                    CompetitorId = comp.Id,
+                    Platform = AdPlatform.Meta,
+                    ExternalId = cleanPageId,
+                    Name = comp.Name,
+                    Status = AdvertiserIdentityStatus.Pending,
+                    LibraryUrl = $"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=EG&view_all_page_id={cleanPageId}",
+                    Notes = "Seeded from competitors.json; awaiting approval"
+                };
+                context.AdvertiserIdentities.Add(pending);
+                existingMetaById[cleanPageId] = pending;
+                identitiesAdded++;
+            }
+        }
+
         if (identitiesAdded > 0)
         {
             await context.SaveChangesAsync(ct);
             logger.LogInformation("Seeded or approved {Count} Meta advertiser identities.", identitiesAdded);
+        }
+
+        // Google advertiser IDs an admin has confirmed for one of our own stores (for example Lazy Bean). They are
+        // seeded as Approved so collection starts at once. A pending identity is approved; an identity an admin has
+        // already rejected or blocked keeps its status.
+        var googleById = new Dictionary<string, AdvertiserIdentity>(StringComparer.OrdinalIgnoreCase);
+        foreach (var identity in await context.AdvertiserIdentities.Where(i => i.Platform == AdPlatform.Google).ToListAsync(ct))
+        {
+            googleById.TryAdd(identity.ExternalId, identity);
+        }
+
+        var googleIdentitiesChanged = 0;
+        foreach (var item in items)
+        {
+            if (item.ApprovedGoogleAdvertiserIds == null || item.ApprovedGoogleAdvertiserIds.Count == 0)
+                continue;
+
+            if (!allCompetitorsByKey.TryGetValue(item.Key, out var comp))
+                continue;
+
+            foreach (var advertiserId in item.ApprovedGoogleAdvertiserIds)
+            {
+                var cleanId = advertiserId.Trim().ToUpperInvariant();
+                if (string.IsNullOrWhiteSpace(cleanId))
+                    continue;
+
+                if (googleById.TryGetValue(cleanId, out var existingGoogle))
+                {
+                    if (existingGoogle.Status == AdvertiserIdentityStatus.Pending)
+                    {
+                        existingGoogle.Approve("Approved from competitors.json");
+                        googleIdentitiesChanged++;
+                    }
+                    continue;
+                }
+
+                var approved = new AdvertiserIdentity
+                {
+                    CompetitorId = comp.Id,
+                    Platform = AdPlatform.Google,
+                    ExternalId = cleanId,
+                    Name = comp.Name,
+                    Status = AdvertiserIdentityStatus.Approved,
+                    LibraryUrl = $"https://adstransparency.google.com/advertiser/{cleanId}?region=EG",
+                    ReviewedAt = DateTimeOffset.UtcNow,
+                    Notes = "Seeded from competitors.json"
+                };
+                context.AdvertiserIdentities.Add(approved);
+                googleById[cleanId] = approved;
+                googleIdentitiesChanged++;
+            }
+        }
+
+        if (googleIdentitiesChanged > 0)
+        {
+            await context.SaveChangesAsync(ct);
+            logger.LogInformation("Seeded or approved {Count} Google advertiser identities.", googleIdentitiesChanged);
         }
 
         await FixSeedMatchesAndCategoriesAsync(context, logger, ct);

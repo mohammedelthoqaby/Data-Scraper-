@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import type { CollectionRun } from '../../api/client';
 
 interface ToolbarProps {
@@ -17,6 +17,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   isLoading,
 }) => {
   const currentRun = runs.find((r) => r.id === selectedRunId) || runs[0];
+  // Several toolbars can be mounted at once (one per kept section), so the id is unique to this one.
+  const selectId = useId();
 
   const formatRunDate = (dateStr?: string) => {
     if (!dateStr) return 'Latest observation';
@@ -35,11 +37,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   return (
     <div className="toolbar">
       <div className="toolbar-group">
-        <label htmlFor="snapshot-select" style={{ fontWeight: 600, color: 'var(--muted)' }}>
+        <label htmlFor={selectId} style={{ fontWeight: 600, color: 'var(--muted)' }}>
           Report date:
         </label>
         <select
-          id="snapshot-select"
+          id={selectId}
           className="toolbar-select"
           value={selectedRunId || ''}
           onChange={(e) => onSelectRun(e.target.value)}

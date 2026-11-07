@@ -8,12 +8,19 @@ using Microsoft.EntityFrameworkCore;
 
 namespace LazyBean.Application.Ads.Queries.GetAds;
 
-public class GetAdsQueryHandler(IReadDbContext readContext)
+// One page of ads, newest first. A Google ad is Active only while it was shown within the active window; an older
+// Google ad reads as Inactive. Competitor ads are returned only when no competitor filter is given, reference (our
+// own) ads are left out unless the reference store is asked for.
+public class GetAdsQueryHandler(IReadDbContext readContext, AdsOptions options)
     : IRequestHandler<GetAdsQuery, GetAdsResponseDto>
 {
     private sealed record AdPriceObs(decimal Price, bool InStock);
+
     public async Task<GetAdsResponseDto> Handle(GetAdsQuery request, CancellationToken ct)
     {
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now - TimeSpan.FromDays(options.GoogleActiveWindowDays);
+
         var query = from a in readContext.Query<Ad>().AsNoTracking()
                     join c in readContext.Query<Competitor>().AsNoTracking() on a.CompetitorId equals c.Id
                     join i in readContext.Query<AdvertiserIdentity>().AsNoTracking() on a.IdentityId equals i.Id
@@ -28,10 +35,21 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
         {
             query = query.Where(x => x.Ad.CompetitorId == request.CompetitorId.Value);
         }
+        else
+        {
+            // Our own (reference) ads are shown in their own section, not among the competitors' ads.
+            query = query.Where(x => !x.Competitor.IsReference);
+        }
 
         if (request.IdentityId.HasValue)
         {
             query = query.Where(x => x.Ad.IdentityId == request.IdentityId.Value);
+        }
+
+        if (request.CampaignIds is not null)
+        {
+            var campaignIds = request.CampaignIds;
+            query = query.Where(x => x.Ad.CampaignId != null && campaignIds.Contains(x.Ad.CampaignId.Value));
         }
 
         if (!string.IsNullOrWhiteSpace(request.Platform) &&
@@ -43,7 +61,14 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
         if (!string.IsNullOrWhiteSpace(request.Status) &&
             Enum.TryParse<AdStatus>(request.Status, true, out var status))
         {
-            query = query.Where(x => x.Ad.Status == status);
+            query = status switch
+            {
+                AdStatus.Active => query.Where(x => x.Ad.Status == AdStatus.Active &&
+                                                    (x.Ad.Platform != AdPlatform.Google || x.Ad.LastSeenAt >= cutoff)),
+                AdStatus.Inactive => query.Where(x => x.Ad.Status == AdStatus.Inactive ||
+                                                      (x.Ad.Platform == AdPlatform.Google && x.Ad.Status == AdStatus.Active && x.Ad.LastSeenAt < cutoff)),
+                _ => query.Where(x => x.Ad.Status == status),
+            };
         }
 
         if (request.From.HasValue)
@@ -58,10 +83,13 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
 
         var totalCount = await query.CountAsync(ct);
 
-        var rawItems = await query
-            .OrderByDescending(x => x.Ad.LastSeenAt)
-            .Take(100)
-            .ToListAsync(ct);
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        // A campaign's ads are returned whole; a list is paged.
+        var ordered = query.OrderByDescending(x => x.Ad.LastSeenAt);
+        var rawItems = request.CampaignIds is null
+            ? await ordered.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct)
+            : await ordered.ToListAsync(ct);
 
         var productIds = rawItems
             .Where(x => x.Ad.ProductId.HasValue)
@@ -206,8 +234,11 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
                 }
             }
 
-            var advertisedPrice = AdPriceParser.ParseAdvertisedPrice(x.Ad.Title, x.Ad.Body);
-            var hasPriceDiscrepancy = AdPriceParser.HasPriceDiscrepancy(advertisedPrice, compPrice);
+            // The advertised price is stored when the ad is ingested. A bundle is compared per unit.
+            var unitPrice = x.Ad.AdvertisedPrice is { } advertised
+                ? Math.Round(advertised / (x.Ad.AdvertisedQuantity ?? 1), 2, MidpointRounding.AwayFromZero)
+                : (decimal?)null;
+            var hasPriceDiscrepancy = AdPriceParser.HasPriceDiscrepancy(unitPrice, compPrice);
 
             return new AdDto(
                 x.Ad.Id,
@@ -227,7 +258,7 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
                 x.Ad.DeliveryStopDate,
                 x.Ad.FirstSeenAt,
                 x.Ad.LastSeenAt,
-                x.Ad.Status.ToString(),
+                EffectiveStatus(x.Ad, cutoff),
                 x.Ad.CreativeHash,
                 prodId,
                 prodTitle,
@@ -239,10 +270,25 @@ public class GetAdsQueryHandler(IReadDbContext readContext)
                 refPrice,
                 pricePosition,
                 priceDiffPercent,
-                advertisedPrice,
-                hasPriceDiscrepancy);
+                x.Ad.AdvertisedPrice,
+                hasPriceDiscrepancy,
+                x.Ad.PreviewUrl,
+                x.Ad.CreativeFormat,
+                x.Ad.AdvertisedQuantity,
+                unitPrice,
+                x.Ad.LinkMethod,
+                prodId is null ? LazyBean.Application.Ads.Common.AdLinkReasons.Label(x.Ad.LinkReason ?? LazyBean.Application.Ads.Common.AdLinkReasons.Pending, x.Competitor.Name) : null,
+                x.Ad.LinkReason,
+                x.Ad.AiReadName,
+                x.Ad.AiReadPrice,
+                x.Ad.AiReadAt);
         }).ToList();
 
-        return new GetAdsResponseDto(totalCount, items);
+        return new GetAdsResponseDto(totalCount, items, page, pageSize);
     }
+
+    private static string EffectiveStatus(Ad ad, DateTimeOffset cutoff) =>
+        ad.Status == AdStatus.Active && ad.Platform == AdPlatform.Google && ad.LastSeenAt < cutoff
+            ? AdStatus.Inactive.ToString()
+            : ad.Status.ToString();
 }

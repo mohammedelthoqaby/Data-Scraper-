@@ -5,7 +5,7 @@ async function main() {
   const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'Dev-Only-P@ssw0rd!' })
+    body: JSON.stringify({ username: 'admin', password: process.env.LAZYBEAN_ADMIN_PASSWORD })
   });
   if (!loginRes.ok) {
     throw new Error(`Login failed: ${loginRes.status} ${await loginRes.text()}`);
@@ -27,7 +27,7 @@ async function main() {
     headers: { 'Cookie': cookie, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       isEnabled: true,
-      apiKey: 'AIzaSyTestMonsterAspPgBouncerKey1234',
+      apiKey: process.env.LAZYBEAN_TEST_AI_API_KEY,
       modelName: 'gemini-2.5-flash',
       dailyRequestCap: 500
     })
@@ -37,8 +37,9 @@ async function main() {
   }
   const updatedAi = await updateAiRes.json();
   console.log('✓ Updated AI Settings through DataProtection:', updatedAi);
-  if (!updatedAi.maskedApiKey.endsWith('1234')) {
-    throw new Error(`Masked key mismatch: expected ...1234 but got ${updatedAi.maskedApiKey}`);
+  const keySuffix = process.env.LAZYBEAN_TEST_AI_API_KEY.slice(-4);
+  if (!updatedAi.maskedApiKey.endsWith(keySuffix)) {
+    throw new Error(`Masked key mismatch: expected ...${keySuffix} but got ${updatedAi.maskedApiKey}`);
   }
 
   console.log('\n=== Step 3: Run Matching Pass ===');

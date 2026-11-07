@@ -1,3 +1,6 @@
+using LazyBean.Collectors.Google;
+using LazyBean.Collectors.Http;
+using LazyBean.Collectors.Woo;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
