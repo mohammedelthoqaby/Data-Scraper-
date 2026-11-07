@@ -29,11 +29,12 @@ export interface AdGalleryCard {
   thumbnailSha256: string | null;
 }
 
+// Every card that matches the filters, in one response. totalCount is the number of cards, totalAds the number of ads
+// behind them. truncated is true when the filters matched more ads than the server reads at once.
 export interface AdGalleryResponse {
   totalCount: number;
   totalAds: number;
-  page: number;
-  pageSize: number;
+  truncated: boolean;
   items: AdGalleryCard[];
 }
 
@@ -63,8 +64,8 @@ export interface GalleryQuery {
   linkedToOurs?: boolean;
   search?: string;
   sortByStore?: boolean;
-  page?: number;
-  pageSize?: number;
+  // Totals only, with no cards: for headline numbers.
+  countsOnly?: boolean;
 }
 
 async function request<T>(url: string): Promise<T> {
@@ -90,8 +91,7 @@ export async function fetchAdGallery(query: GalleryQuery): Promise<AdGalleryResp
   if (query.linkedToOurs) params.set('linkedToOurs', 'true');
   if (query.search?.trim()) params.set('search', query.search.trim());
   if (query.sortByStore) params.set('sortByStore', 'true');
-  params.set('page', String(query.page ?? 1));
-  params.set('pageSize', String(query.pageSize ?? 24));
+  if (query.countsOnly) params.set('countsOnly', 'true');
   return request<AdGalleryResponse>(`/api/ads/gallery?${params.toString()}`);
 }
 

@@ -130,6 +130,10 @@
   flex-direction: column;
   cursor: pointer;
   min-width: 0;
+  /* With every card on one page, the browser skips laying out and painting the cards off screen. The size hint keeps
+     the scrollbar steady until a card has been rendered once. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
   transition: box-shadow 0.15s ease;
 }
 

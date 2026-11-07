@@ -58,6 +58,9 @@ export const AdCard: React.FC<AdCardProps> = ({ card, onOpen, onOpenProduct }) =
           <img
             src={thumbnailUrl(card)}
             alt=""
+            /* The card's media box is 16:9 and thumbnails are at most 480 px wide, so the box keeps its size while images load. */
+            width={480}
+            height={270}
             loading="lazy"
             decoding="async"
             onError={() => setImageFailed(true)}

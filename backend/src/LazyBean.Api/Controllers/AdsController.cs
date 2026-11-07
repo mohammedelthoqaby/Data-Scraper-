@@ -77,7 +77,8 @@ public class AdsController(ISender sender, IAdThumbnailService thumbnails) : Con
         return Ok(await sender.Send(new LazyBean.Application.Ads.Queries.GetAdsSummary.GetAdsSummaryQuery(), ct));
     }
 
-    // The ads gallery: one page of cards. A card is a group of identical ads from one store; it shows the newest ad.
+    // The ads gallery: every card that matches the filters, in one response. A card is a group of identical ads from one
+    // store; it shows the newest ad. countsOnly returns the totals without the cards.
     [HttpGet("gallery")]
     [ProducesResponseType(typeof(AdGalleryResponseDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<AdGalleryResponseDto>> GetGallery(
@@ -88,12 +89,11 @@ public class AdsController(ISender sender, IAdThumbnailService thumbnails) : Con
         [FromQuery] bool? linkedToOurs,
         [FromQuery] string? search,
         [FromQuery] bool sortByStore = false,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 24,
+        [FromQuery] bool countsOnly = false,
         CancellationToken ct = default)
     {
         var query = new LazyBean.Application.Ads.Queries.GetAdGallery.GetAdGalleryQuery(
-            competitorId, platform, status, hasPrice, linkedToOurs, search, sortByStore, page, pageSize);
+            competitorId, platform, status, hasPrice, linkedToOurs, search, sortByStore, countsOnly);
         return Ok(await sender.Send(query, ct));
     }
 

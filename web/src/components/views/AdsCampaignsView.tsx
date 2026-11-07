@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, type AdvertiserIdentity, type Competitor } from '../../api/client';
 import { fetchAdGallery, type AdGalleryCard } from '../../api/adGallery';
 import { AdCard } from './AdCard';
 import { AdSidePanel } from './AdSidePanel';
 import { OurAdsSection } from './OurAdsSection';
 import { PageHeader } from '../shell/PageHeader';
+import { hashView, readHashParams, savedScrollFor, saveScrollFor, writeHashParams } from '../../lib/pageUrlState';
 import './ads-gallery.css';
 
 interface AdsCampaignsViewProps {
@@ -15,18 +16,20 @@ interface AdsCampaignsViewProps {
 
 type Tab = 'competitor' | 'ours' | 'compare';
 
-const PAGE_SIZE = 24;
-
 const TABS: { key: Tab; label: string }[] = [
   { key: 'competitor', label: 'Competitor ads' },
   { key: 'ours', label: 'Our ads' },
   { key: 'compare', label: 'Compare' },
 ];
 
+const parseTab = (value: string | null): Tab => (value === 'ours' || value === 'compare' ? value : 'competitor');
+
 // The ads gallery: competitor ads by default, our own ads on their own tab, and the price comparison on the third.
-// Cards are a flat grid of 24 per page. Each card opens the side panel.
+// Every matching card is on one page; the browser loads the images as they come into view. Each card opens the side panel.
 export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProductDetail, toolbar }) => {
-  const [tab, setTab] = useState<Tab>('competitor');
+  // The tab and filters start from the URL hash, so a reload or a return to the page restores them.
+  const [initial] = useState(() => readHashParams());
+  const [tab, setTab] = useState<Tab>(() => parseTab(initial.get('tab')));
   const [sources, setSources] = useState<Competitor[]>([]);
   const [identities, setIdentities] = useState<AdvertiserIdentity[]>([]);
   const [sourcesLoaded, setSourcesLoaded] = useState(false);
@@ -34,18 +37,19 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
   const [adsWithPrice, setAdsWithPrice] = useState<number | null>(null);
 
   // Filters. The default is Active, so the page shows what is live now.
-  const [storeId, setStoreId] = useState('all');
-  const [platform, setPlatform] = useState('all');
-  const [status, setStatus] = useState('Active');
-  const [hasPrice, setHasPrice] = useState(false);
-  const [linkedOnly, setLinkedOnly] = useState(false);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [groupByStore, setGroupByStore] = useState(false);
-  const [pageNumber, setPageNumber] = useState(1);
+  const [storeId, setStoreId] = useState(() => initial.get('store') ?? 'all');
+  const [platform, setPlatform] = useState(() => initial.get('platform') ?? 'all');
+  const [status, setStatus] = useState(() => initial.get('status') ?? 'Active');
+  const [hasPrice, setHasPrice] = useState(() => initial.get('hasPrice') === '1');
+  const [linkedOnly, setLinkedOnly] = useState(() => initial.get('linked') === '1');
+  const [search, setSearch] = useState(() => initial.get('q') ?? '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => (initial.get('q') ?? '').trim());
+  const [groupByStore, setGroupByStore] = useState(() => initial.get('group') === '1');
 
   const [cards, setCards] = useState<AdGalleryCard[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  const [totalAds, setTotalAds] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AdGalleryCard | null>(null);
@@ -71,8 +75,8 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
     Promise.all([
       api.GET('/api/sources'),
       api.GET('/api/identities'),
-      fetchAdGallery({ status: 'Active', pageSize: 1 }),
-      fetchAdGallery({ status: 'Active', hasPrice: true, pageSize: 1 }),
+      fetchAdGallery({ status: 'Active', countsOnly: true }),
+      fetchAdGallery({ status: 'Active', hasPrice: true, countsOnly: true }),
     ])
       .then(([srcRes, idRes, active, priced]) => {
         if (!alive) return;
@@ -96,7 +100,6 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedSearch(search.trim());
-      setPageNumber(1);
     }, 300);
     return () => window.clearTimeout(timer);
   }, [search]);
@@ -125,13 +128,13 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       linkedToOurs: linkedOnly,
       search: debouncedSearch,
       sortByStore: groupByStore,
-      page: pageNumber,
-      pageSize: PAGE_SIZE,
     })
       .then((data) => {
         if (!alive) return;
         setCards(data.items);
         setTotalCount(data.totalCount);
+        setTotalAds(data.totalAds);
+        setTruncated(data.truncated);
       })
       .catch((err: Error) => {
         if (alive) setError(err.message || 'Could not load the ads.');
@@ -142,12 +145,58 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
     return () => {
       alive = false;
     };
-  }, [tab, ownerId, platform, status, hasPrice, linkedOnly, debouncedSearch, groupByStore, pageNumber, reloadKey]);
+  }, [tab, ownerId, platform, status, hasPrice, linkedOnly, debouncedSearch, groupByStore, reloadKey]);
+
+  // The tab and filters are written to the URL with replaceState, so Back returns to the previous section and not to the
+  // last filter state. The hash is kept in a ref for the scroll memory below.
+  const hashRef = useRef('');
+  useEffect(() => {
+    hashRef.current = writeHashParams('ads-campaigns', {
+      tab: tab === 'competitor' ? undefined : tab,
+      store: storeId === 'all' ? undefined : storeId,
+      platform: platform === 'all' ? undefined : platform,
+      status: status === 'Active' ? undefined : status,
+      hasPrice: hasPrice ? '1' : undefined,
+      linked: linkedOnly ? '1' : undefined,
+      q: debouncedSearch || undefined,
+      group: groupByStore ? '1' : undefined,
+    });
+  }, [tab, storeId, platform, status, hasPrice, linkedOnly, debouncedSearch, groupByStore]);
+
+  // Restores the scroll position of this URL once the cards are on screen. Saved positions are remembered per URL.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (isLoading || restoredRef.current) return;
+    restoredRef.current = true;
+    const saved = savedScrollFor(hashRef.current);
+    if (saved !== null && saved > 0) {
+      window.scrollTo(0, saved);
+    }
+  }, [isLoading]);
+
+  // Remembers where the user is on this page. Only while this page is the active view, so the position is not lost when
+  // the page is left and the browser shortens it.
+  useEffect(() => {
+    let timer: number | undefined;
+    const remember = () => {
+      if (hashView() === 'ads-campaigns') {
+        saveScrollFor(hashRef.current);
+      }
+    };
+    const onScroll = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(remember, 150);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   const changeTab = (next: Tab) => {
     setTab(next);
     setSelected(null);
-    setPageNumber(1);
   };
 
   const resetFilters = () => {
@@ -157,7 +206,6 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
     setHasPrice(false);
     setLinkedOnly(false);
     setSearch('');
-    setPageNumber(1);
   };
 
   const handleSyncGoogleAds = async () => {
@@ -176,7 +224,6 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
         `Google Ads sync complete: ${checked} advertiser identity${checked === 1 ? '' : 'ies'} checked, ${fetched} ads fetched (${newCount} new).`
       );
       setSyncErrors(errs);
-      setPageNumber(1);
       setReloadKey((k) => k + 1);
     } catch (err: any) {
       setSyncMessage(err?.message || 'Failed to sync Google Ads.');
@@ -185,9 +232,6 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const rangeStart = totalCount > 0 ? (pageNumber - 1) * PAGE_SIZE + 1 : 0;
-  const rangeEnd = Math.min(pageNumber * PAGE_SIZE, totalCount);
   const noAdvertisers = tab === 'competitor' && sourcesLoaded && approvedAdvertisers === 0;
 
   const stats = [
@@ -234,27 +278,6 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
             <AdCard key={card.id} card={card} onOpen={(c) => setSelected(c)} onOpenProduct={onOpenProductDetail} />
           ))}
         </div>
-        <nav className="ads-pager" aria-label="Pages">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={pageNumber <= 1 || isLoading}
-            onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
-          >
-            ← Previous
-          </button>
-          <span style={{ fontSize: 13, color: 'var(--gallery-muted)' }}>
-            Page {pageNumber} of {totalPages}
-          </span>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={pageNumber >= totalPages || isLoading}
-            onClick={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
-          >
-            Next →
-          </button>
-        </nav>
       </>
     );
   }
@@ -357,10 +380,7 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                 <select
                   aria-label="Store"
                   value={storeId}
-                  onChange={(e) => {
-                    setStoreId(e.target.value);
-                    setPageNumber(1);
-                  }}
+                  onChange={(e) => setStoreId(e.target.value)}
                 >
                   <option value="all">All stores</option>
                   {competitors.map((s) => (
@@ -373,10 +393,7 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
               <select
                 aria-label="Platform"
                 value={platform}
-                onChange={(e) => {
-                  setPlatform(e.target.value);
-                  setPageNumber(1);
-                }}
+                onChange={(e) => setPlatform(e.target.value)}
               >
                 <option value="all">All platforms</option>
                 <option value="Meta">Meta</option>
@@ -385,10 +402,7 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
               <select
                 aria-label="Status"
                 value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPageNumber(1);
-                }}
+                onChange={(e) => setStatus(e.target.value)}
               >
                 <option value="Active">Active</option>
                 <option value="Inactive">Inactive</option>
@@ -398,10 +412,7 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                 <input
                   type="checkbox"
                   checked={hasPrice}
-                  onChange={(e) => {
-                    setHasPrice(e.target.checked);
-                    setPageNumber(1);
-                  }}
+                  onChange={(e) => setHasPrice(e.target.checked)}
                 />
                 Has price
               </label>
@@ -409,10 +420,7 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                 <input
                   type="checkbox"
                   checked={linkedOnly}
-                  onChange={(e) => {
-                    setLinkedOnly(e.target.checked);
-                    setPageNumber(1);
-                  }}
+                  onChange={(e) => setLinkedOnly(e.target.checked)}
                 />
                 Linked to our products
               </label>
@@ -434,22 +442,24 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
                 {isLoading
                   ? 'Loading…'
                   : totalCount > 0
-                    ? `Showing ${rangeStart}–${rangeEnd} of ${totalCount} ads`
+                    ? `All ${totalCount.toLocaleString('en-US')} ${totalCount === 1 ? 'card' : 'cards'} · ${totalAds.toLocaleString('en-US')} ads`
                     : 'No ads'}
               </span>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <input
                   type="checkbox"
                   checked={groupByStore}
-                  onChange={(e) => {
-                    setGroupByStore(e.target.checked);
-                    setPageNumber(1);
-                  }}
+                  onChange={(e) => setGroupByStore(e.target.checked)}
                 />
                 Group by store
               </label>
             </div>
 
+            {truncated && !isLoading && (
+              <div className="warning-banner" style={{ marginBottom: 12 }}>
+                The filters match more ads than the page reads at once, so only the newest are shown. Narrow the filters to see the rest.
+              </div>
+            )}
             {content}
           </>
         )}

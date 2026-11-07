@@ -31,7 +31,9 @@ public sealed record AdGalleryCardDto(
     string? ThumbnailSha256 = null);
 
 // TotalCount: the cards. TotalAds: the ads behind them (a card can stand for several identical ads).
-public sealed record AdGalleryResponseDto(int TotalCount, int TotalAds, int Page, int PageSize, IReadOnlyList<AdGalleryCardDto> Items);
+// Every card that matches the filters, in one response. Truncated is true when the filters matched more ads than
+// the gallery reads at once (AdGalleryQueries.MaxCandidates); narrowing the filters shows the rest.
+public sealed record AdGalleryResponseDto(int TotalCount, int TotalAds, bool Truncated, IReadOnlyList<AdGalleryCardDto> Items);
 
 // One ad of a card's group, for the side panel.
 public sealed record AdGalleryVariationDto(

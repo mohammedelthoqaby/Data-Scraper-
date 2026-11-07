@@ -11,6 +11,7 @@ namespace LazyBean.Application.Ads.Queries.GetAdGallery;
 // The ads gallery: one page of cards, newest first (or by store). A card is a group of identical ads from one store (the same
 // text and the same first image); the card is its newest ad. Our own ads are the reference store's; the competitor ads are
 // the others. A Google ad is Active only while it was shown within the active window.
+// CountsOnly returns the totals with no cards. The Ads page uses it for its headline numbers.
 public sealed record GetAdGalleryQuery(
     Guid? CompetitorId,
     string? Platform,
@@ -19,8 +20,7 @@ public sealed record GetAdGalleryQuery(
     bool? LinkedToOurs,
     string? Search,
     bool SortByStore,
-    int Page = 1,
-    int PageSize = 24) : IRequest<AdGalleryResponseDto>;
+    bool CountsOnly = false) : IRequest<AdGalleryResponseDto>;
 
 public sealed record GetAdGalleryDetailQuery(Guid AdId) : IRequest<AdGalleryDetailDto?>;
 
@@ -60,10 +60,10 @@ public sealed class GetAdGalleryQueryHandler(IReadDbContext readContext, AdsOpti
             ? cards.OrderBy(c => c.CompetitorName, StringComparer.CurrentCultureIgnoreCase).ThenByDescending(c => c.LastSeenAt).ToList()
             : cards.OrderByDescending(c => c.LastSeenAt).ToList();
 
-        var page = Math.Max(1, request.Page);
-        var size = Math.Clamp(request.PageSize, 1, 48);
+        // Every matching card goes out in one response. The page renders them all, and the browser lazy-loads the images.
         var totalAds = cards.Sum(c => c.VariationCount);
-        return new AdGalleryResponseDto(ordered.Count, totalAds, page, size, ordered.Skip((page - 1) * size).Take(size).ToList());
+        var truncated = ads.Count >= MaxCandidates;
+        return new AdGalleryResponseDto(ordered.Count, totalAds, truncated, request.CountsOnly ? new List<AdGalleryCardDto>() : ordered);
     }
 }
 
@@ -171,16 +171,69 @@ internal static class AdGalleryQueries
                 x.Competitor.Name.ToLower().Contains(term));
         }
 
-        var rows = await query.OrderByDescending(x => x.Ad.LastSeenAt).Take(maxCandidates).ToListAsync(ct);
+        // Only the columns the gallery reads. RawDataJson and PreviewVariationsJson are large and stay in the database,
+        // so a request that matches thousands of ads stays small in memory.
+        var rows = await query
+            .OrderByDescending(x => x.Ad.LastSeenAt)
+            .Take(maxCandidates)
+            .Select(x => new
+            {
+                x.Ad.Id,
+                x.Ad.CompetitorId,
+                x.Ad.Platform,
+                x.Ad.Status,
+                x.Ad.Title,
+                x.Ad.Headline,
+                x.Ad.Body,
+                x.Ad.Description,
+                x.Ad.LinkUrl,
+                x.Ad.SnapshotUrl,
+                x.Ad.CreativeFormat,
+                x.Ad.ThumbnailCount,
+                x.Ad.AdvertisedPrice,
+                x.Ad.AdvertisedQuantity,
+                x.Ad.FirstSeenAt,
+                x.Ad.LastSeenAt,
+                x.Ad.ProductId,
+                StoreId = x.Competitor.Id,
+                StoreName = x.Competitor.Name,
+                StoreIsReference = x.Competitor.IsReference,
+            })
+            .ToListAsync(ct);
+
         return rows
-            .Select(x => new GalleryAd(
-                x.Ad,
-                x.Competitor.Id,
-                x.Competitor.Name,
-                x.Competitor.IsReference,
-                EffectiveStatus(x.Ad, cutoff),
-                null,
-                AdGalleryPricing.Priced.None))
+            .Select(r =>
+            {
+                var ad = new Ad
+                {
+                    Id = r.Id,
+                    CompetitorId = r.CompetitorId,
+                    Platform = r.Platform,
+                    Status = r.Status,
+                    Title = r.Title,
+                    Headline = r.Headline,
+                    Body = r.Body,
+                    Description = r.Description,
+                    LinkUrl = r.LinkUrl,
+                    SnapshotUrl = r.SnapshotUrl,
+                    CreativeFormat = r.CreativeFormat,
+                    ThumbnailCount = r.ThumbnailCount,
+                    AdvertisedPrice = r.AdvertisedPrice,
+                    AdvertisedQuantity = r.AdvertisedQuantity,
+                    FirstSeenAt = r.FirstSeenAt,
+                    LastSeenAt = r.LastSeenAt,
+                    ProductId = r.ProductId,
+                };
+
+                return new GalleryAd(
+                    ad,
+                    r.StoreId,
+                    r.StoreName,
+                    r.StoreIsReference,
+                    EffectiveStatus(ad, cutoff),
+                    null,
+                    AdGalleryPricing.Priced.None);
+            })
             .ToList();
     }
 
