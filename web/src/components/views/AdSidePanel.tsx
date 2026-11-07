@@ -105,7 +105,6 @@ export const AdSidePanel: React.FC<AdSidePanelProps> = ({ card, onClose, onOpenP
         <div className="ad-panel__head">
           <h2 id="ad-panel-title" dir="auto" style={{ flex: 1, fontSize: 16, margin: 0 }}>
             {card.isOurs ? 'Our ad' : card.competitorName}
-            {card.isOurs && <span className="our-ad-tag" style={{ marginInlineStart: 8 }}>Lazy Bean</span>}
           </h2>
           <button ref={closeRef} type="button" className="btn btn-secondary" onClick={onClose} aria-label="Close">
             ✕

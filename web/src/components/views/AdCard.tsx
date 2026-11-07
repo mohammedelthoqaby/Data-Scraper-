@@ -46,7 +46,6 @@ export const AdCard: React.FC<AdCardProps> = ({ card, onOpen, onOpenProduct }) =
           {isMeta ? 'Meta' : 'Google'}
         </span>
         <span className="ad-card__store" dir="auto">{card.isOurs ? 'Our ad' : card.competitorName}</span>
-        {card.isOurs && <span className="our-ad-tag">Lazy Bean</span>}
         <span
           className={`status-dot ${isActive ? 'status-dot--active' : 'status-dot--inactive'}`}
           role="img"
@@ -65,8 +64,13 @@ export const AdCard: React.FC<AdCardProps> = ({ card, onOpen, onOpenProduct }) =
           />
         ) : (
           <div className="ad-card__placeholder" aria-hidden="true">
-            <span>{isMeta ? 'M' : 'G'}</span>
-            <span>{isVideo ? 'Video ad' : 'No image'}</span>
+            {/* A video has no still image: the play button alone marks it, so no text sits under the button. */}
+            {!isVideo && (
+              <>
+                <span>{isMeta ? 'M' : 'G'}</span>
+                <span>No image</span>
+              </>
+            )}
           </div>
         )}
         {isVideo && <span className="ad-card__play" aria-hidden="true">▶</span>}
