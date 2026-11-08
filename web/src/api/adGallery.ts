@@ -51,9 +51,20 @@ export interface AdGalleryVariation {
   lastSeenAt: string;
 }
 
+// What the ad window adds to the card: the ad's own ID, its advertiser (page) ID, why an unlinked ad has no product, and
+// when its delivery started and stopped (Meta reports these).
+export interface AdGalleryFacts {
+  externalAdId: string;
+  advertiserId: string | null;
+  linkReason: string | null;
+  deliveryStartAt: string | null;
+  deliveryStopAt: string | null;
+}
+
 export interface AdGalleryDetail {
   card: AdGalleryCard;
   variations: AdGalleryVariation[];
+  facts: AdGalleryFacts;
 }
 
 export interface GalleryQuery {

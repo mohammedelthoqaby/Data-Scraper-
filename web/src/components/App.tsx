@@ -112,6 +112,8 @@ export const App: React.FC = () => {
   const [activeDetailProductId, setActiveDetailProductId] = useState<string | null>(null);
   const [activeDetailTitle, setActiveDetailTitle] = useState<string | undefined>(undefined);
   const [activeDetailRow, setActiveDetailRow] = useState<PriceMatrixRow | null>(null);
+  // A request to open Price comparisons with a product's title as its search, from the ad window. The id makes each one new.
+  const [priceSearchRequest, setPriceSearchRequest] = useState<{ text: string; id: number } | null>(null);
 
   const openProductDetail = (productId: string, title?: string, row?: PriceMatrixRow) => {
     setActiveDetailProductId(productId);
@@ -185,6 +187,12 @@ export const App: React.FC = () => {
       switchView(view);
     }
     window.location.hash = `#/${view}`;
+  };
+
+  // Opens Price comparisons searched for a product's title. The request is set first, so the page applies it when it shows.
+  const openPriceComparisons = (title: string) => {
+    setPriceSearchRequest({ text: title, id: Date.now() });
+    navigateTo('price-comparisons');
   };
 
   // Sections stay mounted once they have been opened. The section of the current view is shown; the others are hidden.
@@ -446,12 +454,19 @@ export const App: React.FC = () => {
             selectedRunId={selectedRunId}
             isLoading={isLoading}
             onOpenProductDetail={openProductDetail}
+            searchRequest={priceSearchRequest}
             onRetry={() => fetchMatrix(selectedRunId)}
             toolbar={reportToolbar}
           />
         );
       case 'ads':
-        return <AdsCampaignsView onOpenProductDetail={openProductDetail} toolbar={reportToolbar} />;
+        return (
+          <AdsCampaignsView
+            onOpenProductDetail={openProductDetail}
+            onOpenPriceComparisons={openPriceComparisons}
+            toolbar={reportToolbar}
+          />
+        );
       case 'attention':
         return <ActionCenterView onOpenProductDetail={openProductDetail} onRefreshAlertCount={fetchAlertCount} />;
       case 'settings-alerts':

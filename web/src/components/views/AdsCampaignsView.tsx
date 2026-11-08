@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, type AdvertiserIdentity, type Competitor } from '../../api/client';
-import { fetchAdGallery, type AdGalleryCard } from '../../api/adGallery';
+import { fetchAdGallery, fetchAdGalleryDetail, type AdGalleryCard } from '../../api/adGallery';
 import { AdCard } from './AdCard';
-import { AdSidePanel } from './AdSidePanel';
+import { AdDetailModal } from './AdDetailModal';
 import { OurAdsSection } from './OurAdsSection';
 import { PageHeader } from '../shell/PageHeader';
+import { useSectionActive } from '../shell/KeepAliveSection';
 import { hashView, readHashParams, savedScrollFor, saveScrollFor, writeHashParams } from '../../lib/pageUrlState';
 import './ads-gallery.css';
 
 interface AdsCampaignsViewProps {
   onOpenProductDetail?: (productId: string, title?: string) => void;
+  // Opens Price comparisons filtered to a product, by its title.
+  onOpenPriceComparisons?: (title: string) => void;
   // The report date bar, shown in the page header row.
   toolbar?: React.ReactNode;
 }
@@ -25,10 +28,20 @@ const TABS: { key: Tab; label: string }[] = [
 const parseTab = (value: string | null): Tab => (value === 'ours' || value === 'compare' ? value : 'competitor');
 
 // The ads gallery: competitor ads by default, our own ads on their own tab, and the price comparison on the third.
-// Every matching card is on one page; the browser loads the images as they come into view. Each card opens the side panel.
-export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProductDetail, toolbar }) => {
+// Every matching card is on one page; the browser loads the images as they come into view. Each card opens the ad window.
+export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({
+  onOpenProductDetail,
+  onOpenPriceComparisons,
+  toolbar,
+}) => {
   // The tab and filters start from the URL hash, so a reload or a return to the page restores them.
   const [initial] = useState(() => readHashParams());
+  // Whether this section is on screen. When it is not, the ad window closes and the URL does not change.
+  const active = useSectionActive();
+  // An ad named in the URL (?ad=<id>) opens once the cards are on screen, so a reload reopens it.
+  const pendingAdRef = useRef<string | null>(initial.get('ad'));
+  // The element that opened the ad window: focus goes back to it when the window closes.
+  const openerRef = useRef<HTMLElement | null>(null);
   const [tab, setTab] = useState<Tab>(() => parseTab(initial.get('tab')));
   const [sources, setSources] = useState<Competitor[]>([]);
   const [identities, setIdentities] = useState<AdvertiserIdentity[]>([]);
@@ -147,10 +160,15 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
     };
   }, [tab, ownerId, platform, status, hasPrice, linkedOnly, debouncedSearch, groupByStore, reloadKey]);
 
-  // The tab and filters are written to the URL with replaceState, so Back returns to the previous section and not to the
-  // last filter state. The hash is kept in a ref for the scroll memory below.
+  // The ad window's card (?ad=<id>) is written to the URL too, so a reload reopens it.
+  const selectedId = selected?.id;
+
+  // The tab, filters and open ad are written to the URL with replaceState, so Back returns to the previous section and not to
+  // the last filter state. The hash is kept in a ref for the scroll memory below. Only the section on screen writes: a hidden
+  // section writing here would overwrite the hash of the section that is shown.
   const hashRef = useRef('');
   useEffect(() => {
+    if (!active) return;
     hashRef.current = writeHashParams('ads-campaigns', {
       tab: tab === 'competitor' ? undefined : tab,
       store: storeId === 'all' ? undefined : storeId,
@@ -160,8 +178,37 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       linked: linkedOnly ? '1' : undefined,
       q: debouncedSearch || undefined,
       group: groupByStore ? '1' : undefined,
+      ad: selectedId,
     });
-  }, [tab, storeId, platform, status, hasPrice, linkedOnly, debouncedSearch, groupByStore]);
+  }, [active, tab, storeId, platform, status, hasPrice, linkedOnly, debouncedSearch, groupByStore, selectedId]);
+
+  // Leaving the section closes its ad window: the section that is shown next starts with none open.
+  useEffect(() => {
+    if (!active) setSelected(null);
+  }, [active]);
+
+  // Opens the ad named in the URL once the cards are on screen. An ad outside the filtered list is loaded on its own.
+  useEffect(() => {
+    const adId = pendingAdRef.current;
+    if (!adId || !active || isLoading || tab === 'compare') return;
+    pendingAdRef.current = null;
+    const found = cards.find((card) => card.id === adId);
+    if (found) {
+      setSelected(found);
+      return;
+    }
+    fetchAdGalleryDetail(adId)
+      .then((detail) => setSelected(detail.card))
+      .catch(() => undefined);
+  }, [active, isLoading, cards, tab]);
+
+  // Closing the ad window gives focus back to the card that opened it. The page does not scroll for that.
+  useEffect(() => {
+    if (selected) return;
+    const opener = openerRef.current;
+    openerRef.current = null;
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
+  }, [selected]);
 
   // Restores the scroll position of this URL once the cards are on screen. Saved positions are remembered per URL.
   const restoredRef = useRef(false);
@@ -251,6 +298,13 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
     },
   ];
 
+  // The open ad's place in the filtered list, which Previous and Next follow.
+  const selectedIndex = selected ? cards.findIndex((card) => card.id === selected.id) : -1;
+  const stepSelected = (delta: number) => {
+    const next = selectedIndex >= 0 ? cards[selectedIndex + delta] : undefined;
+    if (next) setSelected(next);
+  };
+
   let content: React.ReactNode;
   if (tab === 'ours' && !reference) {
     content = <div className="ads-empty">No reference store is set up, so there are no ads of ours to show.</div>;
@@ -278,7 +332,15 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       <>
         <div className="ads-grid">
           {cards.map((card) => (
-            <AdCard key={card.id} card={card} onOpen={(c) => setSelected(c)} onOpenProduct={onOpenProductDetail} />
+            <AdCard
+              key={card.id}
+              card={card}
+              onOpen={(c, opener) => {
+                openerRef.current = opener;
+                setSelected(c);
+              }}
+              onOpenProduct={onOpenProductDetail}
+            />
           ))}
         </div>
       </>
@@ -469,7 +531,16 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       </div>
 
       {selected && (
-        <AdSidePanel key={selected.id} card={selected} onClose={() => setSelected(null)} onOpenProduct={onOpenProductDetail} />
+        <AdDetailModal
+          card={selected}
+          position={selectedIndex >= 0 ? { index: selectedIndex, total: cards.length } : null}
+          canPrevious={selectedIndex > 0}
+          canNext={selectedIndex >= 0 && selectedIndex < cards.length - 1}
+          onPrevious={() => stepSelected(-1)}
+          onNext={() => stepSelected(1)}
+          onClose={() => setSelected(null)}
+          onOpenPriceComparisons={onOpenPriceComparisons}
+        />
       )}
     </div>
   );

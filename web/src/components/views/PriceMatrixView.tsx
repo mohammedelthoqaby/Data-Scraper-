@@ -10,6 +10,8 @@ interface PriceMatrixViewProps {
   selectedRunId: string | null;
   isLoading?: boolean;
   onOpenProductDetail?: (productId: string, title?: string, row?: PriceMatrixRow) => void;
+  // A search for one product, sent from another page. Each request is a new object, so it applies each time it is sent.
+  searchRequest?: { text: string; id: number } | null;
   onRetry?: () => void;
   // The report date bar, shown in the page header row.
   toolbar?: React.ReactNode;
@@ -29,6 +31,7 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
   selectedRunId,
   isLoading,
   onOpenProductDetail,
+  searchRequest,
   onRetry,
   toolbar,
 }) => {
@@ -38,6 +41,16 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState(() => initial.get('category') ?? 'ALL');
   const [selectedBrand, setSelectedBrand] = useState(() => initial.get('brand') ?? 'ALL');
   const [selectedPosition, setSelectedPosition] = useState(() => initial.get('position') ?? 'ALL');
+
+  // A request for one product (from the ad window) sets the search to its title and clears the other filters, so the
+  // product is among the rows.
+  useEffect(() => {
+    if (!searchRequest) return;
+    setSearch(searchRequest.text);
+    setSelectedCategory('ALL');
+    setSelectedBrand('ALL');
+    setSelectedPosition('ALL');
+  }, [searchRequest]);
 
   const rows = matrix?.rows ?? [];
 

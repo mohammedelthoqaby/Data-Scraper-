@@ -4,13 +4,14 @@ import { formatDay, formatMoney, gapChip } from './adsFormat';
 
 interface AdCardProps {
   card: AdGalleryCard;
-  onOpen: (card: AdGalleryCard) => void;
+  // The element is the card itself: the ad window gives focus back to it when it closes.
+  onOpen: (card: AdGalleryCard, opener: HTMLElement) => void;
   onOpenProduct?: (productId: string, title?: string) => void;
 }
 
 const LONG_BODY = 120;
 
-// One ad in the gallery. The whole card opens the side panel; the links and buttons inside it do their own job.
+// One ad in the gallery. The whole card opens the ad window; the links and buttons inside it do their own job.
 // "Linked product" means our catalog product that this ad's store product matches; a card without one shows no product row.
 export const AdCard: React.FC<AdCardProps> = ({ card, onOpen, onOpenProduct }) => {
   const [imageFailed, setImageFailed] = useState(false);
@@ -31,12 +32,13 @@ export const AdCard: React.FC<AdCardProps> = ({ card, onOpen, onOpenProduct }) =
       className="ad-card"
       role="button"
       tabIndex={0}
+      aria-haspopup="dialog"
       aria-label={`${card.competitorName}: ${card.headline ?? 'ad'}`}
-      onClick={() => onOpen(card)}
+      onClick={(event) => onOpen(card, event.currentTarget)}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          onOpen(card);
+          onOpen(card, event.currentTarget);
         }
       }}
     >

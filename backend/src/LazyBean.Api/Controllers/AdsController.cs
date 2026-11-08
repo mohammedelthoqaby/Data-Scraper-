@@ -97,7 +97,7 @@ public class AdsController(ISender sender, IAdThumbnailService thumbnails) : Con
         return Ok(await sender.Send(query, ct));
     }
 
-    // One card of the gallery with all the ads in its group, for the side panel.
+    // One card of the gallery with all the ads in its group, and the ad window's facts about its own ad.
     [HttpGet("gallery/{id:guid}")]
     [ProducesResponseType(typeof(AdGalleryDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

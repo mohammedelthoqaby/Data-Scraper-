@@ -101,9 +101,36 @@ public sealed class GetAdGalleryDetailQueryHandler(IReadDbContext readContext, A
             .Select(g => g with { Priced = priced.GetValueOrDefault(g.Ad.Id) ?? AdGalleryPricing.Priced.None })
             .ToList();
 
+        // The card's own ad is the newest of the group. The gallery read does not carry these columns, so the detail reads them
+        // for that ad only: its ad ID, why it is unlinked, its delivery dates, and the advertiser ID of its identity.
+        var representative = pricedGroup[0];
+        var row = await readContext.Query<Ad>()
+            .AsNoTracking()
+            .Where(a => a.Id == representative.Ad.Id)
+            .Select(a => new { a.ExternalAdId, a.IdentityId, a.LinkReason, a.DeliveryStartDate, a.DeliveryStopDate })
+            .FirstOrDefaultAsync(ct);
+        if (row is null)
+        {
+            return null;
+        }
+
+        var advertiserId = await readContext.Query<AdvertiserIdentity>()
+            .AsNoTracking()
+            .Where(i => i.Id == row.IdentityId)
+            .Select(i => i.ExternalId)
+            .FirstOrDefaultAsync(ct);
+
+        var facts = new AdGalleryFactsDto(
+            row.ExternalAdId,
+            string.IsNullOrEmpty(advertiserId) ? null : advertiserId,
+            row.LinkReason,
+            row.DeliveryStartDate,
+            row.DeliveryStopDate);
+
         return new AdGalleryDetailDto(
-            AdGalleryQueries.ToCard(pricedGroup[0], pricedGroup),
-            pricedGroup.Select(AdGalleryQueries.ToVariation).ToList());
+            AdGalleryQueries.ToCard(representative, pricedGroup),
+            pricedGroup.Select(AdGalleryQueries.ToVariation).ToList(),
+            facts);
     }
 }
 

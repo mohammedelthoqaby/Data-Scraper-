@@ -1,7 +1,7 @@
 namespace LazyBean.Application.Ads.Dtos;
 
 // One card of the ads gallery: the newest ad of a group of identical ads (same store, same text, same first image).
-// Ids, creative IDs and ingest counts are not on the card; the side panel has the variations.
+// Ids, creative IDs and ingest counts are not on the card; the ad window has them (see AdGalleryDetailDto).
 public sealed record AdGalleryCardDto(
     Guid Id,
     Guid CompetitorId,
@@ -35,7 +35,7 @@ public sealed record AdGalleryCardDto(
 // the gallery reads at once (AdGalleryQueries.MaxCandidates); narrowing the filters shows the rest.
 public sealed record AdGalleryResponseDto(int TotalCount, int TotalAds, bool Truncated, IReadOnlyList<AdGalleryCardDto> Items);
 
-// One ad of a card's group, for the side panel.
+// One ad of a card's group, for the ad window.
 public sealed record AdGalleryVariationDto(
     Guid Id,
     string? Headline,
@@ -48,4 +48,16 @@ public sealed record AdGalleryVariationDto(
     DateTimeOffset FirstSeenAt,
     DateTimeOffset LastSeenAt);
 
-public sealed record AdGalleryDetailDto(AdGalleryCardDto Card, IReadOnlyList<AdGalleryVariationDto> Variations);
+// What the detail adds to the card, for the ad window: the ad's own ID, the advertiser or page ID it was bought under, why an
+// unlinked ad has no product (AdLinkReasons code, null when it is linked), and when delivery started and stopped (Meta).
+public sealed record AdGalleryFactsDto(
+    string ExternalAdId,
+    string? AdvertiserId,
+    string? LinkReason,
+    DateTimeOffset? DeliveryStartAt,
+    DateTimeOffset? DeliveryStopAt);
+
+public sealed record AdGalleryDetailDto(
+    AdGalleryCardDto Card,
+    IReadOnlyList<AdGalleryVariationDto> Variations,
+    AdGalleryFactsDto Facts);
