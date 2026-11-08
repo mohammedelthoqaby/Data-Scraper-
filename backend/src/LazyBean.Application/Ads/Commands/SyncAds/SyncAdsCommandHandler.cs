@@ -140,7 +140,8 @@ public class SyncAdsCommandHandler(
                                 LastSeenAt = DateTimeOffset.UtcNow,
                                 Status = adStatus,
                                 CreativeHash = creativeHash,
-                                RawDataJson = rawAd.RawJson
+                                RawDataJson = rawAd.RawJson,
+                                Placements = AdPlacements.Normalize(rawAd.Placements)
                             };
 
                             await unitOfWork.Ads.AddAsync(newAd, ct);
@@ -160,6 +161,7 @@ public class SyncAdsCommandHandler(
                         {
                             existingAd.LastSeenAt = DateTimeOffset.UtcNow;
                             existingAd.DeliveryStopDate = rawAd.DeliveryStopTime?.ToUniversalTime();
+                            existingAd.Placements = AdPlacements.Normalize(rawAd.Placements) ?? existingAd.Placements;
 
                             if (existingAd.Status == AdStatus.Active && adStatus == AdStatus.Inactive)
                             {

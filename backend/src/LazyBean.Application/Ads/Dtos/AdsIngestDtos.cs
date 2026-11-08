@@ -51,7 +51,9 @@ public sealed record MetaAdItemRequest(
     DateTimeOffset? StartDate,
     DateTimeOffset? StopDate,
     string? Status,
-    string? RawJson);
+    string? RawJson,
+    // The platforms the ad ran on, as Meta reports them (FACEBOOK, INSTAGRAM, ...). Null when the collector did not send them.
+    IReadOnlyList<string>? Placements = null);
 
 public sealed record MetaAdsIngestRequest(
     string PageId,

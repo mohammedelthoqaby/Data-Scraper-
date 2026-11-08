@@ -15,7 +15,8 @@ public record MetaAdRawItem(
     string? SnapshotUrl,
     DateTimeOffset? DeliveryStartTime,
     DateTimeOffset? DeliveryStopTime,
-    string? RawJson);
+    string? RawJson,
+    IReadOnlyList<string>? Placements = null);
 
 public interface IMetaAdLibraryClient
 {

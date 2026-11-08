@@ -107,7 +107,7 @@ public sealed class GetAdGalleryDetailQueryHandler(IReadDbContext readContext, A
         var row = await readContext.Query<Ad>()
             .AsNoTracking()
             .Where(a => a.Id == representative.Ad.Id)
-            .Select(a => new { a.ExternalAdId, a.IdentityId, a.LinkReason, a.DeliveryStartDate, a.DeliveryStopDate })
+            .Select(a => new { a.ExternalAdId, a.IdentityId, a.LinkReason, a.DeliveryStartDate, a.DeliveryStopDate, a.Placements })
             .FirstOrDefaultAsync(ct);
         if (row is null)
         {
@@ -125,7 +125,8 @@ public sealed class GetAdGalleryDetailQueryHandler(IReadDbContext readContext, A
             string.IsNullOrEmpty(advertiserId) ? null : advertiserId,
             row.LinkReason,
             row.DeliveryStartDate,
-            row.DeliveryStopDate);
+            row.DeliveryStopDate,
+            AdPlacements.Parse(row.Placements));
 
         return new AdGalleryDetailDto(
             AdGalleryQueries.ToCard(representative, pricedGroup),

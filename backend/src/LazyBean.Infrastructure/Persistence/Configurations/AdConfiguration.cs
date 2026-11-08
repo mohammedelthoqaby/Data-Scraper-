@@ -24,6 +24,7 @@ public class AdConfiguration : IEntityTypeConfiguration<Ad>
         builder.Property(a => a.LinkMethod).HasMaxLength(20);
         builder.Property(a => a.LinkVersion).HasDefaultValue(0);
         builder.Property(a => a.LinkReason).HasMaxLength(40);
+        builder.Property(a => a.Placements).HasMaxLength(200);
         builder.Property(a => a.Headline).HasMaxLength(500);
         builder.Property(a => a.Description).HasMaxLength(4000);
         builder.Property(a => a.PreviewVariationsJson);

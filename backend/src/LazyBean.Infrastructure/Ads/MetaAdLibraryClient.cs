@@ -168,6 +168,15 @@ public class MetaAdLibraryClient : IMetaAdLibraryClient
                     stopTime = spVal.ToUniversalTime();
                 }
 
+                // publisher_platforms: the platforms the ad ran on (FACEBOOK, INSTAGRAM, ...). Absent on some ads.
+                IReadOnlyList<string>? placements = null;
+                if (item.TryGetProperty("publisher_platforms", out var platformsEl) && platformsEl.ValueKind == JsonValueKind.Array)
+                {
+                    placements = platformsEl.EnumerateArray()
+                        .Select(p => p.ValueKind == JsonValueKind.String ? p.GetString() ?? string.Empty : string.Empty)
+                        .ToList();
+                }
+
                 results.Add(new MetaAdRawItem(
                     id,
                     title,
@@ -176,7 +185,8 @@ public class MetaAdLibraryClient : IMetaAdLibraryClient
                     snapshotUrl,
                     startTime,
                     stopTime,
-                    item.GetRawText()));
+                    item.GetRawText(),
+                    placements));
             }
 
             // Follow paging.next if available

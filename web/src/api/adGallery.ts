@@ -59,6 +59,8 @@ export interface AdGalleryFacts {
   linkReason: string | null;
   deliveryStartAt: string | null;
   deliveryStopAt: string | null;
+  // The platforms a Meta ad ran on, lowercase (facebook, instagram, ...). Empty when not recorded, and for Google ads.
+  placements: string[];
 }
 
 export interface AdGalleryDetail {

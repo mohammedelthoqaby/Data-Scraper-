@@ -51,6 +51,20 @@ export function linkReasonText(code: string | null | undefined): string {
   return (code && LINK_REASON_TEXT[code]) || 'No product of ours matches this ad.';
 }
 
+// The name a Meta placement is shown under. Unknown codes are shown as written, with the underscores read as spaces.
+const PLACEMENT_NAMES: Record<string, string> = {
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  audience_network: 'Audience Network',
+  messenger: 'Messenger',
+  whatsapp: 'WhatsApp',
+  threads: 'Threads',
+};
+
+export function placementLabel(code: string): string {
+  return PLACEMENT_NAMES[code] ?? code.replace(/_/g, ' ');
+}
+
 // Days from the start to the end (now, while the ad runs), counting the first day. At least one.
 export function daysRunning(startIso: string, endIso: string | null, now: number = Date.now()): number {
   const start = new Date(startIso).getTime();

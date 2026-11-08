@@ -55,7 +55,9 @@ public sealed record AdGalleryFactsDto(
     string? AdvertiserId,
     string? LinkReason,
     DateTimeOffset? DeliveryStartAt,
-    DateTimeOffset? DeliveryStopAt);
+    DateTimeOffset? DeliveryStopAt,
+    // The platforms a Meta ad ran on (facebook, instagram, ...). Empty when not recorded, and for Google ads.
+    IReadOnlyList<string> Placements);
 
 public sealed record AdGalleryDetailDto(
     AdGalleryCardDto Card,

@@ -6,7 +6,7 @@ import {
   type AdGalleryCard,
   type AdGalleryDetail,
 } from '../../api/adGallery';
-import { daysRunning, formatDay, formatDayYear, formatMoney, gapBadge, linkReasonText } from './adsFormat';
+import { daysRunning, formatDay, formatDayYear, formatMoney, gapBadge, linkReasonText, placementLabel } from './adsFormat';
 
 export interface AdDetailModalProps {
   card: AdGalleryCard;
@@ -258,6 +258,20 @@ const AdWindowBody: React.FC<AdWindowBodyProps> = ({ card, titleId, onOpenPriceC
   const badge = gapBadge(card.ourPrice, card.unitPrice ?? card.competitorPrice, card.ourPriceGapPercent);
   const copyLabel = (key: string) => (copied === key ? 'Copied' : 'Copy');
 
+  // Google does not report where its ads run. Meta does, but ads collected before placements were stored have none until
+  // they are collected again.
+  const placementsNode = !isMeta ? (
+    <span className="ad-modal__muted">Not reported by Google</span>
+  ) : facts === null ? (
+    <span className="ad-modal__muted">{detailError ?? 'Loading…'}</span>
+  ) : facts.placements.length > 0 ? (
+    <span>{facts.placements.map(placementLabel).join(', ')}</span>
+  ) : (
+    <span className="ad-modal__muted" title="Recorded the next time this ad is collected.">
+      Not recorded yet
+    </span>
+  );
+
   const imageSrc = shown.count > 0 ? thumbnailUrl({ id: shown.id, thumbnailSha256: shown.sha }, position) : null;
   const imageFailed = imageSrc !== null && failedSrc === imageSrc;
   const title = card.headline || card.competitorName;
@@ -468,11 +482,11 @@ const AdWindowBody: React.FC<AdWindowBodyProps> = ({ card, titleId, onOpenPriceC
           <h3>Where it runs</h3>
           <div className="ad-modal__row">
             <span className="ad-modal__label">Platform</span>
-            <span>{isMeta ? 'Meta (Facebook and Instagram)' : 'Google'}</span>
+            <span>{isMeta ? 'Meta' : 'Google'}</span>
           </div>
           <div className="ad-modal__row">
             <span className="ad-modal__label">Placements</span>
-            <span className="ad-modal__muted">Not recorded for this ad</span>
+            {placementsNode}
           </div>
           <div className="ad-modal__row">
             <span className="ad-modal__label">Region</span>

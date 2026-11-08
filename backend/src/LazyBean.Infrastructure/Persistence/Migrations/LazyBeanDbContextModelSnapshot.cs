@@ -124,6 +124,10 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
 
+                    b.Property<string>("Placements")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Platform")
                         .IsRequired()
                         .HasMaxLength(20)

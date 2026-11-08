@@ -51,6 +51,10 @@ public class Ad : BaseEntity, IAggregateRoot
     // Why an ad is not linked to a product (AdLinkReasons), or null when it is linked.
     public string? LinkReason { get; set; }
 
+    // Where a Meta ad runs, lowercase and comma-separated (AdPlacements). Null for Google ads and for Meta ads collected before
+    // placements were stored; the next collection of the ad fills it in.
+    public string? Placements { get; set; }
+
     // Set by the optional Gemini read of an unlinked image ad (off by default). Marked "AI-read" on the ads page.
     public string? AiReadName { get; set; }
     public decimal? AiReadPrice { get; set; }

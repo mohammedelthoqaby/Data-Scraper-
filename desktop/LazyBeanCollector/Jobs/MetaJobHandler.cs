@@ -116,7 +116,8 @@ public sealed class MetaJobHandler(
         ParseDate(ad.StartDate),
         ParseDate(ad.StopDate),
         ad.Status,
-        null);
+        null,
+        ad.PublisherPlatforms);
 
     private static DateTimeOffset? ParseDate(string? value) =>
         DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ? parsed : null;

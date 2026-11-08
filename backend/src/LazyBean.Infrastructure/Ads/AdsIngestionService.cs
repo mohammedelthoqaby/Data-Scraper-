@@ -422,6 +422,7 @@ public class AdsIngestionService(
                     if (!string.IsNullOrWhiteSpace(rawAd.Link)) existing.LinkUrl = rawAd.Link;
                     if (!string.IsNullOrWhiteSpace(rawAd.SnapshotUrl)) existing.SnapshotUrl = rawAd.SnapshotUrl;
                     if (!string.IsNullOrWhiteSpace(rawAd.ImageUrl)) existing.PreviewUrl = rawAd.ImageUrl;
+                    existing.Placements = AdPlacements.Normalize(rawAd.Placements) ?? existing.Placements;
                     AdDerivedFields.Apply(existing, catalog);
 
                     if (existing.Status == AdStatus.Active && targetStatus == AdStatus.Inactive)
@@ -474,7 +475,8 @@ public class AdsIngestionService(
                         Status = targetStatus,
                         CreativeHash = creativeHash,
                         MissingCount = 0,
-                        RawDataJson = rawAd.RawJson
+                        RawDataJson = rawAd.RawJson,
+                        Placements = AdPlacements.Normalize(rawAd.Placements)
                     };
                     AdDerivedFields.Apply(newAd, catalog);
                     await unitOfWork.Ads.AddAsync(newAd, ct);
