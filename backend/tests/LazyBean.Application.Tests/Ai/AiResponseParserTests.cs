@@ -4,8 +4,22 @@ using Xunit;
 
 namespace LazyBean.Application.Tests.Ai;
 
-public class GeminiResponseParserTests
+public class AiResponseParserTests
 {
+
+    /// <summary>Extracts the model text from a Gemini-shaped envelope; raw text is returned unchanged.</summary>
+    private static string ModelText(string envelope)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(envelope);
+            return doc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString() ?? "";
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return envelope;
+        }
+    }
     [Fact]
     public void ParseTriageResults_StandardGeminiCandidatesShape_ExtractsResultsCorrectly()
     {
@@ -35,7 +49,7 @@ public class GeminiResponseParserTests
         }
         """;
 
-        var results = GeminiResponseParser.ParseTriageResults(responseJson, batch);
+        var results = AiResponseParser.ParseTriageResults(ModelText(responseJson), batch);
 
         Assert.Equal(2, results.Count);
         Assert.Equal(id1, results[0].ReviewId);
@@ -73,7 +87,7 @@ public class GeminiResponseParserTests
         }
         """;
 
-        var results = GeminiResponseParser.ParseTriageResults(responseJson, batch);
+        var results = AiResponseParser.ParseTriageResults(ModelText(responseJson), batch);
 
         Assert.Single(results);
         Assert.Equal(id, results[0].ReviewId);
@@ -106,7 +120,7 @@ public class GeminiResponseParserTests
         }
         """;
 
-        var results = GeminiResponseParser.ParseTriageResults(responseJson, batch);
+        var results = AiResponseParser.ParseTriageResults(ModelText(responseJson), batch);
 
         Assert.Single(results);
         Assert.Equal(id, results[0].ReviewId);
@@ -139,7 +153,7 @@ public class GeminiResponseParserTests
         }
         """;
 
-        var results = GeminiResponseParser.ParseTriageResults(responseJson, batch);
+        var results = AiResponseParser.ParseTriageResults(ModelText(responseJson), batch);
 
         Assert.Single(results);
         Assert.Equal(id1, results[0].ReviewId);
@@ -157,7 +171,7 @@ public class GeminiResponseParserTests
 
         var responseJson = "Internal server error 500";
 
-        var results = GeminiResponseParser.ParseTriageResults(responseJson, batch);
+        var results = AiResponseParser.ParseTriageResults(ModelText(responseJson), batch);
 
         Assert.Single(results);
         Assert.Equal(id, results[0].ReviewId);

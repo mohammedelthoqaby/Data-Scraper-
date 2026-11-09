@@ -106,9 +106,11 @@ Configure the following variables using the double-underscore (`__`) notation:
 | `Internal__Token` | **Yes** | Shared secret token for GitHub Actions and runner webhooks (64 characters recommended). |
 | `App__PublicBaseUrl` | **Yes** | `https://lazy-bean.runasp.net` (used for keep-alive pings and internal URLs). |
 | `Security__UseHttpsRedirection` | **Yes** | `false` (TLS is terminated by MonsterASP's IIS reverse proxy front). |
+| `Ai__Groq__ApiKey` | Optional | Groq API key (primary AI provider). When set, it overrides the key saved in **Settings > AI**. |
+| `Ai__Gemini__ApiKey` | Optional | Gemini (Google AI Studio) API key (fallback provider). Same override rule. |
 
 > [!NOTE]
-> AI Studio API keys (Gemini API) and thresholds are managed at runtime via **Settings > AI** in the UI. Keys are encrypted with ASP.NET Core Data Protection and stored in the database (`DataProtectionKeys` table), surviving app restarts.
+> AI provider keys (Groq primary, Gemini fallback) and limits are managed at runtime via **Settings > AI** in the UI. Keys are encrypted with ASP.NET Core Data Protection. The key ring is persisted to the `App_Data\keys` folder under the app root (outside `wwwroot`, never served and never published). The app pool identity needs read and write access to that folder, or saved keys stop decrypting after a restart; if it is ever lost, re-enter the keys in the UI.
 
 ---
 

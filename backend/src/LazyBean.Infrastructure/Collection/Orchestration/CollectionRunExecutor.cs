@@ -372,9 +372,11 @@ public class CollectionRunExecutor(
             var triageService = sp.GetService<IAiTriageService>();
             if (triageService != null)
             {
-                var triageRes = await triageService.TriagePendingReviewsAsync(20, aiCts.Token, runId);
+                var triageRes = await triageService.TriagePendingReviewsAsync(null, aiCts.Token, runId);
                 swAi.Stop();
-                var msg = $"{triageRes.TotalEvaluated} evaluated ({triageRes.SameCount} same, {triageRes.DifferentCount} different, {triageRes.UnsureCount} unsure)";
+                var msg = triageRes.Deferred > 0
+                    ? $"{(triageRes.StopReason == "AI quota reached" ? "AI quota reached" : $"AI stopped ({triageRes.StopReason})")}, {triageRes.Deferred} items left for next run ({triageRes.TotalEvaluated} evaluated)"
+                    : $"{triageRes.TotalEvaluated} evaluated ({triageRes.SameCount} same, {triageRes.DifferentCount} different, {triageRes.UnsureCount} unsure)";
                 phases.Add(new { name = "ai_triage", status = "completed", durationMs = (int)swAi.ElapsedMilliseconds, message = msg });
                 progressTracker?.UpdatePhase(runId, "ai_triage", "completed", msg, (int)swAi.ElapsedMilliseconds);
             }

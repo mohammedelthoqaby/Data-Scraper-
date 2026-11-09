@@ -35,8 +35,7 @@ public class AiReviewTriageCacheTests
         db.AiSettings.Add(new AiSetting
         {
             IsEnabled = true,
-            EncryptedApiKey = "dummy-encrypted-key",
-            ModelName = "gemini-3.8-flash",
+            PrimaryProvider = "groq",
             DailyRequestCap = 500
         });
 
@@ -115,8 +114,7 @@ public class AiReviewTriageCacheTests
         db.AiSettings.Add(new AiSetting
         {
             IsEnabled = true,
-            EncryptedApiKey = "dummy-encrypted-key",
-            ModelName = "gemini-3.8-flash",
+            PrimaryProvider = "groq",
             DailyRequestCap = 500
         });
 

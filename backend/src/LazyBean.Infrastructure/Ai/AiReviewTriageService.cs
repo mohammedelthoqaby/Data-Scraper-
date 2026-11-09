@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using LazyBean.Application.Ai;
 using LazyBean.Application.Ai.Dtos;
 using LazyBean.Application.Common.Interfaces;
 using LazyBean.Domain.Entities;
@@ -73,32 +74,19 @@ public class AiReviewTriageService : IAiTriageService
         return Convert.ToHexStringLower(bytes);
     }
 
-    public async Task<AiTriageStats> TriagePendingReviewsAsync(int limit = 20, CancellationToken ct = default, Guid? runId = null)
+    public async Task<AiTriageStats> TriagePendingReviewsAsync(int? limit = null, CancellationToken ct = default, Guid? runId = null)
     {
-        var setting = await _dbContext.AiSettings.FirstOrDefaultAsync(ct);
+        var setting = await _dbContext.AiSettings.AsNoTracking().FirstOrDefaultAsync(ct);
         if (setting == null || !setting.IsEnabled)
         {
-            _logger.LogInformation("AI is disabled or not configured; skipping AI review triage.");
+            _logger.LogInformation("AI is disabled; skipping AI review triage.");
             return new AiTriageStats(0, 0, 0, 0, 0, 0);
         }
 
-        // Check daily request cap in AI Configuration
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        if (setting.UsageDate != today)
-        {
-            setting.UsageDate = today;
-            setting.RequestsUsedToday = 0;
-            await _dbContext.SaveChangesAsync(ct);
-        }
-
-        if (setting.RequestsUsedToday >= setting.DailyRequestCap)
-        {
-            _logger.LogWarning("Daily AI request cap reached ({Used}/{Cap}). Skipping Gemini review triage.", setting.RequestsUsedToday, setting.DailyRequestCap);
-            return new AiTriageStats(0, 0, 0, 0, 0, 0);
-        }
-
-        // Enforce maximum 20 candidates per collection run
-        var effectiveLimit = Math.Clamp(limit, 1, 20);
+        // The per-run cap is configurable (default 200). A caller can ask for less, never for more.
+        // Daily quotas are enforced by the AI router; an exhausted quota stops this run gracefully.
+        var runCap = Math.Clamp(setting.TriageRunCap, 1, 1000);
+        var effectiveLimit = Math.Clamp(limit ?? runCap, 1, runCap);
 
         var pendingItems = await _dbContext.ReviewItems
             .Where(r => r.Kind == ReviewItemKind.ProductMatch && r.Status == ReviewStatus.Pending)
@@ -115,6 +103,8 @@ public class AiReviewTriageService : IAiTriageService
         var sameCount = 0;
         var diffCount = 0;
         var unsureCount = 0;
+        var deferred = 0;
+        string? stopReason = null;
 
         // Parse items and hashes
         var requests = new List<(ReviewItem Item, AiReviewTriagePairRequest Request, JsonObject RootNode)>();
@@ -207,31 +197,21 @@ public class AiReviewTriageService : IAiTriageService
             {
                 results = await _aiClient.TriageReviewBatchAsync(batchRequests, ct);
             }
-            catch (Exception ex)
+            catch (AiUnavailableException ex)
             {
-                var is429 = ex.Message.Contains("429") || ex.Message.Contains("quota", StringComparison.OrdinalIgnoreCase);
-                if (is429)
-                {
-                    _logger.LogWarning("Gemini API rate limit or quota exceeded (429). Halting AI triage phase immediately; keeping items as unsure.");
-                    setting.LastCallStatus = "429 quota";
-                    setting.LastCallAt = DateTimeOffset.UtcNow;
-
-                    var remainingTuples = uncached.Skip(i).ToList();
-                    foreach (var remaining in remainingTuples)
-                    {
-                        ApplyAiVerdictToPayload(remaining.RootNode, "unsure", 0.5m, "429 quota reached - review manually", remaining.Request.PairHash);
-                        remaining.Item.PayloadJson = remaining.RootNode.ToJsonString();
-                        unsureCount++;
-                    }
-
-                    break;
-                }
-
-                _logger.LogWarning(ex, "Gemini triage API call failed during batch {BatchIndex}/{TotalBatches}: {Message}", batchIndex, totalBatches, ex.Message);
-                // Apply whatever has been evaluated so far
-                await ApplyMatchingAutomationAsync(requests, CancellationToken.None);
-                await _dbContext.SaveChangesAsync(CancellationToken.None);
-                throw;
+                // Quota or providers exhausted: stop AI work for this run. Unprocessed items stay pending.
+                _logger.LogWarning("AI triage stopped at batch {BatchIndex}/{TotalBatches}: {Reason}.", batchIndex, totalBatches, ex.Message);
+                stopReason = ex.QuotaReached ? "AI quota reached" : ex.Message;
+                deferred = uncached.Count - i;
+                break;
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                // AI must never fail the run: keep what was evaluated and leave the rest pending.
+                _logger.LogWarning(ex, "AI triage batch {BatchIndex}/{TotalBatches} failed; remaining items stay pending.", batchIndex, totalBatches);
+                stopReason = "AI triage error";
+                deferred = uncached.Count - i;
+                break;
             }
 
             foreach (var res in results)
@@ -249,7 +229,7 @@ public class AiReviewTriageService : IAiTriageService
                     Verdict = res.Verdict,
                     Confidence = res.Confidence,
                     Reason = res.Reason,
-                    ModelName = setting.ModelName,
+                    ModelName = res.Model ?? "unknown",
                     AnalyzedAt = DateTimeOffset.UtcNow
                 };
                 _dbContext.AiReviewTriageCaches.Add(cacheEntry);
@@ -260,26 +240,16 @@ public class AiReviewTriageService : IAiTriageService
             }
         }
 
-        if (apiCalls > 0)
-        {
-            setting.RequestsUsedToday += apiCalls;
-            if (setting.LastCallStatus != "429 quota")
-            {
-                setting.LastCallStatus = "200 OK";
-            }
-            setting.LastCallAt = DateTimeOffset.UtcNow;
-        }
-
         // Apply matching automation for all evaluated items
         await ApplyMatchingAutomationAsync(requests, ct);
 
         await _dbContext.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "AI Triage completed: {Total} processed, {Hits} cache hits, {Calls} API calls. (Same: {Same}, Diff: {Diff}, Unsure: {Unsure})",
-            total, cacheHits, apiCalls, sameCount, diffCount, unsureCount);
+            "AI Triage completed: {Total} processed, {Hits} cache hits, {Calls} API calls, {Deferred} deferred. (Same: {Same}, Diff: {Diff}, Unsure: {Unsure})",
+            total, cacheHits, apiCalls, deferred, sameCount, diffCount, unsureCount);
 
-        return new AiTriageStats(total, cacheHits, apiCalls, sameCount, diffCount, unsureCount);
+        return new AiTriageStats(total, cacheHits, apiCalls, sameCount, diffCount, unsureCount, deferred, stopReason);
     }
 
     private async Task ApplyMatchingAutomationAsync(

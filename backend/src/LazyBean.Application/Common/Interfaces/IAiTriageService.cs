@@ -6,7 +6,9 @@ public record AiTriageStats(
     int ApiCallsMade,
     int SameCount,
     int DifferentCount,
-    int UnsureCount);
+    int UnsureCount,
+    int Deferred = 0,
+    string? StopReason = null);
 
 public interface IAiTriageService
 {
@@ -24,5 +26,10 @@ public interface IAiTriageService
         int? compUnit,
         string? compCapsule);
 
-    Task<AiTriageStats> TriagePendingReviewsAsync(int limit = 100, CancellationToken ct = default, Guid? runId = null);
+    /// <summary>
+    /// Triages pending product-match reviews. <paramref name="limit"/> is capped by the
+    /// configured per-run cap (AiSetting.TriageRunCap, default 200); null uses the cap.
+    /// Never throws for AI unavailability: unprocessed items stay pending and are reported in Deferred.
+    /// </summary>
+    Task<AiTriageStats> TriagePendingReviewsAsync(int? limit = null, CancellationToken ct = default, Guid? runId = null);
 }

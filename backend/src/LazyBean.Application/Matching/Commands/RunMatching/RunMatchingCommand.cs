@@ -15,7 +15,7 @@ public class RunMatchingCommandHandler(IProductMatcher matcher, IAiTriageService
         // After each matching pass, background AI triage of pending review pairs
         try
         {
-            await triageService.TriagePendingReviewsAsync(100, ct);
+            await triageService.TriagePendingReviewsAsync(null, ct);
         }
         catch
         {

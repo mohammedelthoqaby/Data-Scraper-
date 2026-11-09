@@ -11,6 +11,8 @@ public class LazyBeanDbContext(DbContextOptions<LazyBeanDbContext> options) : Db
 {
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
     public DbSet<AiSetting> AiSettings => Set<AiSetting>();
+    public DbSet<AiProviderSetting> AiProviderSettings => Set<AiProviderSetting>();
+    public DbSet<AiProviderUsage> AiProviderUsages => Set<AiProviderUsage>();
     public DbSet<AiReviewTriageCache> AiReviewTriageCaches => Set<AiReviewTriageCache>();
     public DbSet<Competitor> Competitors => Set<Competitor>();
     public DbSet<User> Users => Set<User>();

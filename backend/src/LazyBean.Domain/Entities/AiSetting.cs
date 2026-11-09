@@ -2,18 +2,20 @@ using LazyBean.Domain.Common;
 
 namespace LazyBean.Domain.Entities;
 
+/// <summary>
+/// Global AI settings (single row). Per-provider keys, models and usage live in
+/// <see cref="AiProviderSetting"/> and <see cref="AiProviderUsage"/>.
+/// </summary>
 public class AiSetting : BaseEntity, IAggregateRoot
 {
     public bool IsEnabled { get; set; } = false;
-    public string? EncryptedApiKey { get; set; }
-    public string? KeyLastFour { get; set; }
-    public string ModelName { get; set; } = "gemini-3.8-flash";
+
+    /// <summary>Provider tried first: "groq" (default) or "gemini" (fallback).</summary>
+    public string PrimaryProvider { get; set; } = "groq";
+
+    /// <summary>Safety cap on total AI requests per UTC day across all providers.</summary>
     public int DailyRequestCap { get; set; } = 1000;
-    public int RequestsUsedToday { get; set; } = 0;
-    public DateOnly UsageDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
-    public DateTimeOffset? LastTestedAt { get; set; }
-    public bool? LastTestSuccess { get; set; }
-    public string? LastTestMessage { get; set; }
-    public DateTimeOffset? LastCallAt { get; set; }
-    public string? LastCallStatus { get; set; }
+
+    /// <summary>Maximum number of review pairs triaged per run (configurable, default 200).</summary>
+    public int TriageRunCap { get; set; } = 200;
 }

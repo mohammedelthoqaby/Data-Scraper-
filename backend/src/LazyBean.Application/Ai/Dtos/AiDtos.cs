@@ -1,30 +1,66 @@
 namespace LazyBean.Application.Ai.Dtos;
 
+/// <summary>Usage and status for one provider. Contains no key material.</summary>
+public record AiProviderUsageDto(
+    DateOnly UsageDate,
+    int RequestsToday,
+    long TokensToday,
+    int DailyRequestLimit,
+    string? LastError,
+    DateTimeOffset? LastErrorAt,
+    DateTimeOffset? Last429At);
+
+public record AiProviderStatusDto(
+    string Provider,
+    string Label,
+    bool IsConfigured,
+    string KeySource, // "none" | "database" | "environment"
+    string? MaskedApiKey,
+    string ModelName,
+    string DefaultModel,
+    IReadOnlyList<string> SuggestedModels,
+    DateTimeOffset? LastTestedAt,
+    string? LastTestStatus,
+    string? LastTestMessage,
+    AiProviderUsageDto Usage);
+
 public record AiSettingsDto(
     bool IsEnabled,
-    string ModelName,
-    string? MaskedApiKey,
+    string PrimaryProvider,
     int DailyRequestCap,
-    int RequestsUsedToday,
-    DateTimeOffset? LastTestedAt,
-    bool? LastTestSuccess,
-    string? LastTestMessage,
-    DateTimeOffset? LastCallAt = null,
-    string? LastCallStatus = null);
+    int TriageRunCap,
+    IReadOnlyList<AiProviderStatusDto> Providers);
 
 public record UpdateAiSettingsRequestDto(
     bool? IsEnabled,
-    string? ApiKey,
-    string? ModelName,
-    int? DailyRequestCap);
+    string? PrimaryProvider,
+    int? DailyRequestCap,
+    int? TriageRunCap);
 
-public record TestAiConnectionRequestDto(
+public record SaveAiProviderRequestDto(
     string? ApiKey,
     string? ModelName);
 
-public record AiTestResultDto(
-    bool Success,
+public record TestAiProviderRequestDto(
+    string? ApiKey,
+    string? ModelName);
+
+/// <summary>Outcome of a key test. Status: "ok" | "invalid_key" | "rate_limited" | "error" | "not_configured".</summary>
+public record AiKeyTestResultDto(
+    string Status,
     string Message);
+
+/// <summary>Provider-agnostic JSON-mode request. Output must be a single JSON object.</summary>
+public record AiJsonRequest(
+    string SystemPrompt,
+    string UserPrompt,
+    int MaxOutputTokens);
+
+public record AiCompletionResult(
+    string Provider,
+    string Model,
+    string Text,
+    int TotalTokens);
 
 public record AiReviewTriagePairRequest(
     Guid ReviewId,
@@ -78,7 +114,8 @@ public record AiReviewTriageResult(
     string PairHash,
     string Verdict, // "same" | "different" | "unsure"
     decimal Confidence, // 0.0 - 1.0
-    string Reason);
+    string Reason,
+    string? Model = null); // model that produced the verdict, when known
 
 public record RankedAttentionItem(
     string Id,

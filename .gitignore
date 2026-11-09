@@ -42,3 +42,6 @@ venv/
 # OS
 Thumbs.db
 .DS_Store
+
+# AI data-protection keys (encrypt saved provider keys). Never publish or commit.
+App_Data/

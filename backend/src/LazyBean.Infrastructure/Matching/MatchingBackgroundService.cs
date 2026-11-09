@@ -39,7 +39,7 @@ public class MatchingBackgroundService(
                 {
                     try
                     {
-                        await triageService.TriagePendingReviewsAsync(100, phaseCts.Token);
+                        await triageService.TriagePendingReviewsAsync(null, phaseCts.Token);
                     }
                     catch (Exception ex)
                     {
