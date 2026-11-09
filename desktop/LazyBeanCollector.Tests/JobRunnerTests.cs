@@ -1,7 +1,11 @@
+using LazyBean.Collector.App.Jobs;
 using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Collector.Dtos;
-using LazyBean.Collector.App.Api;
-using LazyBean.Collector.App.Jobs;
+using LazyBean.Infrastructure.External.LazyBeanApi;
+using LazyBean.Application.Collector.Exceptions;
+using LazyBean.Application.Collector.Orchestration;
+using LazyBean.Application.Collector.Dtos;
+using LazyBean.Infrastructure.External.Images;
 using LazyBean.Collector.App.Runtime;
 
 namespace LazyBean.Collector.App.Tests;
@@ -72,7 +76,7 @@ public sealed class JobRunnerTests : IDisposable
     {
         var api = new FakeCollectorApi();
         api.Claims.Enqueue(_ => Task.FromException<CollectorJobDto?>(
-            new CollectorApiException(ApiErrorKind.Unauthorized, "revoked", System.Net.HttpStatusCode.Unauthorized)));
+            new CollectorApiException(ApiErrorKind.Unauthorized, "revoked", (int)System.Net.HttpStatusCode.Unauthorized)));
         using var cts = new CancellationTokenSource();
 
         await Assert.ThrowsAsync<PairingRequiredException>(() =>
@@ -124,7 +128,7 @@ public sealed class JobRunnerTests : IDisposable
     {
         var api = new FakeCollectorApi
         {
-            JobCompleteFailure = _ => new CollectorApiException(ApiErrorKind.Conflict, "not yours", System.Net.HttpStatusCode.Conflict),
+            JobCompleteFailure = _ => new CollectorApiException(ApiErrorKind.Conflict, "not yours", (int)System.Net.HttpStatusCode.Conflict),
         };
         api.Identities = new CollectorIdentities([], []);
         Enqueue(api, Builders.AdsJob("MetaAds"));

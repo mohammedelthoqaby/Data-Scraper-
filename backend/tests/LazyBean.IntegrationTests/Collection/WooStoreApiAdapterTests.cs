@@ -1,6 +1,7 @@
-using LazyBean.Collectors.Google;
-using LazyBean.Collectors.Http;
-using LazyBean.Collectors.Woo;
+using LazyBean.Infrastructure.External.Google;
+using LazyBean.Infrastructure.External.Http;
+using LazyBean.Application.Collector.Exceptions;
+using LazyBean.Infrastructure.External.Woo;
 using LazyBean.Domain.Entities;
 using LazyBean.Domain.Enums;
 using LazyBean.Infrastructure.Collection.Adapters;

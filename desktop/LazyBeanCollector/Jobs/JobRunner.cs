@@ -1,5 +1,7 @@
 using LazyBean.Application.Collector.Dtos;
-using LazyBean.Collector.App.Api;
+using LazyBean.Application.Collector.Orchestration;
+using LazyBean.Infrastructure.External.LazyBeanApi;
+using LazyBean.Application.Collector.Exceptions;
 using LazyBean.Collector.App.Runtime;
 
 namespace LazyBean.Collector.App.Jobs;

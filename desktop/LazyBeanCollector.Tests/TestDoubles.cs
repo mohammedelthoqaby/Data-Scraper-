@@ -3,12 +3,17 @@ using LazyBean.Application.Ads.Exceptions;
 using LazyBean.Application.Collection.Contracts;
 using LazyBean.Application.Collector.Dtos;
 using LazyBean.Application.Common.Interfaces;
-using LazyBean.Collector.App.Api;
-using LazyBean.Collector.App.Jobs;
+using LazyBean.Infrastructure.External.LazyBeanApi;
+using LazyBean.Application.Collector.Exceptions;
+using LazyBean.Application.Collector.Orchestration;
+using LazyBean.Application.Collector.Dtos;
+using LazyBean.Infrastructure.External.Images;
 using LazyBean.Collector.App.Runtime;
 using LazyBean.Domain.Entities;
 using LazyBean.Domain.Enums;
-using LazyBean.Collectors.Meta;
+using LazyBean.Infrastructure.External.Meta;
+using LazyBean.Application.Ads.Models;
+using LazyBean.Application.Ads.Collection;
 
 namespace LazyBean.Collector.App.Tests;
 

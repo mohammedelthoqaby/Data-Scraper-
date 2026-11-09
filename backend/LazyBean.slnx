@@ -4,7 +4,6 @@
     <Project Path="src/LazyBean.Application/LazyBean.Application.csproj" />
     <Project Path="src/LazyBean.Domain/LazyBean.Domain.csproj" />
     <Project Path="src/LazyBean.Infrastructure/LazyBean.Infrastructure.csproj" />
-    <Project Path="src/LazyBean.Collectors/LazyBean.Collectors.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/LazyBean.Application.Tests/LazyBean.Application.Tests.csproj" />

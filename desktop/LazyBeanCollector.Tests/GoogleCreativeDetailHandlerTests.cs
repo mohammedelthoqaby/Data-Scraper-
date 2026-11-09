@@ -1,8 +1,12 @@
+using LazyBean.Application.Collector.Exceptions;
 using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Ads.Exceptions;
 using LazyBean.Application.Collector.Dtos;
-using LazyBean.Collector.App.Api;
-using LazyBean.Collector.App.Jobs;
+using LazyBean.Infrastructure.External.LazyBeanApi;
+using LazyBean.Application.Collector.Exceptions;
+using LazyBean.Application.Collector.Orchestration;
+using LazyBean.Application.Collector.Dtos;
+using LazyBean.Infrastructure.External.Images;
 using LazyBean.Collector.App.Runtime;
 using Xunit;
 
@@ -62,7 +66,7 @@ public sealed class GoogleCreativeDetailHandlerTests : IDisposable
         };
         var client = new FakeGoogleClient
         {
-            DetailFailure = id => id == "c1" ? new HttpRequestException("connection reset") : null,
+            DetailFailure = id => id == "c1" ? new CollectorTransportException("connection reset") : null,
         };
         client.Pages[Advertiser] = Pages(Builders.Creative("c1"), Builders.Creative("c2"));
         var handler = new GoogleJobHandler(api, client, Log(), new CollectorState(), new DelayRecorder().Delay);

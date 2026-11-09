@@ -1,12 +1,21 @@
+using LazyBean.Application.Collector.Ports;
+using LazyBean.Infrastructure.External.Images;
+using LazyBean.Infrastructure.External.PageResolution;
+using LazyBean.Collector.App.Jobs;
+using LazyBean.Application.Ads.Collection;
 using LazyBean.Application.Collection.Contracts;
 using LazyBean.Application.Common.Interfaces;
-using LazyBean.Collector.App.Api;
-using LazyBean.Collector.App.Jobs;
+using LazyBean.Infrastructure.External.LazyBeanApi;
+using LazyBean.Application.Collector.Exceptions;
+using LazyBean.Application.Collector.Orchestration;
+using LazyBean.Application.Collector.Dtos;
+using LazyBean.Infrastructure.External.Images;
 using LazyBean.Collector.App.Runtime;
 using LazyBean.Collector.App.Security;
 using LazyBean.Collector.App.Settings;
-using LazyBean.Collectors.Http;
-using LazyBean.Collectors.Woo;
+using LazyBean.Infrastructure.External.Http;
+using LazyBean.Application.Collector.Exceptions;
+using LazyBean.Infrastructure.External.Woo;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LazyBean.Collector.App.Host;
@@ -44,10 +53,7 @@ public sealed class CollectorHost : IAsyncDisposable
     private readonly TimeSpan _signOutTimeout;
 
     private ICollectorApi? _api;
-    // Downloads the ad images from the Meta and Google CDNs. Its own client, so it does not share the API's settings.
-    private static readonly HttpClient ImageHttp = CreateImageHttp();
-
-    private HttpClient? _apiHttp;
+    private CollectorApiClient? _apiClient;
     private CancellationTokenSource? _loopCts;
     private Task? _loop;
 
@@ -57,12 +63,12 @@ public sealed class CollectorHost : IAsyncDisposable
         _state = state;
         _options = options ?? new CollectorHostOptions();
         _delay = _options.Delay ?? DefaultDelay;
-        _metaCollector = _options.MetaCollector ?? new MetaPageCollector();
         _settingsStore = new SettingsStore(paths.SettingsFile);
         _tokenStore = new TokenStore(paths.TokenFile);
         _settings = _settingsStore.Load();
         _signOutTimeout = _options.SignOutTimeout ?? TimeSpan.FromSeconds(10);
         _services = CollectorServices.Build();
+        _metaCollector = _options.MetaCollector ?? _services.GetRequiredService<IMetaPageCollector>();
         _woo = new WooStoreApiAdapter(_services.GetRequiredService<ICollectorHttpClient>());
 
         _state.LoadLastSync(_settings.LastSync);
@@ -264,18 +270,10 @@ public sealed class CollectorHost : IAsyncDisposable
         }
     }
 
-    private static HttpClient CreateImageHttp()
-    {
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
-        return client;
-    }
-
     private JobRunner CreateRunner(ICollectorApi api)
     {
         var google = _options.GoogleClient ?? _services.GetRequiredService<IGoogleAdsTransparencyClient>();
-        var thumbnails = new AdThumbnailSync(api, new AdThumbnailProcessor(ImageHttp), _log, _delay);
+        var thumbnails = new AdThumbnailSync(api, _services.GetRequiredService<IAdThumbnailProcessor>(), _log, _delay);
         return new JobRunner(
             api,
             new StoreJobHandler(api, _woo, _log, _state),
@@ -286,7 +284,7 @@ public sealed class CollectorHost : IAsyncDisposable
             _delay,
             _options.Heartbeat,
             new MetaPageResolveJobHandler(
-                new FacebookPageSource(new HttpClient { Timeout = TimeSpan.FromSeconds(30) }),
+                _services.GetRequiredService<IFacebookPageIdLookup>(),
                 _log,
                 _state));
     }
@@ -304,13 +302,9 @@ public sealed class CollectorHost : IAsyncDisposable
             return factory(trimmed);
         }
 
-        _apiHttp?.Dispose();
-        _apiHttp = new HttpClient
-        {
-            BaseAddress = new Uri(trimmed + "/"),
-            Timeout = TimeSpan.FromSeconds(60),
-        };
-        return new CollectorApiClient(_apiHttp, new RetryPolicy(maxRetries: 2, delay: _delay));
+        _apiClient?.Dispose();
+        _apiClient = CollectorApiClient.Create(trimmed, _delay);
+        return _apiClient;
     }
 
     private void SaveLastSync(IReadOnlyDictionary<string, SourceSync> snapshot)
@@ -330,7 +324,7 @@ public sealed class CollectorHost : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopLoopAsync();
-        _apiHttp?.Dispose();
+        _apiClient?.Dispose();
         await _services.DisposeAsync();
     }
 }

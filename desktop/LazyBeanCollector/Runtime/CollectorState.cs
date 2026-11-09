@@ -18,7 +18,7 @@ public sealed record JobProgress(string Title, string Message, int Done, int? To
 public sealed record BatchProgress(int Position, int Total);
 
 // What the window shows. Background threads update it and raise Changed; the UI marshals to its own thread.
-public sealed class CollectorState(Func<DateTimeOffset>? clock = null)
+public sealed class CollectorState(Func<DateTimeOffset>? clock = null) : LazyBean.Application.Collector.Ports.ICollectionProgress
 {
     private readonly object _gate = new();
     private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.UtcNow);

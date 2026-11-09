@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text;
-using LazyBean.Collectors.Google;
+using LazyBean.Infrastructure.External.Google;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 

@@ -1,3 +1,4 @@
+using LazyBean.Domain.Rules;
 using LazyBean.Application.Ads.Common;
 using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Common.Interfaces;
@@ -19,7 +20,7 @@ public class GetAdsSummaryQueryHandler(IReadDbContext readContext, AdsOptions op
     public async Task<AdsSummaryDto> Handle(GetAdsSummaryQuery request, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        var cutoff = now - TimeSpan.FromDays(options.GoogleActiveWindowDays);
+        var cutoff = AdActivity.CutoffFor(now, options.GoogleActiveWindowDays);
 
         var competitors = await readContext.Query<Competitor>()
             .AsNoTracking()

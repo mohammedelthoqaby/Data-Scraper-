@@ -1,5 +1,6 @@
 using System.Diagnostics;
-using LazyBean.Collector.App.Api;
+using LazyBean.Infrastructure.External.LazyBeanApi;
+using LazyBean.Application.Collector.Exceptions;
 using LazyBean.Collector.App.Host;
 using LazyBean.Collector.App.Runtime;
 using LazyBean.Collector.App.Security;

@@ -3,10 +3,10 @@
   <ItemGroup>
     <ProjectReference Include="..\LazyBean.Application\LazyBean.Application.csproj" />
     <ProjectReference Include="..\LazyBean.Domain\LazyBean.Domain.csproj" />
-    <ProjectReference Include="..\LazyBean.Collectors\LazyBean.Collectors.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.14" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.14" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.14" />

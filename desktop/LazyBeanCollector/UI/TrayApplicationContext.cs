@@ -148,7 +148,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         catch (Exception ex)
         {
             MessageBox.Show(
-                ex is Api.CollectorApiException api ? api.Message : $"Could not queue ads collection: {ex.Message}",
+                ex is LazyBean.Application.Collector.Exceptions.CollectorApiException api ? api.Message : $"Could not queue ads collection: {ex.Message}",
                 "LazyBean Collector",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);

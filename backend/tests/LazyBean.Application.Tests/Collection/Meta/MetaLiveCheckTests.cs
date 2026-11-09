@@ -1,4 +1,6 @@
-using LazyBean.Collectors.Meta;
+using LazyBean.Infrastructure.External.Meta;
+using LazyBean.Application.Ads.Models;
+using LazyBean.Application.Ads.Collection;
 using Xunit.Abstractions;
 
 namespace LazyBean.Application.Tests.Collection.Meta;
@@ -21,7 +23,7 @@ public class MetaLiveCheckTests(ITestOutputHelper output)
             return;
         }
 
-        var result = await new MetaAdsPageCollector().CollectPageAsync(pageId, "EG", "ALL", 50);
+        var result = await MetaTestCollector.For(MetaAdsOptions.Default, null).CollectPageAsync(pageId, "EG", "ALL", 50);
 
         output.WriteLine($"page={result.PageId} status={result.Status} ads={result.TotalCollected} errorType={result.ErrorType} error={result.Error}");
         foreach (var ad in result.Ads.Take(3))

@@ -1,38 +1,18 @@
-using LazyBean.Application.Collection.Contracts;
-using LazyBean.Application.Common.Interfaces;
-using LazyBean.Collector.App.Runtime;
-using LazyBean.Collectors.Google;
-using LazyBean.Collectors.Http;
+using LazyBean.Infrastructure.External;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LazyBean.Collector.App.Host;
 
-// The composition root for collection. Uses the same HTTP policy the server uses (per-competitor delay,
-// robots.txt, 429/503 retry) with the app's own IP address.
+// The composition root for collection. The app calls AddExternalCollectors(), the same HTTP side the server uses (the shared
+// HTTP policy, robots.txt, the store, Google and Meta sources), so the app and the server run one set of rules. The app never
+// registers the database: it has no connection string and no DbContext.
 public static class CollectorServices
 {
-    public const string UserAgent = "LazyBeanBot/1.0 (+https://lazy-bean.runasp.net)";
-
     public static ServiceProvider Build()
     {
         var services = new ServiceCollection();
         services.AddLogging();
-
-        services.AddHttpClient("Collector", client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(120);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
-        });
-
-        services.AddSingleton<RobotsTxtCache>();
-        services.AddSingleton<IEvidenceStore, NoEvidenceStore>();
-        services.AddSingleton<ICollectorHttpClient, CollectorHttpClient>();
-
-        services.AddHttpClient<IGoogleAdsTransparencyClient, GoogleAdsTransparencyClient>(client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
-
+        services.AddExternalCollectors();
         return services.BuildServiceProvider();
     }
 }

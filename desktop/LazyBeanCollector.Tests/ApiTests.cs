@@ -2,7 +2,8 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
-using LazyBean.Collector.App.Api;
+using LazyBean.Infrastructure.External.LazyBeanApi;
+using LazyBean.Application.Collector.Exceptions;
 
 namespace LazyBean.Collector.App.Tests;
 
@@ -22,7 +23,7 @@ public class RetryPolicyTests
             attempts++;
             if (attempts < 3)
             {
-                throw new CollectorApiException(ApiErrorKind.RateLimited, "slow down", HttpStatusCode.TooManyRequests);
+                throw new CollectorApiException(ApiErrorKind.RateLimited, "slow down", (int)HttpStatusCode.TooManyRequests);
             }
 
             return Task.FromResult(42);
@@ -42,7 +43,7 @@ public class RetryPolicyTests
         await Assert.ThrowsAsync<CollectorApiException>(() => policy.ExecuteAsync<int>(_ =>
         {
             attempts++;
-            throw new CollectorApiException(ApiErrorKind.ServerError, "boom", HttpStatusCode.InternalServerError);
+            throw new CollectorApiException(ApiErrorKind.ServerError, "boom", (int)HttpStatusCode.InternalServerError);
         }, CancellationToken.None));
 
         Assert.Equal(3, attempts);
@@ -57,7 +58,7 @@ public class RetryPolicyTests
         await Assert.ThrowsAsync<CollectorApiException>(() => policy.ExecuteAsync<int>(_ =>
         {
             attempts++;
-            throw new CollectorApiException(ApiErrorKind.ServerError, "boom", HttpStatusCode.InternalServerError);
+            throw new CollectorApiException(ApiErrorKind.ServerError, "boom", (int)HttpStatusCode.InternalServerError);
         }, CancellationToken.None, retryServerErrors: false));
 
         Assert.Equal(1, attempts);
@@ -117,7 +118,7 @@ public class RetryPolicyTests
             attempts++;
             if (attempts == 1)
             {
-                throw new CollectorApiException(ApiErrorKind.RateLimited, "slow", HttpStatusCode.TooManyRequests, TimeSpan.FromSeconds(90));
+                throw new CollectorApiException(ApiErrorKind.RateLimited, "slow", (int)HttpStatusCode.TooManyRequests, TimeSpan.FromSeconds(90));
             }
 
             return Task.FromResult(1);

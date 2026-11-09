@@ -1,3 +1,4 @@
+using LazyBean.Infrastructure.External.Http;
 using System.Net;
 using System.Net.Sockets;
 using LazyBean.Application.Collection.Contracts;

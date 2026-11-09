@@ -1,3 +1,4 @@
+using LazyBean.Domain.Rules;
 using LazyBean.Application.Ads.Common;
 using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Ads.Queries.GetAds;
@@ -17,7 +18,7 @@ public class GetCampaignsQueryHandler(IReadDbContext readContext, AdsOptions opt
     public async Task<CampaignPageDto> Handle(GetCampaignsQuery request, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        var cutoff = now - TimeSpan.FromDays(options.GoogleActiveWindowDays);
+        var cutoff = AdActivity.CutoffFor(now, options.GoogleActiveWindowDays);
         var page = Math.Max(1, request.Page);
         var pageSize = Math.Clamp(request.PageSize, 1, 100);
 

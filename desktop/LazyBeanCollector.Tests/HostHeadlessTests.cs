@@ -1,13 +1,18 @@
 using System.Diagnostics;
 using LazyBean.Application.Collection.Contracts;
 using LazyBean.Application.Collector.Dtos;
-using LazyBean.Collector.App.Api;
+using LazyBean.Infrastructure.External.LazyBeanApi;
+using LazyBean.Application.Collector.Exceptions;
 using LazyBean.Collector.App.Host;
-using LazyBean.Collector.App.Jobs;
+using LazyBean.Application.Collector.Orchestration;
+using LazyBean.Application.Collector.Dtos;
+using LazyBean.Infrastructure.External.Images;
 using LazyBean.Collector.App.Runtime;
 using LazyBean.Collector.App.Security;
 using LazyBean.Collector.App.Settings;
-using LazyBean.Collectors.Meta;
+using LazyBean.Infrastructure.External.Meta;
+using LazyBean.Application.Ads.Models;
+using LazyBean.Application.Ads.Collection;
 
 namespace LazyBean.Collector.App.Tests;
 

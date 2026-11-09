@@ -3,7 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using LazyBean.Application.Ads.Dtos;
-using LazyBean.Collectors.Google;
+using LazyBean.Infrastructure.External.Google;
 using LazyBean.Domain.Entities;
 using LazyBean.Domain.Enums;
 using LazyBean.Infrastructure.Persistence;

@@ -2,7 +2,9 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using LazyBean.Collectors.Meta;
+using LazyBean.Infrastructure.External.Meta;
+using LazyBean.Application.Ads.Models;
+using LazyBean.Application.Ads.Collection;
 
 namespace LazyBean.Application.Tests.Collection.Meta;
 
@@ -155,7 +157,7 @@ public class MetaAdsPortTests
             Page(["1001", "1002"], hasNext: true, cursor: "cursor-1"),
             Page(["1003"], hasNext: false, cursor: null)));
 
-        var result = await new MetaAdsPageCollector(MetaAdsOptions.NoWaits, facebook)
+        var result = await MetaTestCollector.For(MetaAdsOptions.NoWaits, facebook)
             .CollectPageAsync("102631558265863", "EG", "ALL", 50);
 
         Assert.Equal("Success", result.Status);
@@ -184,7 +186,7 @@ public class MetaAdsPortTests
             Page(["1001", "1002"], hasNext: true, cursor: "cursor-1"),
             Page(["1003", "1004"], hasNext: false, cursor: null)));
 
-        var result = await new MetaAdsPageCollector(MetaAdsOptions.NoWaits, facebook)
+        var result = await MetaTestCollector.For(MetaAdsOptions.NoWaits, facebook)
             .CollectPageAsync("123", "EG", "ALL", maxResults: 3);
 
         Assert.Equal("Success", result.Status);
@@ -196,7 +198,7 @@ public class MetaAdsPortTests
     {
         var facebook = new FakeFacebookHandler(graphql: Queue(Page([], hasNext: false, cursor: null)));
 
-        var result = await new MetaAdsPageCollector(MetaAdsOptions.NoWaits, facebook)
+        var result = await MetaTestCollector.For(MetaAdsOptions.NoWaits, facebook)
             .CollectPageAsync("102631558265863", "EG", "ALL", 50);
 
         Assert.Equal("Success", result.Status);
@@ -209,7 +211,7 @@ public class MetaAdsPortTests
         const string rateLimited = """{"errors":[{"code":1675004,"message":"Rate limit exceeded"}]}""";
         var facebook = new FakeFacebookHandler(graphql: _ => rateLimited);
 
-        var result = await new MetaAdsPageCollector(MetaAdsOptions.NoWaits, facebook)
+        var result = await MetaTestCollector.For(MetaAdsOptions.NoWaits, facebook)
             .CollectPageAsync("123", "EG", "ALL", 50);
 
         Assert.Equal("Blocked", result.Status);
@@ -224,7 +226,7 @@ public class MetaAdsPortTests
         const string sessionError = """{"errors":[{"code":1357004,"message":"Session expired"}]}""";
         var facebook = new FakeFacebookHandler(graphql: _ => sessionError);
 
-        var result = await new MetaAdsPageCollector(MetaAdsOptions.NoWaits, facebook)
+        var result = await MetaTestCollector.For(MetaAdsOptions.NoWaits, facebook)
             .CollectPageAsync("123", "EG", "ALL", 50);
 
         Assert.Equal("Blocked", result.Status);
@@ -237,7 +239,7 @@ public class MetaAdsPortTests
     {
         var facebook = new FakeFacebookHandler(homepageStatus: HttpStatusCode.InternalServerError);
 
-        var result = await new MetaAdsPageCollector(MetaAdsOptions.NoWaits, facebook)
+        var result = await MetaTestCollector.For(MetaAdsOptions.NoWaits, facebook)
             .CollectPageAsync("123", "EG", "ALL", 50);
 
         Assert.Equal("Blocked", result.Status);
@@ -252,7 +254,7 @@ public class MetaAdsPortTests
             Page(["1001"], hasNext: true, cursor: "same"),
             Page(["1002"], hasNext: true, cursor: "same")));
 
-        var result = await new MetaAdsPageCollector(MetaAdsOptions.NoWaits, facebook)
+        var result = await MetaTestCollector.For(MetaAdsOptions.NoWaits, facebook)
             .CollectPageAsync("123", "EG", "ALL", 50);
 
         Assert.Equal("Failed", result.Status);

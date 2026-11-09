@@ -3,8 +3,8 @@
   <!--
     LazyBean Collector: the Windows desktop app that collects Strong Coffee and Meta ads from a PC
     with a residential connection. Published as one self-contained win-x64 exe (LazyBeanCollector.exe).
-    It reuses the collection code in backend/src/LazyBean.Collectors, so the server and the app run the
-    same adapters, HTTP politeness rules and Meta port.
+    It runs the collection use cases in backend/src/LazyBean.Application and the HTTP adapters in
+    backend/src/LazyBean.Infrastructure, the same code the server uses. It never references the database.
   -->
 
   <PropertyGroup>
@@ -36,7 +36,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\backend\src\LazyBean.Collectors\LazyBean.Collectors.csproj" />
+    <ProjectReference Include="..\..\backend\src\LazyBean.Application\LazyBean.Application.csproj" />
+    <ProjectReference Include="..\..\backend\src\LazyBean.Infrastructure\LazyBean.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

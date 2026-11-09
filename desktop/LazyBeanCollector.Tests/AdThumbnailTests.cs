@@ -1,8 +1,11 @@
+using System.Net.Http;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Net;
 using LazyBean.Application.Ads.Common;
-using LazyBean.Collector.App.Jobs;
+using LazyBean.Application.Collector.Orchestration;
+using LazyBean.Application.Collector.Dtos;
+using LazyBean.Infrastructure.External.Images;
 using LazyBean.Collector.App.Runtime;
 using Xunit;
 
@@ -58,7 +61,7 @@ public sealed class AdThumbnailTests : IDisposable
     public async Task ScriptPreviews_AreNeverRequested()
     {
         var handler = new CountingHandler(HttpStatusCode.OK, Png(40, 40));
-        var processor = new AdThumbnailProcessor(new HttpClient(handler));
+        var processor = new AdThumbnailProcessor(new HandlerClientFactory(handler));
 
         var thumbnail = await processor.ReadThumbnailAsync(
             "https://displayads-formats.googleusercontent.com/ads/preview/content.js?creativeId=1", CancellationToken.None);
@@ -71,7 +74,7 @@ public sealed class AdThumbnailTests : IDisposable
     public async Task Sync_UploadsInBatchesOfTen_AndStopsWhenAnImageHostRefuses()
     {
         var handler = new CountingHandler(HttpStatusCode.OK, Png(200, 150));
-        var processor = new AdThumbnailProcessor(new HttpClient(handler));
+        var processor = new AdThumbnailProcessor(new HandlerClientFactory(handler));
         var api = new FakeCollectorApi();
         var delays = new DelayRecorder();
         var sync = new AdThumbnailSync(api, processor, Log(), delays.Delay);
@@ -131,4 +134,10 @@ public sealed class AdThumbnailTests : IDisposable
             return Task.FromResult(response);
         }
     }
+}
+
+// Hands out clients on the test's handler; the handler is not disposed with them, so every download reuses it.
+internal sealed class HandlerClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+{
+    public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
 }

@@ -2,10 +2,15 @@ using System.Net;
 using LazyBean.Application.Ads.Exceptions;
 using LazyBean.Application.Collection.Orchestration;
 using LazyBean.Application.Collector.Dtos;
-using LazyBean.Collector.App.Api;
-using LazyBean.Collector.App.Jobs;
+using LazyBean.Infrastructure.External.LazyBeanApi;
+using LazyBean.Application.Collector.Exceptions;
+using LazyBean.Application.Collector.Orchestration;
+using LazyBean.Application.Collector.Dtos;
+using LazyBean.Infrastructure.External.Images;
 using LazyBean.Collector.App.Runtime;
-using LazyBean.Collectors.Meta;
+using LazyBean.Infrastructure.External.Meta;
+using LazyBean.Application.Ads.Models;
+using LazyBean.Application.Ads.Collection;
 
 namespace LazyBean.Collector.App.Tests;
 
@@ -311,7 +316,7 @@ public sealed class GoogleJobHandlerTests : IDisposable
     private static CollectorApiException ServerError() => new(
         ApiErrorKind.ServerError,
         "The server reported an error (500): An unexpected error occurred. (reference 531c91fb)",
-        HttpStatusCode.InternalServerError);
+        (int)HttpStatusCode.InternalServerError);
 
     private ActivityLog Log() => new(_logs);
 }

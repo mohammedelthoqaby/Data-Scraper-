@@ -1,3 +1,4 @@
+using LazyBean.Domain.Rules;
 using LazyBean.Application.Ads.Common;
 using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Common.Interfaces;
@@ -32,7 +33,7 @@ public sealed class GetAdGalleryQueryHandler(IReadDbContext readContext, AdsOpti
 
     public async Task<AdGalleryResponseDto> Handle(GetAdGalleryQuery request, CancellationToken ct)
     {
-        var cutoff = DateTimeOffset.UtcNow - TimeSpan.FromDays(options.GoogleActiveWindowDays);
+        var cutoff = AdActivity.CutoffFor(DateTimeOffset.UtcNow, options.GoogleActiveWindowDays);
         var ads = await AdGalleryQueries.LoadAsync(
             readContext, request.CompetitorId, request.Platform, request.Status, request.HasPrice, request.Search, cutoff, MaxCandidates, ct);
 
@@ -78,7 +79,7 @@ public sealed class GetAdGalleryDetailQueryHandler(IReadDbContext readContext, A
             return null;
         }
 
-        var cutoff = DateTimeOffset.UtcNow - TimeSpan.FromDays(options.GoogleActiveWindowDays);
+        var cutoff = AdActivity.CutoffFor(DateTimeOffset.UtcNow, options.GoogleActiveWindowDays);
         var storeAds = await AdGalleryQueries.LoadAsync(
             readContext, anchor.CompetitorId, null, null, null, null, cutoff, GetAdGalleryQueryHandler.MaxCandidates, ct);
         var images = await AdGalleryQueries.ImageFingerprintsAsync(readContext, storeAds.Select(a => a.Ad.Id).ToList(), ct);

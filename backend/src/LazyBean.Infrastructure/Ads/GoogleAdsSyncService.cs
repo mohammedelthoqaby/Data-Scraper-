@@ -1,6 +1,9 @@
-using LazyBean.Collectors.Google;
-using LazyBean.Collectors.Http;
-using LazyBean.Collectors.Woo;
+using LazyBean.Application.Ads.Collection;
+using LazyBean.Domain.Rules;
+using LazyBean.Infrastructure.External.Google;
+using LazyBean.Infrastructure.External.Http;
+using LazyBean.Application.Collector.Exceptions;
+using LazyBean.Infrastructure.External.Woo;
 using LazyBean.Application.Ads.Common;
 using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Ads.Exceptions;
@@ -133,20 +136,12 @@ public class GoogleAdsSyncService(
                 // 2. Fetch creatives with pagination (3-5s between requests)
                 await DelayPolitelyAsync(ct);
 
-                var allCreatives = new List<GoogleCreativeDto>();
-                var page = await transparencyClient.SearchCreativesAsync(advertiserId, null, ct);
-                allCreatives.AddRange(page.Creatives);
+                // The same reading the desktop app does: four pages at most, 100 creatives at most.
+                var collected = await GoogleCreativeCollector.CollectAsync(
+                    transparencyClient, advertiserId, pauseCt => DelayPolitelyAsync(pauseCt), ct);
+                var allCreatives = collected.Creatives.ToList();
 
-                var pageCount = 1;
-                while (!string.IsNullOrWhiteSpace(page.NextPageToken) && allCreatives.Count < 100 && pageCount < 4)
-                {
-                    await DelayPolitelyAsync(ct);
-                    page = await transparencyClient.SearchCreativesAsync(advertiserId, page.NextPageToken, ct);
-                    allCreatives.AddRange(page.Creatives);
-                    pageCount++;
-                }
-
-                logger.LogInformation("Retrieved {Count} creatives across {Pages} page(s) for '{Name}'.", allCreatives.Count, pageCount, identity.Name);
+                logger.LogInformation("Retrieved {Count} creatives across {Pages} page(s) for '{Name}'.", allCreatives.Count, collected.Pages, identity.Name);
 
                 // 3. Ingest ads, campaigns, events, and product mapping
                 var ingested = await IngestCreativesForIdentityAsync(identity, allCreatives, ct);
@@ -299,7 +294,7 @@ public class GoogleAdsSyncService(
                 }
             }
 
-            var isExpired = rawAd.LastSeen.HasValue && rawAd.LastSeen.Value <= now.AddDays(-30);
+            var isExpired = rawAd.LastSeen.HasValue && AdActivity.IsExpired(rawAd.LastSeen.Value, AdActivity.CutoffFor(now, AdActivity.DefaultWindowDays));
             var targetStatus = isExpired ? AdStatus.Inactive : AdStatus.Active;
 
             if (newlyAddedAds.TryGetValue(rawAd.ExternalAdId, out var justAdded))

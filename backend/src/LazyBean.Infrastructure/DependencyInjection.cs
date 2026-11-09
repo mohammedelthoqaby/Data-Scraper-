@@ -1,6 +1,8 @@
-using LazyBean.Collectors.Google;
-using LazyBean.Collectors.Http;
-using LazyBean.Collectors.Woo;
+using LazyBean.Infrastructure.External;
+using LazyBean.Infrastructure.External.Google;
+using LazyBean.Infrastructure.External.Http;
+using LazyBean.Application.Collector.Exceptions;
+using LazyBean.Infrastructure.External.Woo;
 using LazyBean.Application.Collection.Contracts;
 using LazyBean.Application.Collection.Orchestration;
 using LazyBean.Application.Collector.Contracts;
@@ -31,7 +33,12 @@ namespace LazyBean.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    // The server's infrastructure: the database-backed services, and the external collectors (HTTP sources and adapters).
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration) =>
+        services.AddPersistence(configuration).AddExternalCollectors();
+
+    // Everything that needs the database, and the server-only services (AI, alerts, scheduling, the Graph and Google syncs).
+    public static IServiceCollection AddPersistence(this IServiceCollection services, IConfiguration configuration)
     {
         // A single DbContextFactory registration backs both: the scoped LazyBeanDbContext
         // used everywhere else in the app (created fresh per scope from the factory below),
@@ -90,22 +97,9 @@ public static class DependencyInjection
             healthChecks.AddCheck<RedisHealthCheck>("redis");
         }
 
-        services.AddHttpClient("Collector", client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(120);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("LazyBeanBot/1.0 (+https://lazy-bean.runasp.net)");
-        });
-
-        services.AddSingleton<RobotsTxtCache>();
+        // The server keeps its evidence in the gzip store; the desktop app's no-op store is only the fallback (AddExternalCollectors).
         services.AddSingleton<IEvidenceStore, GzipEvidenceStore>();
-        // Singleton so the per-competitor delay/throttle state (and robots.txt cache) is
-        // honored across the whole process, not reset every time a DI scope is created.
-        services.AddSingleton<ICollectorHttpClient, CollectorHttpClient>();
 
-        services.AddScoped<ICompetitorAdapter, ShopifyAdapter>();
-        services.AddScoped<ICompetitorAdapter, WooStoreApiAdapter>();
-        services.AddScoped<ICompetitorAdapter, LazzyBeanAdapter>();
-        services.AddScoped<ICompetitorAdapterResolver, CompetitorAdapterResolver>();
         services.AddScoped<ICompetitorProductIngestionService, CompetitorProductIngestionService>();
 
         services.AddScoped<ICollectionRunExecutor, CollectionRunExecutor>();
@@ -114,10 +108,6 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(60);
         });
 
-        services.AddHttpClient<IGoogleAdsTransparencyClient, GoogleAdsTransparencyClient>(client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
         services.AddScoped<IGoogleAdsSyncService, GoogleAdsSyncService>();
 
         // AI: Groq (primary) and Gemini (fallback), routed by AiClient behind IAiClient.

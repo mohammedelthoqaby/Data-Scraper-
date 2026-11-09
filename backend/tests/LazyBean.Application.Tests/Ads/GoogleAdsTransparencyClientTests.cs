@@ -1,6 +1,7 @@
-using LazyBean.Collectors.Google;
-using LazyBean.Collectors.Http;
-using LazyBean.Collectors.Woo;
+using LazyBean.Infrastructure.External.Google;
+using LazyBean.Infrastructure.External.Http;
+using LazyBean.Application.Collector.Exceptions;
+using LazyBean.Infrastructure.External.Woo;
 using System.Net;
 using LazyBean.Application.Ads.Exceptions;
 using LazyBean.Infrastructure.Ads;
@@ -204,5 +205,16 @@ public class GoogleAdsTransparencyClientTests
         Assert.Equal("CAFELAX", candidate.Name);
         Assert.Equal("EG", candidate.Region);
         Assert.Equal(52, candidate.ApproxAdCount);
+    }
+
+    [Fact]
+    public async Task A_network_failure_on_a_creative_detail_is_a_transport_failure()
+    {
+        var handler = new TestHttpMessageHandler(_ => throw new HttpRequestException("connection reset"));
+        var client = new HttpClient(handler);
+        var transparencyClient = new GoogleAdsTransparencyClient(client, NullLogger<GoogleAdsTransparencyClient>.Instance);
+
+        await Assert.ThrowsAsync<LazyBean.Application.Collector.Exceptions.CollectorTransportException>(
+            () => transparencyClient.GetCreativeDetailAsync("AR1", "CR1"));
     }
 }

@@ -4,7 +4,7 @@ public sealed record LogEntry(DateTimeOffset At, string Level, string Message);
 
 // The log the window shows, plus a daily file under %LOCALAPPDATA%\LazyBeanCollector\logs for support.
 // Logging never throws: a full disk must not stop collection.
-public sealed class ActivityLog(string logsDirectory)
+public sealed class ActivityLog(string logsDirectory) : LazyBean.Application.Collector.Ports.ICollectionLog
 {
     private const int MaxInMemory = 500;
 

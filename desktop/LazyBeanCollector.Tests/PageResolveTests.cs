@@ -1,5 +1,8 @@
 using LazyBean.Application.Collector.Dtos;
-using LazyBean.Collector.App.Jobs;
+using LazyBean.Application.Collector.Orchestration;
+using LazyBean.Application.Collector.Dtos;
+using LazyBean.Application.Collector.Ports;
+using LazyBean.Infrastructure.External.PageResolution;
 using LazyBean.Collector.App.Runtime;
 
 namespace LazyBean.Collector.App.Tests;
@@ -82,14 +85,15 @@ public sealed class PageResolveTests : IDisposable
     private static CollectorJobDto Job(string? pageSlug) =>
         new(Guid.NewGuid(), "ResolveMetaPage", null, 1, null, 0, 0, pageSlug);
 
-    private sealed class FakePageSource(string? html) : IFacebookPageSource
+    // The page's HTML, read by the lookup; the ID is found from it the way the lookup finds it.
+    private sealed class FakePageSource(string? html) : IFacebookPageIdLookup
     {
         public string? RequestedName { get; private set; }
 
-        public Task<string?> GetPageHtmlAsync(string pageName, CancellationToken ct)
+        public Task<string?> FindPageIdAsync(string pageName, CancellationToken ct)
         {
             RequestedName = pageName;
-            return Task.FromResult(html);
+            return Task.FromResult(html is null ? null : PageIdParser.Find(html));
         }
     }
 }
