@@ -1,8 +1,10 @@
 using System.Threading.RateLimiting;
+using LazyBean.Api.Auth;
 using LazyBean.Api.Middleware;
 using LazyBean.Application;
 using LazyBean.Infrastructure;
 using LazyBean.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Authorization;
@@ -46,8 +48,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     }
 });
 
+const string DefaultAuthScheme = "LazyBeanAuth";
+
+// One default scheme routes each request to the right credential: the paired collector app's bearer
+// token on /api/collector/*, and the dashboard cookie everywhere else. Each scheme refuses the other's
+// requests, so neither credential can reach the other's endpoints.
 builder.Services
-    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddAuthentication(DefaultAuthScheme)
+    .AddPolicyScheme(DefaultAuthScheme, "Dashboard cookie or collector device token", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+            context.Request.Path.StartsWithSegments(DeviceTokenAuthenticationHandler.PathPrefix, StringComparison.OrdinalIgnoreCase)
+            && context.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                ? DeviceTokenAuthenticationHandler.SchemeName
+                : CookieAuthenticationDefaults.AuthenticationScheme;
+    })
+    .AddScheme<AuthenticationSchemeOptions, DeviceTokenAuthenticationHandler>(DeviceTokenAuthenticationHandler.SchemeName, _ => { })
     .AddCookie(options =>
     {
         options.Cookie.HttpOnly = true;
@@ -68,9 +84,11 @@ builder.Services
             ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
             return Task.CompletedTask;
         };
+        // A session from before a password change (another browser) is refused on its next request.
+        options.Events.OnValidatePrincipal = LazyBean.Api.Auth.DashboardSecurityStamp.ValidateAsync;
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(CollectorPolicies.Register);
 
 builder.Services.AddControllers(options =>
 {
@@ -129,6 +147,28 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             }));
 
+    // Changing the password takes the current password: at most 5 attempts per 15 minutes per client IP.
+    options.AddPolicy("password-change", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(15),
+                PermitLimit = 5,
+                QueueLimit = 0
+            }));
+
+    // Pairing takes dashboard credentials: at most 5 attempts per 10 minutes per client IP.
+    options.AddPolicy("collector-pair", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(10),
+                PermitLimit = 5,
+                QueueLimit = 0
+            }));
+
     options.OnRejected = async (context, ct) =>
     {
         var retryAfterSeconds = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
@@ -142,6 +182,8 @@ builder.Services.AddRateLimiter(options =>
             ct);
     };
 });
+
+builder.Services.AddSingleton<LazyBean.Api.Common.CollectorAppPackage>();
 
 var app = builder.Build();
 
@@ -181,6 +223,8 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Hash the desktop installer once, so the SHA-256 shown in Settings > Collector is computed at startup.
+_ = app.Services.GetRequiredService<LazyBean.Api.Common.CollectorAppPackage>();
 await DbInitializer.SeedAdminUserAsync(app.Services);
 await DbInitializer.SeedCompetitorsAsync(app.Services);
 await DbInitializer.RecoverInterruptedRunsAsync(app.Services);

@@ -25,7 +25,7 @@ async function main() {
     console.log('Saved screenshots/12-login-dialog-desktop.png');
 
     // Fill in credentials and unlock
-    await page.type('#login-password', 'Dev-Only-P@ssw0rd!');
+    await page.type('#login-password', process.env.LAZYBEAN_ADMIN_PASSWORD);
     const submitBtn = await page.$('button[type="submit"]');
     if (submitBtn) await submitBtn.click();
     await new Promise((r) => setTimeout(r, 2500)); // wait for authenticated reloads

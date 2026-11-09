@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\LazyBean.Application\LazyBean.Application.csproj" />
     <ProjectReference Include="..\LazyBean.Domain\LazyBean.Domain.csproj" />
+    <ProjectReference Include="..\LazyBean.Collectors\LazyBean.Collectors.csproj" />
   </ItemGroup>
 
   <ItemGroup>

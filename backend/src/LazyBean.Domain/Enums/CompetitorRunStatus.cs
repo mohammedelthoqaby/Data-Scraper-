@@ -12,5 +12,8 @@ public enum CompetitorRunStatus
     Degraded = 4,
     Cancelled = 5,
     Suspicious = 6,
-    Interrupted = 7
+    Interrupted = 7,
+
+    // No LazyBean Collector claimed this competitor's desktop job in time. Products are not touched.
+    Skipped = 8
 }

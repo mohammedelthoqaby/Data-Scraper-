@@ -16,4 +16,10 @@ public class AiSetting : BaseEntity, IAggregateRoot
     public string? LastTestMessage { get; set; }
     public DateTimeOffset? LastCallAt { get; set; }
     public string? LastCallStatus { get; set; }
+
+    // Gemini reads of Google image previews (AI-read). Off by default; each call counts against its own daily cap.
+    public bool CreativeVisionEnabled { get; set; } = false;
+    public int CreativeVisionDailyCap { get; set; } = 20;
+    public int CreativeVisionUsedToday { get; set; } = 0;
+    public DateOnly CreativeVisionUsageDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
 }

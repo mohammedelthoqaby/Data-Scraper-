@@ -1,3 +1,4 @@
+using LazyBean.Application.Ads.Comparison;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -340,8 +341,13 @@ public class AlertService : IAlertService
         var groupedByRef = matches.GroupBy(m => m.ReferenceVariantId).ToList();
 
         // Query active Ads
+        // Our own (reference) ads never count as competitor ads: they are excluded from these alerts.
+        var referenceCompetitorIds = await _dbContext.Competitors
+            .Where(c => c.IsReference)
+            .Select(c => c.Id)
+            .ToListAsync(ct);
         var activeAds = await _dbContext.Ads
-            .Where(a => a.Status == AdStatus.Active)
+            .Where(a => a.Status == AdStatus.Active && !referenceCompetitorIds.Contains(a.CompetitorId))
             .ToListAsync(ct);
 
         // Query active Offers
@@ -755,6 +761,32 @@ public class AlertService : IAlertService
         // -------------------------------------------------------------
         // Optional AI Rewriting with strict number validation
         // -------------------------------------------------------------
+        // Our own ads priced above a competitor's ad for the same matched product. These come from our
+        // ads only; competitor alerts above never count them.
+        var ownComparison = await OurAdsComparisonLoader.BuildAsync(_dbContext, ct);
+        foreach (var row in ownComparison.Where(r => r.OurAdIsMoreExpensive))
+        {
+            var gapPct = Math.Round(((row.OurPrice!.Value - row.CompetitorPrice!.Value) / row.CompetitorPrice.Value) * 100m, 1);
+            var gap = Math.Round(row.OurPrice.Value - row.CompetitorPrice.Value, 2);
+            candidates.Add(new Alert
+            {
+                Type = AlertType.OurAdMoreExpensiveThanCompetitorAd,
+                Severity = AlertSeverity.Urgent,
+                Title = $"We advertise {row.OurProductTitle} above {row.CompetitorName}",
+                Reason = $"Our ad prices it at {row.OurPrice:F2} EGP, {gapPct:F1}% above {row.CompetitorName}'s ad at {row.CompetitorPrice:F2} EGP for the same product.",
+                SuggestedAction = "Review our advertised price, or match the competitor's advertised price.",
+                ReferenceProductId = row.OurProductId,
+                ReferenceProductTitle = row.OurProductTitle,
+                CompetitorProductId = row.CompetitorProductId,
+                CompetitorProductTitle = row.CompetitorProductTitle,
+                CompetitorName = row.CompetitorName,
+                AdLibraryUrl = row.CompetitorAdUrl ?? row.OurAdUrl ?? "https://www.facebook.com/ads/library",
+                EgpImpact = gap,
+                MetricValuesJson = JsonSerializer.Serialize(new { gapPercent = gapPct, ourPrice = row.OurPrice, competitorPrice = row.CompetitorPrice }),
+                IdentityKey = $"own_ad_higher_{row.OurProductId}_{row.CompetitorId}"
+            });
+        }
+
         await ApplyOptionalAiRewritingAsync(candidates, ct);
 
         // -------------------------------------------------------------

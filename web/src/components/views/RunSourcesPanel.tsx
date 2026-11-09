@@ -1,0 +1,130 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { fetchRunJobs, type CollectorJobSummary } from '../../api/collector';
+import { useSectionActive } from '../shell/KeepAliveSection';
+
+interface RunSourcesPanelProps {
+  runId: string;
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  StoreCollection: 'Store catalog',
+  MetaAds: 'Meta ads',
+  GoogleAds: 'Google ads',
+};
+
+const STATUS_LABELS: Record<string, { text: string; tone: string }> = {
+  Queued: { text: 'Waiting for the desktop app', tone: 'warn' },
+  Claimed: { text: 'Running', tone: 'warn' },
+  Completed: { text: 'Completed', tone: 'good' },
+  Failed: { text: 'Failed', tone: 'bad' },
+  Skipped: { text: 'Skipped', tone: 'warn' },
+};
+
+// What this PC's app must still do for the run, in the words the user needs. Null when no desktop work is involved.
+function desktopBanner(jobs: CollectorJobSummary[]): { text: string; tone: 'open' | 'done' } | null {
+  const desktop = jobs.filter((job) => job.source === 'desktop');
+  if (desktop.length === 0) {
+    return null;
+  }
+
+  const working = desktop.find((job) => job.status === 'Claimed') ?? desktop.find((job) => job.status === 'Queued');
+  if (working) {
+    const what =
+      working.kind === 'MetaAds' ? 'Meta ads' : working.kind === 'GoogleAds' ? 'Google ads' : 'the store catalog';
+    const progress =
+      working.progressDone != null && working.progressTotal != null
+        ? ` (${working.progressDone}/${working.progressTotal})`
+        : '';
+    const verb = working.status === 'Claimed' ? 'collecting' : 'waiting to collect';
+    return { text: `Keep LazyBean Collector open - ${verb} ${what}${progress}`, tone: 'open' };
+  }
+
+  const finished = desktop.every(
+    (job) => job.status === 'Completed' || job.status === 'Failed' || job.status === 'Skipped'
+  );
+  return finished ? { text: 'Run complete - you can close the collector.', tone: 'done' } : null;
+}
+
+// Per-source status for a run: which jobs ran, whether the desktop app or the server ran them, and how each ended.
+export const RunSourcesPanel: React.FC<RunSourcesPanelProps> = ({ runId }) => {
+  const [jobs, setJobs] = useState<CollectorJobSummary[]>([]);
+
+  // Loads when the run changes; polls every 10 s only while the section is on screen. Coming back does not reload.
+  const active = useSectionActive();
+  const loadedFor = useRef<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const next = await fetchRunJobs(runId);
+        if (!cancelled) setJobs(next);
+      } catch {
+        // Keep the last loaded state.
+      }
+    };
+    if (loadedFor.current !== runId) {
+      loadedFor.current = runId;
+      load();
+    }
+    if (!active) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const timer = window.setInterval(load, 10000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [runId, active]);
+
+  if (jobs.length === 0) {
+    return null;
+  }
+
+  const banner = desktopBanner(jobs);
+
+  return (
+    <>
+    {banner && (
+      <div className={banner.tone === 'done' ? 'success-banner' : 'warning-banner'} style={{ marginBottom: '12px' }}>
+        {banner.text}
+      </div>
+    )}
+    <div className="panel" style={{ marginBottom: '12px', padding: '12px 16px' }}>
+      <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '8px' }}>Sources for this run</div>
+      <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ textAlign: 'left', color: 'var(--muted)' }}>
+            <th style={{ padding: '4px 8px' }}>Source</th>
+            <th style={{ padding: '4px 8px' }}>Ran on</th>
+            <th style={{ padding: '4px 8px' }}>Status</th>
+            <th style={{ padding: '4px 8px' }}>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {jobs.map((job) => {
+            const label = SOURCE_LABELS[job.kind] ?? job.kind;
+            const status = STATUS_LABELS[job.status] ?? { text: job.status, tone: 'warn' };
+            return (
+              <tr key={job.jobId} style={{ borderTop: '1px solid #f0f0f0' }}>
+                <td style={{ padding: '6px 8px', fontWeight: 600 }}>
+                  {label}
+                  {job.competitorSlug ? ` (${job.competitorSlug})` : ''}
+                </td>
+                <td style={{ padding: '6px 8px' }}>{job.source === 'server' ? 'Server' : 'Desktop app'}</td>
+                <td style={{ padding: '6px 8px' }}>
+                  <span className={`badge ${status.tone}`} style={{ fontSize: '10px' }}>
+                    {status.text}
+                  </span>
+                </td>
+                <td style={{ padding: '6px 8px', color: 'var(--muted)' }}>{job.summary ?? '—'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+    </>
+  );
+};

@@ -1,6 +1,6 @@
 # LazyBean Competitor Intelligence - Deployment Guide
 
-This document describes how to deploy, configure, and maintain the LazyBean Competitor Intelligence platform on **MonsterASP.NET** (`https://lazy-bean.runasp.net`), hosting both the **.NET 10 Web API** and the **Astro / React SPA Frontend** from the same origin, alongside **MonsterASP PostgreSQL** and **GitHub Actions** automations.
+This document describes how to deploy, configure, and maintain the LazyBean Competitor Intelligence platform on **MonsterASP.NET** (`https://lazy-bean.runasp.net`), hosting both the **.NET 10 Web API** and the **Astro / React SPA Frontend** from the same origin, alongside **MonsterASP PostgreSQL** and the paired **LazyBean Collector** desktop app.
 
 ---
 
@@ -38,11 +38,11 @@ This document describes how to deploy, configure, and maintain the LazyBean Comp
                     │  - AI Settings & Alerts Persistence  │
                     └──────────────────────────────────────┘
                                     ▲
-                                    │ Internal Token Auth
-                    ┌───────────────┴──────────────────────┐
-                    │          GitHub Actions              │
-                    │  - daily-run.yml (05:00 UTC)         │
-                    │  - meta-ads.yml (Self-hosted runner) │
+                                    │ Device token (paired app)
+                    ┌──────────────────────────────────────┐
+                    │     LazyBean Collector (desktop)     │
+                    │  - Strong Coffee, Meta ads           │
+                    │  - polls /api/collector/jobs/next    │
                     └──────────────────────────────────────┘
 ```
 
@@ -103,7 +103,7 @@ Configure the following variables using the double-underscore (`__`) notation:
 | `ConnectionStrings__Redis` | Optional | Redis connection string if cache addon is active; otherwise leave empty to use in-process L1 cache. |
 | `Admin__Username` | **Yes** | Initial administrative username (e.g., `admin`). |
 | `Admin__Password` | **Yes** | Initial administrative password (e.g., `StrongSecurePassword123!`). |
-| `Internal__Token` | **Yes** | Shared secret token for GitHub Actions and runner webhooks (64 characters recommended). |
+| `Internal__Token` | **Yes** | Shared secret for the `/api/internal/*` endpoints. The desktop app does not use it (64 characters recommended). |
 | `App__PublicBaseUrl` | **Yes** | `https://lazy-bean.runasp.net` (used for keep-alive pings and internal URLs). |
 | `Security__UseHttpsRedirection` | **Yes** | `false` (TLS is terminated by MonsterASP's IIS reverse proxy front). |
 
@@ -133,10 +133,10 @@ Follow these steps when deploying to MonsterASP:
   - Open `https://lazy-bean.runasp.net/health`.
   - Should return HTTP 200 `Healthy`.
   - EF Core automatically applies all migrations on initial startup and seeds the baseline competitors and admin user.
-- [ ] **Step 6: Configure GitHub Actions Secrets**
-  - In your GitHub repository (**Settings > Secrets and variables > Actions**), set:
-    - `API_BASE_URL` = `https://lazy-bean.runasp.net`
-    - `INTERNAL_TOKEN` = matching value from `Internal__Token`.
+- [ ] **Step 6: Pair the LazyBean Collector app**
+  - Install the desktop app from **Settings > Collector** (the installer appears there once published).
+  - In the app, keep the default server address and sign in with the dashboard admin account.
+  - Confirm the header shows **Collector: Connected** while the app is open.
 - [ ] **Step 7: Verify Single-Origin SPA & Authentication**
   - Visit `https://lazy-bean.runasp.net/`.
   - Unlock screen appears.
@@ -145,26 +145,21 @@ Follow these steps when deploying to MonsterASP:
 
 ---
 
-## 5. Automated Jobs & GitHub Actions
+## 5. Automated Jobs & the Desktop Collector
 
-### 5.1 Daily Collection (`.github/workflows/daily-run.yml`)
-- **Schedule**: `0 5 * * *` (05:00 UTC / 07:00 Egypt time) on GitHub-hosted `ubuntu-latest`.
-- **Workflow**:
-  1. Sends `POST /api/internal/runs` with `-H "Content-Type: application/json" -d "{}"` to initiate the server collection run (Shopify, Cafelax, Coffee & Cream, Coffee Zone, Fengany).
-  2. Extracts the `runId`.
-  3. Executes `LazyBean.CollectorCli` on `ubuntu-latest` for `strong-coffee` (bypassing MonsterASP IP blocks).
-  4. Streams normalized product batches to `POST /api/internal/runs/{runId}/competitors/strong-coffee/products`.
-  5. Completes with `POST /api/internal/runs/{runId}/competitors/strong-coffee/complete`.
-- **Verification Endpoint**: Checks overall run status via `GET /api/internal/runs/latest`.
+### 5.1 Daily Collection (in-app Quartz job)
+- **Schedule**: 07:00 Africa/Cairo, every day (Quartz cron `0 0 7 * * ?`).
+- **What runs**: a collection run covering the server-collected competitors, plus the desktop jobs described in `HANDOVER.md` section 2.
+- **No external scheduler**: GitHub Actions are not used for collection.
 
-### 5.2 Google Ads Sync (In-App Backend Service)
-- **Schedule**: Automatically executed weekly (if >= 7 days elapsed since last sync) following the daily collection run, or triggered on-demand via the Ads dashboard or `POST /api/internal/ads/google/sync`.
-- **Runtime**: Native C# implementation in `GoogleAdsTransparencyClient` & `GoogleAdsSyncService` without external runner or proxies. Caches advertiser AR IDs and backs off for 24h on 429/CAPTCHA.
+### 5.2 Google Ads Sync (server fallback)
+- **Runs on the server** when no LazyBean Collector is connected at the start of a run, and for **Collect ads now** in that case.
+- **Runtime**: native C# in `GoogleAdsTransparencyClient` and `GoogleAdsSyncService`. Caches advertiser IDs and backs off for 24 hours on 429 or CAPTCHA responses.
 
-### 5.3 Meta Ads Sync (Optional Self-Hosted Office Runner)
-- **Architecture**: Runs on the company office PC via GitHub Actions self-hosted runner with label `lazybean-collector` (`.github/workflows/meta-ads.yml` + `tools/meta-ads/sync.py`), using standard Egyptian residential/office IP. Schedule: daily 09:00 UTC, plus manual `workflow_dispatch`. No GitHub-hosted fallback.
-- **Resilience**: Runs only when the office PC is powered on. If the PC is off, nothing breaks: the Ads page displays "Runner offline - last sync <date>", with no error alerts or red states.
-- **Manual Verification**: Each competitor card provides a direct "View on Meta Ad Library ↗" button opening the official Egypt Ad Library page directly.
+### 5.3 Meta Ads and Strong Coffee (desktop app)
+- **Runs on a paired PC**, because Meta and Strong Coffee block datacenter addresses.
+- **Resilience**: when no app picks a job up within 10 minutes it is skipped and the run continues. Nothing is marked Missing or Removed for a skipped store job.
+- **Health**: the dashboard header and **Settings > Collector** show the connection and the job in progress.
 
 ---
 

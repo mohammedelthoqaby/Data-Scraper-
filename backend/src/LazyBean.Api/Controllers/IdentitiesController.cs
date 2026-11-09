@@ -12,6 +12,8 @@ namespace LazyBean.Api.Controllers;
 
 public record DecisionBody(string? Notes = null);
 
+public sealed record AddFromUrlBody(Guid CompetitorId, string Url);
+
 [ApiController]
 [Route("api/identities")]
 [EnableRateLimiting("api")]
@@ -47,6 +49,21 @@ public class IdentitiesController(ISender sender) : ControllerBase
     {
         var result = await sender.Send(command, ct);
         return CreatedAtAction(nameof(GetIdentities), new { competitorId = result.CompetitorId }, result);
+    }
+
+    // Adds a Meta page from a Facebook link. A page name is looked up by the desktop app first.
+    [HttpPost("from-url")]
+    [ProducesResponseType(typeof(LazyBean.Application.Ads.Commands.AddIdentityFromUrl.AddIdentityFromUrlResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<LazyBean.Application.Ads.Commands.AddIdentityFromUrl.AddIdentityFromUrlResultDto>> AddFromUrl(
+        [FromBody] AddFromUrlBody body,
+        CancellationToken ct)
+    {
+        var result = await sender.Send(
+            new LazyBean.Application.Ads.Commands.AddIdentityFromUrl.AddIdentityFromUrlCommand(body.CompetitorId, body.Url),
+            ct);
+        return Ok(result);
     }
 
     [HttpPost("{id:guid}/approve")]

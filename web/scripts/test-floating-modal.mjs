@@ -20,7 +20,7 @@ async function main() {
   await page.waitForSelector('.unlock-card', { timeout: 10000 });
 
   // Unlock / log in
-  await page.type('#unlock-password', 'Dev-Only-P@ssw0rd!');
+  await page.type('#unlock-password', process.env.LAZYBEAN_ADMIN_PASSWORD);
   await page.click('button[type="submit"]');
 
   await page.waitForSelector('.matrix-table-wrap', { timeout: 15000 });

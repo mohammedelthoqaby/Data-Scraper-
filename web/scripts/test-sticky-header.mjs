@@ -19,7 +19,7 @@ async function main() {
   await page.goto('http://localhost:3000/#/overview', { waitUntil: 'networkidle0' });
   const unlockInput = await page.$('#unlock-password');
   if (unlockInput) {
-    await unlockInput.type('Dev-Only-P@ssw0rd!');
+    await unlockInput.type(process.env.LAZYBEAN_ADMIN_PASSWORD);
     const submitBtn = await page.$('button[type="submit"]');
     if (submitBtn) await submitBtn.click();
     await page.waitForSelector('.overview-view', { timeout: 10000 });

@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Text.Json;
 using LazyBean.Application.Ads.Common;
 using LazyBean.Application.Collection.Classification;
+using LazyBean.Application.Collector.Contracts;
+using LazyBean.Application.Collector.Dtos;
 using LazyBean.Application.Collection.Contracts;
 using LazyBean.Application.Collection.Normalization;
 using LazyBean.Application.Collection.Orchestration;
@@ -34,7 +36,7 @@ public class CollectionRunExecutor(
     IGoogleAdsSyncService? googleAdsSyncService,
     IServiceScopeFactory? serviceScopeFactory,
     ICollectionProgressTracker? progressTracker,
-    IGitHubWorkflowDispatcher? gitHubWorkflowDispatcher,
+    ICollectorJobService? collectorJobs,
     ILogger<CollectionRunExecutor> logger) : ICollectionRunExecutor
 {
     public CollectionRunExecutor(
@@ -95,6 +97,12 @@ public class CollectionRunExecutor(
         : this(dbContextFactory, adapters, cache, classifier, http, configuration, googleAdsSyncService, serviceScopeFactory, progressTracker, null, logger)
     {
     }
+
+    // Desktop ads jobs of a run. Five minutes with no app skips what is left; two hours is the outer limit.
+    private static readonly TimeSpan AdsDisconnectTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan AdsWaitLimit = TimeSpan.FromHours(2);
+    private static readonly TimeSpan AdsPollInterval = TimeSpan.FromSeconds(3);
+    private static readonly string[] PostProcessingPhases = ["classification", "matching", "ai_triage", "alerts"];
 
     public async Task ExecuteAsync(Guid runId, CancellationToken ct)
     {
@@ -167,26 +175,33 @@ public class CollectionRunExecutor(
                 "Already completed in previous attempt (resumed)");
         }
 
+        object? adsPhase = null;
         try
         {
             var serverCompetitors = competitors
-                .Where(c => !completedCompetitorIds.Contains(c.Id) && !string.Equals(c.CollectionHost, "github", StringComparison.OrdinalIgnoreCase))
+                .Where(c => !completedCompetitorIds.Contains(c.Id) && !IsDesktopHost(c))
                 .ToList();
 
-            var githubCompetitors = competitors
-                .Where(c => !completedCompetitorIds.Contains(c.Id) && string.Equals(c.CollectionHost, "github", StringComparison.OrdinalIgnoreCase))
+            var desktopCompetitors = competitors
+                .Where(c => !completedCompetitorIds.Contains(c.Id) && IsDesktopHost(c))
                 .ToList();
+
+            // Every run gets its collector jobs (store collections, then Meta and Google ads). Planning is idempotent.
+            await PlanDesktopJobsAsync(runId, desktopCompetitors, ct);
 
             if (completedCompetitorIds.Count > 0)
             {
                 logger.LogInformation("CollectionRun {RunId}: resuming with {PendingCount} pending competitors ({CompletedCount} already completed).",
-                    runId, serverCompetitors.Count + githubCompetitors.Count, completedCompetitorIds.Count);
+                    runId, serverCompetitors.Count + desktopCompetitors.Count, completedCompetitorIds.Count);
             }
 
             var serverTasks = serverCompetitors.Select(c => ProcessCompetitorAsync(runId, c, ct));
-            var githubTasks = githubCompetitors.Select(c => WaitForGithubCompetitorAsync(runId, c, ct));
+            var desktopTasks = desktopCompetitors.Select(c => WaitForDesktopCompetitorAsync(runId, c, ct));
 
-            await Task.WhenAll(serverTasks.Concat(githubTasks));
+            await Task.WhenAll(serverTasks.Concat(desktopTasks));
+
+            // The run's desktop ads jobs (Meta, then Google) finish before the run does.
+            adsPhase = await WaitForRunAdsAsync(runId, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -223,41 +238,34 @@ public class CollectionRunExecutor(
             return;
         }
 
-        CollectionRunStatus finalStatus;
-        await using (var db = await dbContextFactory.CreateDbContextAsync(CancellationToken.None))
+        // The outcome comes from the competitor runs and the ads jobs, but it is recorded only after post-processing.
+        // Until then the run stays Running: a restart mid-pipeline resumes the run instead of leaving a Completed run
+        // with no phases.
+        var outcome = await DecideOutcomeAsync(runId, CancellationToken.None);
+
+        if (outcome != CollectionRunStatus.Failed)
         {
-            var run = await db.CollectionRuns.FirstAsync(r => r.Id == runId, CancellationToken.None);
-            var compRuns = await db.CompetitorRuns.Where(cr => cr.RunId == runId).ToListAsync(CancellationToken.None);
-            var anyDegradedOrFailed = compRuns.Any(cr => cr.Status == CompetitorRunStatus.Degraded || cr.Status == CompetitorRunStatus.Failed);
-            var allFailed = compRuns.Count > 0 && compRuns.All(cr => cr.Status == CompetitorRunStatus.Failed);
-
-            if (allFailed)
+            await RunPostProcessingPipelineAsync(runId, ct, adsPhase);
+        }
+        else
+        {
+            var phases = new List<object>();
+            if (adsPhase is not null)
             {
-                run.Status = CollectionRunStatus.Failed;
-            }
-            else if (anyDegradedOrFailed)
-            {
-                run.Status = CollectionRunStatus.Partial;
-            }
-            else
-            {
-                run.Status = CollectionRunStatus.Completed;
+                phases.Add(adsPhase);
             }
 
-            finalStatus = run.Status;
-            run.FinishedAt = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync(CancellationToken.None);
+            await PersistPhasesAsync(runId, phases, null, CancellationToken.None);
         }
 
+        // A stop during post-processing lands here, so the run is marked Interrupted rather than Completed.
+        ct.ThrowIfCancellationRequested();
+
+        await RecordFinalStatusAsync(runId, outcome, CancellationToken.None);
         await cache.RemoveByTagAsync("runs", CancellationToken.None);
         await cache.RemoveByTagAsync("products", CancellationToken.None);
 
-        if (finalStatus != CollectionRunStatus.Failed && serviceScopeFactory != null)
-        {
-            await RunPostProcessingPipelineAsync(runId, ct);
-        }
-
-        progressTracker?.SetCompleted(runId, finalStatus.ToString());
+        progressTracker?.SetCompleted(runId, outcome.ToString());
 
         if (googleAdsSyncService != null)
         {
@@ -272,12 +280,149 @@ public class CollectionRunExecutor(
         }
     }
 
-    private async Task RunPostProcessingPipelineAsync(Guid runId, CancellationToken ct)
+    // The outcome from the competitor runs and the ads jobs. Nothing is written here.
+    private async Task<CollectionRunStatus> DecideOutcomeAsync(Guid runId, CancellationToken ct)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(ct);
+        var compRuns = await db.CompetitorRuns.Where(cr => cr.RunId == runId).ToListAsync(ct);
+
+        var adsJobs = collectorJobs is null
+            ? new List<CollectorJobSummaryDto>()
+            : (await collectorJobs.GetRunJobsAsync(runId, ct)).ToList();
+        var adsIncomplete = adsJobs.Any(j => IsAdsKind(j.Kind) && (j.Status == "Failed" || j.Status == "Skipped"));
+
+        var anyIncomplete = adsIncomplete || compRuns.Any(cr =>
+            cr.Status == CompetitorRunStatus.Degraded ||
+            cr.Status == CompetitorRunStatus.Failed ||
+            cr.Status == CompetitorRunStatus.Skipped);
+        var allFailed = compRuns.Count > 0 && compRuns.All(cr => cr.Status == CompetitorRunStatus.Failed);
+
+        if (allFailed)
+        {
+            return CollectionRunStatus.Failed;
+        }
+
+        return anyIncomplete ? CollectionRunStatus.Partial : CollectionRunStatus.Completed;
+    }
+
+    // Records the outcome. Called only after post-processing has written its phases.
+    private async Task RecordFinalStatusAsync(Guid runId, CollectionRunStatus status, CancellationToken ct)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(ct);
+        var run = await db.CollectionRuns.FirstAsync(r => r.Id == runId, ct);
+        run.Status = status;
+        run.FinishedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    // Writes PhasesJson. Errors propagate: a run must not finish without its phases on record.
+    private async Task PersistPhasesAsync(Guid runId, IReadOnlyList<object> phases, int? totalMatches, CancellationToken ct)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(ct);
+        var run = await db.CollectionRuns.FirstAsync(r => r.Id == runId, ct);
+        run.PhasesJson = JsonSerializer.Serialize(phases);
+        if (totalMatches.HasValue)
+        {
+            run.MatchesCount = totalMatches.Value;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static bool IsAdsKind(string kind) => kind == "MetaAds" || kind == "GoogleAds";
+
+    // Waits for this run's desktop ads jobs (Meta, then Google). The app reports progress on each heartbeat.
+    // Jobs are skipped rather than waited for when no app has been seen for five minutes. Returns the "ads" phase.
+    private async Task<object?> WaitForRunAdsAsync(Guid runId, CancellationToken ct)
+    {
+        if (collectorJobs is null)
+        {
+            return null;
+        }
+
+        var sw = Stopwatch.StartNew();
+        progressTracker?.UpdatePhase(runId, "ads", "Running", "Waiting for the LazyBean Collector app to collect ads...", null);
+
+        IReadOnlyList<CollectorJobSummaryDto> adsJobs;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            adsJobs = (await collectorJobs.GetRunJobsAsync(runId, ct))
+                .Where(j => j.Source == CollectorJob.DesktopSource && IsAdsKind(j.Kind))
+                .ToList();
+
+            var pending = adsJobs.Where(j => j.Status == "Queued" || j.Status == "Claimed").ToList();
+            if (pending.Count == 0)
+            {
+                break;
+            }
+
+            if (await collectorJobs.SkipAdsJobsIfDisconnectedAsync(runId, AdsDisconnectTimeout, ct) > 0)
+            {
+                logger.LogWarning(
+                    "CollectionRun {RunId}: no LazyBean Collector app has been seen for {Minutes} minutes; skipped its unfinished ads jobs.",
+                    runId, AdsDisconnectTimeout.TotalMinutes);
+                continue;
+            }
+
+            if (sw.Elapsed > AdsWaitLimit)
+            {
+                logger.LogWarning("CollectionRun {RunId}: ads collection passed the {Hours}-hour limit; skipping what is left.", runId, AdsWaitLimit.TotalHours);
+                await collectorJobs.SkipUnfinishedAdsJobsAsync(runId, "Skipped (ads collection took longer than 2 hours)", ct);
+                continue;
+            }
+
+            var active = pending.FirstOrDefault(j => j.Status == "Claimed") ?? pending[0];
+            progressTracker?.UpdatePhase(runId, "ads", "Running", DescribeAdsProgress(active), (int)sw.ElapsedMilliseconds);
+            await Task.Delay(AdsPollInterval, ct);
+        }
+
+        var status = adsJobs.Count == 0 ? "skipped"
+            : adsJobs.Any(j => j.Status == "Failed") ? "failed"
+            : adsJobs.Any(j => j.Status == "Skipped") ? "skipped"
+            : "completed";
+        var message = adsJobs.Count == 0
+            ? "No desktop ads jobs in this run."
+            : string.Join("; ", adsJobs.Select(j => $"{(j.Kind == "MetaAds" ? "Meta" : "Google")} ads {j.Status.ToLowerInvariant()}"));
+        var elapsed = (int)sw.ElapsedMilliseconds;
+        progressTracker?.UpdatePhase(runId, "ads", status, message, elapsed);
+        return new { name = "ads", status, durationMs = elapsed, message };
+    }
+
+    private static string DescribeAdsProgress(CollectorJobSummaryDto job)
+    {
+        if (!string.IsNullOrWhiteSpace(job.ProgressLabel))
+        {
+            return $"Collecting ads (desktop): {job.ProgressLabel}";
+        }
+
+        return job.Kind == "MetaAds" ? "Collecting ads (desktop): Meta" : "Collecting ads (desktop): Google";
+    }
+
+    private async Task RunPostProcessingPipelineAsync(Guid runId, CancellationToken ct, object? adsPhase)
     {
         var phases = new List<object>();
         int? totalMatches = null;
 
-        using var scope = serviceScopeFactory!.CreateScope();
+        if (adsPhase is not null)
+        {
+            phases.Add(adsPhase);
+        }
+
+        if (serviceScopeFactory is null)
+        {
+            // Without a service scope the phases cannot run. They are still recorded as skipped, so a Completed run
+            // always says what post-processing did.
+            foreach (var name in PostProcessingPhases)
+            {
+                phases.Add(new { name, status = "skipped", durationMs = 0, message = "Post-processing is not configured on this host." });
+            }
+
+            await PersistPhasesAsync(runId, phases, null, ct);
+            return;
+        }
+
+        using var scope = serviceScopeFactory.CreateScope();
         var sp = scope.ServiceProvider;
 
         // Phase 1: Classification (10 min timeout)
@@ -460,31 +605,51 @@ public class CollectionRunExecutor(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to persist PhasesJson and MatchesCount to CollectionRun {RunId}.", runId);
+            throw;
         }
     }
 
-    private async Task WaitForGithubCompetitorAsync(Guid runId, Competitor competitor, CancellationToken ct)
+    private static bool IsDesktopHost(Competitor competitor) =>
+        string.Equals(competitor.CollectionHost, "desktop", StringComparison.OrdinalIgnoreCase);
+
+    // Creates this run's collector jobs once: the store collection for each desktop competitor, then
+    // Meta and Google ads. Ads jobs never block the run; they settle on their own.
+    private async Task PlanDesktopJobsAsync(Guid runId, IReadOnlyList<Competitor> desktopCompetitors, CancellationToken ct)
+    {
+        if (collectorJobs is null)
+        {
+            logger.LogWarning("CollectionRun {RunId}: the collector job queue is not configured; desktop competitors cannot run.", runId);
+            return;
+        }
+
+        var targets = desktopCompetitors.Select(c => new CollectorStoreTarget(c.Id, c.Key)).ToList();
+        await collectorJobs.PlanRunAsync(runId, targets, ct);
+    }
+
+    // Waits for the LazyBean Collector app to collect a desktop competitor. The app reports through the
+    // collector endpoints, which finish the CompetitorRun. If no app claims the job within the claim
+    // window it is Skipped: the competitor is recorded as skipped and nothing is marked Missing or Removed.
+    private async Task WaitForDesktopCompetitorAsync(Guid runId, Competitor competitor, CancellationToken ct)
     {
         await using (var db = await dbContextFactory.CreateDbContextAsync(ct))
         {
             var cr = await db.CompetitorRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
             if (cr == null)
             {
-                cr = new CompetitorRun
+                db.CompetitorRuns.Add(new CompetitorRun
                 {
                     RunId = runId,
                     CompetitorId = competitor.Id,
                     Status = CompetitorRunStatus.Running
-                };
-                db.CompetitorRuns.Add(cr);
-                await db.SaveChangesAsync(ct);
+                });
             }
             else
             {
                 cr.Status = CompetitorRunStatus.Running;
                 cr.Errors = 0;
-                await db.SaveChangesAsync(ct);
             }
+
+            await db.SaveChangesAsync(ct);
         }
 
         progressTracker?.UpdateCompetitorProgress(
@@ -494,33 +659,12 @@ public class CollectionRunExecutor(
             0,
             null,
             0,
-            "Dispatching GitHub Actions collector...");
+            "Waiting for the LazyBean Collector app to pick up this collection...");
 
-        GitHubDispatchResult? dispatchResult = null;
-        if (gitHubWorkflowDispatcher != null)
+        if (collectorJobs is null)
         {
-            dispatchResult = await gitHubWorkflowDispatcher.DispatchCollectorAsync(runId, [competitor.Key], ct);
-            if (!dispatchResult.Success)
-            {
-                logger.LogWarning("GitHub workflow dispatch failed for {Competitor}: {Error}", competitor.Key, dispatchResult.ErrorMessage);
-                await using var db = await dbContextFactory.CreateDbContextAsync(ct);
-                var cr = await db.CompetitorRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
-                if (cr != null)
-                {
-                    cr.Status = CompetitorRunStatus.Failed;
-                    cr.Errors = Math.Max(1, cr.Errors + 1);
-                    await db.SaveChangesAsync(ct);
-                }
-
-                progressTracker?.UpdateCompetitorProgress(
-                    runId,
-                    competitor.Id,
-                    "Degraded",
-                    0,
-                    null,
-                    0,
-                    dispatchResult.ErrorMessage);
-            }
+            await FinishDesktopCompetitorAsync(runId, competitor.Id, CompetitorRunStatus.Failed, "The collector job queue is not configured.");
+            return;
         }
 
         var start = DateTimeOffset.UtcNow;
@@ -534,13 +678,37 @@ public class CollectionRunExecutor(
             var cr = await db.CompetitorRuns.AsNoTracking().FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
             if (cr != null && cr.Status != CompetitorRunStatus.Running && cr.Status != CompetitorRunStatus.Queued)
             {
-                logger.LogInformation("External GitHub collector for {Competitor} finished with status {Status}.", competitor.Key, cr.Status);
+                logger.LogInformation("Desktop collection for {Competitor} finished with status {Status}.", competitor.Key, cr.Status);
                 return;
             }
 
-            var elapsed = DateTimeOffset.UtcNow - start;
+            var job = await collectorJobs.GetStoreJobStateAsync(runId, competitor.Id, ct);
+            if (job is not null)
+            {
+                switch (job.Status)
+                {
+                    case "Skipped":
+                        logger.LogWarning("No LazyBean Collector app picked up {Competitor} in time. Skipping it; no products were changed.", competitor.Key);
+                        await FinishDesktopCompetitorAsync(runId, competitor.Id, CompetitorRunStatus.Skipped,
+                            job.Summary ?? "Skipped (collector not running)");
+                        return;
 
-            if (cr != null && cr.Products > 0)
+                    case "Failed":
+                        await FinishDesktopCompetitorAsync(runId, competitor.Id, CompetitorRunStatus.Failed,
+                            job.Summary ?? "The LazyBean Collector app reported a failure.");
+                        return;
+
+                    case "Completed":
+                        await FinishDesktopCompetitorAsync(runId, competitor.Id, CompetitorRunStatus.Failed,
+                            "The LazyBean Collector app finished without saving the competitor results.");
+                        return;
+                }
+            }
+
+            var elapsed = DateTimeOffset.UtcNow - start;
+            var claimed = job?.Claimed == true;
+
+            if (claimed && cr != null && cr.Products > 0)
             {
                 progressTracker?.UpdateCompetitorProgress(
                     runId,
@@ -549,9 +717,20 @@ public class CollectionRunExecutor(
                     cr.Pages,
                     null,
                     cr.Products,
-                    $"Ingesting from GitHub collector ({cr.Products} items saved so far)");
+                    $"Collecting on the LazyBean Collector app ({cr.Products} items saved so far)");
             }
-            else if (dispatchResult == null || dispatchResult.Success)
+            else if (claimed)
+            {
+                progressTracker?.UpdateCompetitorProgress(
+                    runId,
+                    competitor.Id,
+                    "Running",
+                    0,
+                    null,
+                    0,
+                    "Collecting on the LazyBean Collector app...");
+            }
+            else
             {
                 var elapsedFormatted = $"{(int)elapsed.TotalMinutes:D2}:{elapsed.Seconds:D2}";
                 progressTracker?.UpdateCompetitorProgress(
@@ -561,32 +740,48 @@ public class CollectionRunExecutor(
                     0,
                     null,
                     0,
-                    $"Waiting for GitHub collector ({elapsedFormatted} / 30:00)");
+                    $"Waiting for the LazyBean Collector app ({elapsedFormatted} / 30:00)");
             }
 
             if (elapsed > timeout)
             {
-                logger.LogWarning("GitHub Actions collector for {Competitor} timed out after 30 minutes. Marking Skipped.", competitor.Key);
-                var entity = await db.CompetitorRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitor.Id, ct);
-                if (entity != null)
-                {
-                    entity.Status = CompetitorRunStatus.Failed;
-                    entity.Coverage = RunCoverage.Partial;
-                    entity.Errors = Math.Max(1, entity.Errors + 1);
-                    await db.SaveChangesAsync(ct);
-                }
-
-                progressTracker?.UpdateCompetitorProgress(
-                    runId,
-                    competitor.Id,
-                    "Skipped",
-                    cr?.Pages ?? 0,
-                    null,
-                    cr?.Products ?? 0,
-                    "Skipped (collector did not report within 30m)");
+                logger.LogWarning("The LazyBean Collector app did not finish {Competitor} within 30 minutes. Marking it failed.", competitor.Key);
+                await FinishDesktopCompetitorAsync(runId, competitor.Id, CompetitorRunStatus.Failed,
+                    "The LazyBean Collector app did not finish within 30 minutes.");
                 return;
             }
         }
+    }
+
+    private async Task FinishDesktopCompetitorAsync(Guid runId, Guid competitorId, CompetitorRunStatus status, string message)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(CancellationToken.None);
+        var entity = await db.CompetitorRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.CompetitorId == competitorId, CancellationToken.None);
+        if (entity != null)
+        {
+            entity.Status = status;
+            if (status != CompetitorRunStatus.Completed)
+            {
+                entity.Coverage = RunCoverage.Partial;
+            }
+
+            if (status == CompetitorRunStatus.Failed)
+            {
+                entity.Errors = Math.Max(1, entity.Errors + 1);
+            }
+
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+
+        var progressStatus = status == CompetitorRunStatus.Skipped ? "Skipped" : "Degraded";
+        progressTracker?.UpdateCompetitorProgress(
+            runId,
+            competitorId,
+            progressStatus,
+            entity?.Pages ?? 0,
+            null,
+            entity?.Products ?? 0,
+            message);
     }
 
     private async Task ProcessCompetitorAsync(Guid runId, Competitor competitor, CancellationToken ct)

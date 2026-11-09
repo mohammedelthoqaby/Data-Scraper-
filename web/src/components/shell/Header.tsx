@@ -1,5 +1,6 @@
 import React from 'react';
 import type { AuthenticatedUser, RunProgress } from '../../api/client';
+import { CollectorPill } from './CollectorPill';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -67,6 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
             Collection running {activeRunProgress.overallPercent}%
           </button>
         )}
+        <CollectorPill />
         <span className="timezone">Africa/Cairo</span>
         {user ? (
           <span className="user-badge" title="Authenticated session">

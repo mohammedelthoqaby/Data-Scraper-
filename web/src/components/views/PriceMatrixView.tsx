@@ -1,6 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { PriceMatrixResponse, PriceMatrixRow } from '../../api/client';
 import { undoMatch } from '../../api/alerts';
+import { PageHeader } from '../shell/PageHeader';
+import { hashView, readHashParams, writeHashParams } from '../../lib/pageUrlState';
 
 interface PriceMatrixViewProps {
   matrix: PriceMatrixResponse | null;
@@ -8,7 +10,11 @@ interface PriceMatrixViewProps {
   selectedRunId: string | null;
   isLoading?: boolean;
   onOpenProductDetail?: (productId: string, title?: string, row?: PriceMatrixRow) => void;
+  // A search for one product, sent from another page. Each request is a new object, so it applies each time it is sent.
+  searchRequest?: { text: string; id: number } | null;
   onRetry?: () => void;
+  // The report date bar, shown in the page header row.
+  toolbar?: React.ReactNode;
 }
 
 const COMPETITOR_COLUMNS = [
@@ -25,12 +31,26 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
   selectedRunId,
   isLoading,
   onOpenProductDetail,
+  searchRequest,
   onRetry,
+  toolbar,
 }) => {
-  const [search, setSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
-  const [selectedBrand, setSelectedBrand] = useState('ALL');
-  const [selectedPosition, setSelectedPosition] = useState('ALL');
+  // Filters start from the URL hash, so a reload or a return to the page restores them.
+  const [initial] = useState(() => readHashParams());
+  const [search, setSearch] = useState(() => initial.get('q') ?? '');
+  const [selectedCategory, setSelectedCategory] = useState(() => initial.get('category') ?? 'ALL');
+  const [selectedBrand, setSelectedBrand] = useState(() => initial.get('brand') ?? 'ALL');
+  const [selectedPosition, setSelectedPosition] = useState(() => initial.get('position') ?? 'ALL');
+
+  // A request for one product (from the ad window) sets the search to its title and clears the other filters, so the
+  // product is among the rows.
+  useEffect(() => {
+    if (!searchRequest) return;
+    setSearch(searchRequest.text);
+    setSelectedCategory('ALL');
+    setSelectedBrand('ALL');
+    setSelectedPosition('ALL');
+  }, [searchRequest]);
 
   const rows = matrix?.rows ?? [];
 
@@ -84,6 +104,16 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
     });
   }, [rows, search, selectedCategory, selectedBrand, selectedPosition]);
 
+  // The filters go to the URL with replaceState, so Back returns to the previous section and not to a filter state.
+  useEffect(() => {
+    writeHashParams(hashView(), {
+      q: search.trim() || undefined,
+      category: selectedCategory === 'ALL' ? undefined : selectedCategory,
+      brand: selectedBrand === 'ALL' ? undefined : selectedBrand,
+      position: selectedPosition === 'ALL' ? undefined : selectedPosition,
+    });
+  }, [search, selectedCategory, selectedBrand, selectedPosition]);
+
   // All filtered rows displayed on a single page
   const pageRows = filteredRows;
 
@@ -108,45 +138,36 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
 
   return (
     <div className="price-matrix-view">
-      {/* Page Heading */}
-      <div className="page-heading">
-        <div>
-          <div className="eyebrow">PRICE COMPARISON INTELLIGENCE</div>
-          <h1 className="view-title">Price comparisons</h1>
-          <p className="subtitle">
-            Compare saved prices and check the source before acting. Real-time parity across 5 stores.
-          </p>
-        </div>
-        <a href={csvUrl} download className="btn-primary" style={{ textDecoration: 'none' }}>
-          ⬇ Export Matrix CSV
-        </a>
-      </div>
+      <PageHeader
+        title="Price comparisons"
+        info="Compare saved prices and check the source before acting. Real-time parity across 5 stores."
+        actions={
+          <>
+            {toolbar}
+            <a href={csvUrl} download className="btn-primary" style={{ textDecoration: 'none' }}>
+              ⬇ Export Matrix CSV
+            </a>
+          </>
+        }
+      />
 
-      {/* 4 Top Metric Cards */}
-      <div className="stats-grid-4">
-        <div className="stat-card">
-          <div className="stat-number">1,592</div>
-          <div className="stat-label">Lazy Bean Catalog</div>
-          <div className="stat-sub">Tracked reference items</div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-number">{rows.length}</div>
-          <div className="stat-label">Matched Products</div>
-          <div className="stat-sub">Verified comparable pairs</div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-number">14,472</div>
-          <div className="stat-label">Competitor Products</div>
-          <div className="stat-sub">Across 5 monitored stores</div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-number">{brands.length}</div>
-          <div className="stat-label">Brands Monitored</div>
-          <div className="stat-sub">In coffee & accessories</div>
-        </div>
+      {/* Slim stats strip, one line of text */}
+      <div className="price-stats-strip">
+        <span>
+          <strong>1,592</strong> Lazy Bean catalog
+        </span>
+        <span className="sep">·</span>
+        <span>
+          <strong>{rows.length}</strong> matched
+        </span>
+        <span className="sep">·</span>
+        <span>
+          <strong>14,472</strong> competitor products
+        </span>
+        <span className="sep">·</span>
+        <span>
+          <strong>{brands.length}</strong> brands
+        </span>
       </div>
 
       {matrixError && (
@@ -199,10 +220,7 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
             className="filter-input"
             placeholder="Search product, brand, seller..."
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setSearch(e.target.value)}
           />
 
           <select
@@ -242,11 +260,9 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
             <option value="more expensive">More Expensive</option>
             <option value="lazyBeanOutOfStock">Lazy Bean Out of Stock</option>
           </select>
-        </div>
 
-        {/* Count Bar */}
-        <div className="matrix-pager" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
+          {/* Count, on the right of the filter row */}
+          <span className="matrix-count">
             {isLoading ? (
               <span className="skeleton skeleton-text" style={{ width: '120px', display: 'inline-block' }} />
             ) : (
@@ -259,12 +275,12 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
                 )}
               </>
             )}
-          </div>
+          </span>
         </div>
 
         {/* Matrix Table */}
         <div className="matrix-table-wrap">
-          {isLoading ? (
+          {isLoading && !matrix ? (
             <div style={{ padding: '24px' }}>
               <div className="skeleton skeleton-row" style={{ height: '42px', marginBottom: '12px' }} />
               <div className="skeleton skeleton-row" style={{ height: '42px', marginBottom: '12px' }} />

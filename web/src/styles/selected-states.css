@@ -1,0 +1,55 @@
+/* Selected, hover and focus states of the filter pills and the summary cards on the Needs attention page.
+   Loaded after compact-headers.css. Colours come from --brand, which is defined in dashboard.css :root. */
+
+/* Summary cards are buttons now: reset the button defaults and keep the card look. */
+button.action-kpi-card {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  display: block;
+  width: 100%;
+  appearance: none;
+}
+
+.action-kpi-card.selected {
+  background: #f1f8f4;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand);
+}
+
+/* Filter pills: the selected one is dark with white text, the others keep their look. */
+.filter-tabs .tab-btn.active,
+.filter-tabs .tab-btn[aria-pressed="true"] {
+  background: var(--brand);
+  color: #ffffff;
+  border-color: var(--brand);
+}
+
+.filter-tabs .tab-btn.active .tab-count,
+.filter-tabs .tab-btn[aria-pressed="true"] .tab-count {
+  background: #ffffff;
+  color: var(--brand);
+}
+
+.bestseller-toggle.active,
+.bestseller-toggle[aria-pressed="true"] {
+  background: #f59e0b;
+  color: #ffffff;
+  border-color: #d97706;
+}
+
+/* Keyboard focus is visible on every pill and card. */
+.filter-tabs .tab-btn:focus-visible,
+.bestseller-toggle:focus-visible,
+button.action-kpi-card:focus-visible,
+.lang-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* While the list reloads it stays on screen, dimmed, so the page keeps its height. */
+.alert-cards-container.is-loading {
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}

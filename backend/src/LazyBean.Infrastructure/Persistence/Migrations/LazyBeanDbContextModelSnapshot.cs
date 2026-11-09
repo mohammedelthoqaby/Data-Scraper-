@@ -17,7 +17,7 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.4")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -27,6 +27,24 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<decimal?>("AdvertisedPrice")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<int?>("AdvertisedQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("AiReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AiReadName")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<decimal?>("AiReadPrice")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
 
                     b.Property<string>("Body")
                         .HasMaxLength(4000)
@@ -41,6 +59,10 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CreativeFormat")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("CreativeHash")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -52,6 +74,16 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("DeliveryStopDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTimeOffset?>("DetailFetchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DetailLastShownAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ExternalAdId")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -60,25 +92,53 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("FirstSeenAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Headline")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<Guid>("IdentityId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("LinkMethod")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("LinkReason")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<string>("LinkUrl")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("LinkVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
 
                     b.Property<int>("MissingCount")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
 
+                    b.Property<string>("Placements")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Platform")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<string>("PreviewUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("PreviewVariationsJson")
+                        .HasColumnType("text");
 
                     b.Property<Guid?>("ProductId")
                         .HasColumnType("uuid");
@@ -94,6 +154,12 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<int>("ThumbnailCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ThumbnailSourceKey")
+                        .HasColumnType("text");
 
                     b.Property<string>("Title")
                         .HasMaxLength(500)
@@ -114,7 +180,7 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status");
 
-                    b.HasIndex("Platform", "ExternalAdId")
+                    b.HasIndex("Platform", "IdentityId", "ExternalAdId")
                         .IsUnique();
 
                     b.ToTable("ads", (string)null);
@@ -172,6 +238,111 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.HasIndex("IdentityId", "CreativeHash");
 
                     b.ToTable("ad_campaigns", (string)null);
+                });
+
+            modelBuilder.Entity("LazyBean.Domain.Entities.AdIngestBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompetitorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Created")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Duplicate")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("IdentityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("Received")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Skipped")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("Updated")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompetitorId");
+
+                    b.HasIndex("IdentityId", "ReceivedAt");
+
+                    b.ToTable("ad_ingest_batches", (string)null);
+                });
+
+            modelBuilder.Entity("LazyBean.Domain.Entities.AdThumbnail", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AdId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AdId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("ad_thumbnails", (string)null);
                 });
 
             modelBuilder.Entity("LazyBean.Domain.Entities.AdvertiserIdentity", b =>
@@ -294,6 +465,18 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreativeVisionDailyCap")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("CreativeVisionEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateOnly>("CreativeVisionUsageDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("CreativeVisionUsedToday")
+                        .HasColumnType("integer");
 
                     b.Property<int>("DailyRequestCap")
                         .HasColumnType("integer");
@@ -617,6 +800,148 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("collection_runs", (string)null);
+                });
+
+            modelBuilder.Entity("LazyBean.Domain.Entities.CollectorDevice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("PairedByUsername")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Scopes")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RevokedAt");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("collector_devices", (string)null);
+                });
+
+            modelBuilder.Entity("LazyBean.Domain.Entities.CollectorJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ClaimedByDeviceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CompetitorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CompetitorSlug")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset?>("LastHeartbeatAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ProgressDone")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProgressLabel")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("ProgressTotal")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("QueuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("text");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<Guid?>("RunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClaimedByDeviceId", "Status");
+
+                    b.HasIndex("RunId", "Kind", "CompetitorId");
+
+                    b.HasIndex("Status", "GroupId", "Sequence");
+
+                    b.ToTable("collector_jobs", (string)null);
                 });
 
             modelBuilder.Entity("LazyBean.Domain.Entities.Competitor", b =>
@@ -1060,6 +1385,17 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("PasswordUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RecoveryMarkerHash")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SecurityStamp")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1141,6 +1477,15 @@ namespace LazyBean.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("DataProtectionKeys");
+                });
+
+            modelBuilder.Entity("LazyBean.Domain.Entities.AdThumbnail", b =>
+                {
+                    b.HasOne("LazyBean.Domain.Entities.Ad", null)
+                        .WithMany()
+                        .HasForeignKey("AdId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

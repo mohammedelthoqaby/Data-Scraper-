@@ -1,0 +1,19 @@
+/* Sections that have been opened stay mounted. The one on screen is laid out; the others are display:none, and their inner
+   scroll positions are saved and restored by KeepAliveSection. */
+
+.keep-section.is-hidden {
+  display: none;
+}
+
+.keep-section.is-active {
+  display: block;
+  min-width: 0;
+}
+
+/* Price comparisons fills the viewport: its section is the flex child of the fixed-height main area. */
+.keep-section.is-active[data-section='price'] {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}

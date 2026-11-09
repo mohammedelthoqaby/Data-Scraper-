@@ -7,7 +7,9 @@
     "isReference": true,
     "minDelayMs": 3000,
     "collectionHost": "server",
-    "metaPageIds": []
+    "metaPageIds": [],
+    "pendingMetaPageIds": ["433792133147901"],
+    "approvedGoogleAdvertiserIds": ["AR12066457051832778753"]
   },
   {
     "key": "coffee-zone",
@@ -64,7 +66,7 @@
     "platform": "WooCommerce",
     "isReference": false,
     "minDelayMs": 3000,
-    "collectionHost": "github",
+    "collectionHost": "desktop",
     "metaPageIds": [
       "102631558265863"
     ]

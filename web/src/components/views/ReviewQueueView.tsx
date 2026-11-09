@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api, type ReviewMatchItem } from '../../api/client';
 import { aiApi } from '../../api/ai';
+import { hashView, readHashParams, writeHashParams } from '../../lib/pageUrlState';
+
+// The queue loads up to REVIEW_LIMIT pending matches and lists them all in a scrolling box. Bulk actions stay capped
+// at BULK_LIMIT per request, as before.
+const REVIEW_LIMIT = 500;
+const BULK_LIMIT = 50;
 
 interface ReviewQueueViewProps {
   onRefreshReviewsCount?: () => void;
@@ -21,15 +27,20 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
   const [isTriaging, setIsTriaging] = useState(false);
 
   // Filters
-  const [search, setSearch] = useState('');
+  // Filters start from the URL hash, so a reload or a return to the page restores them.
+  const [initial] = useState(() => readHashParams());
+  const [search, setSearch] = useState(() => initial.get('q') ?? '');
   const [selectedCompetitor, setSelectedCompetitor] = useState('all');
-  const [verdictFilter, setVerdictFilter] = useState<'all' | 'same' | 'different' | 'unsure' | 'unanalyzed'>('all');
+  const [verdictFilter, setVerdictFilter] = useState<'all' | 'same' | 'different' | 'unsure' | 'unanalyzed'>(() => {
+    const value = initial.get('verdict');
+    return value === 'same' || value === 'different' || value === 'unsure' || value === 'unanalyzed' ? value : 'all';
+  });
 
   const fetchReviews = async () => {
     setIsLoading(true);
     try {
       const res = await api.GET('/api/reviews', {
-        params: { query: { status: 0, page: 1, pageSize: 50 } },
+        params: { query: { status: 0, page: 1, pageSize: REVIEW_LIMIT } },
       });
       if (res.data) {
         setReviews(res.data.matches || []);
@@ -83,6 +94,14 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
     });
   }, [reviews, search, verdictFilter]);
 
+  // The search and verdict filter go to the URL with replaceState, so Back returns to the previous section.
+  useEffect(() => {
+    writeHashParams(hashView(), {
+      q: search.trim() || undefined,
+      verdict: verdictFilter === 'all' ? undefined : verdictFilter,
+    });
+  }, [search, verdictFilter]);
+
   // Selection handlers
   const handleToggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -94,11 +113,11 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
   };
 
   const handleSelectAll = () => {
-    if (selectedIds.size > 0 && selectedIds.size === Math.min(filteredReviews.length, 50)) {
+    if (selectedIds.size > 0 && selectedIds.size === Math.min(filteredReviews.length, BULK_LIMIT)) {
       setSelectedIds(new Set());
     } else {
       // Limit bulk selection strictly to visible page up to 50
-      const visibleIds = filteredReviews.slice(0, 50).map((r) => r.id!).filter(Boolean);
+      const visibleIds = filteredReviews.slice(0, BULK_LIMIT).map((r) => r.id!).filter(Boolean);
       setSelectedIds(new Set(visibleIds));
     }
   };
@@ -129,7 +148,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
   // Bulk decision (capped at max 50 on currently visible page/filter with confirm dialog)
   const handleBulkDecision = async (decision: 'approve' | 'reject') => {
     if (selectedIds.size === 0) return;
-    const count = Math.min(selectedIds.size, 50);
+    const count = Math.min(selectedIds.size, BULK_LIMIT);
     const confirmed = window.confirm(
       `Confirm bulk ${decision} for ${count} selected match(es) on this visible page?`
     );
@@ -138,7 +157,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
     setIsSubmitting(true);
     setActionMessage(null);
     try {
-      const targetIds = Array.from(selectedIds).slice(0, 50);
+      const targetIds = Array.from(selectedIds).slice(0, BULK_LIMIT);
       const decisions = targetIds.map((id) => ({
         id,
         decision,
@@ -170,7 +189,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
   // Reject all AI-different on this page (still goes through existing confirm dialog, max 50)
   const handleRejectAllAiDifferentOnPage = async () => {
     const aiDifferentIds = filteredReviews
-      .slice(0, 50)
+      .slice(0, BULK_LIMIT)
       .filter((r) => r.aiVerdict === 'different')
       .map((r) => r.id!)
       .filter(Boolean);
@@ -266,16 +285,16 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
           <input
             type="checkbox"
             id="selectAllReviews"
-            checked={filteredReviews.length > 0 && selectedIds.size > 0 && selectedIds.size === Math.min(filteredReviews.length, 50)}
+            checked={filteredReviews.length > 0 && selectedIds.size > 0 && selectedIds.size === Math.min(filteredReviews.length, BULK_LIMIT)}
             onChange={handleSelectAll}
             style={{ width: '18px', height: '18px', cursor: 'pointer' }}
           />
           <label htmlFor="selectAllReviews" style={{ fontWeight: 600, fontSize: '14px', cursor: 'pointer' }}>
-            Select Visible Page (up to {Math.min(filteredReviews.length, 50)})
+            Select up to {BULK_LIMIT} shown ({Math.min(filteredReviews.length, BULK_LIMIT)})
           </label>
           {selectedIds.size > 0 && (
             <span className="badge good" style={{ marginLeft: '6px' }}>
-              {Math.min(selectedIds.size, 50)} selected (max 50)
+              {Math.min(selectedIds.size, BULK_LIMIT)} selected (max 50)
             </span>
           )}
         </div>
@@ -288,7 +307,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
             disabled={selectedIds.size === 0 || isSubmitting}
             onClick={() => handleBulkDecision('approve')}
           >
-            ✓ Bulk Approve ({Math.min(selectedIds.size, 50)})
+            ✓ Bulk Approve ({Math.min(selectedIds.size, BULK_LIMIT)})
           </button>
           <button
             type="button"
@@ -297,7 +316,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
             disabled={selectedIds.size === 0 || isSubmitting}
             onClick={() => handleBulkDecision('reject')}
           >
-            ✕ Bulk Reject ({Math.min(selectedIds.size, 50)})
+            ✕ Bulk Reject ({Math.min(selectedIds.size, BULK_LIMIT)})
           </button>
           <button
             type="button"
@@ -337,6 +356,12 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
         </div>
       </div>
 
+      {totalCount > REVIEW_LIMIT && !isLoading && (
+        <div className="warning-banner" style={{ marginBottom: '12px' }}>
+          Only the first {REVIEW_LIMIT} of {totalCount} pending matches are loaded. Confirm or reject these, then reload to see the rest.
+        </div>
+      )}
+
       {/* Reviews List */}
       {isLoading ? (
         <div className="panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--muted)' }}>
@@ -347,7 +372,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
           All caught up! No candidate product matches needing review at this time.
         </div>
       ) : (
-        <div className="reviews-list">
+        <div className="reviews-list" style={{ maxHeight: 'calc(100vh - 340px)', minHeight: 240, overflowY: 'auto', paddingRight: 4 }}>
           {filteredReviews.map((item) => {
             const isSelected = selectedIds.has(item.id!);
             const scorePct = Math.round((item.score ?? 0.95) * 100);

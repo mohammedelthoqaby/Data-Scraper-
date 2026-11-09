@@ -10,5 +10,6 @@ public enum AlertType
     LazyBeanCheaperMarginRoom = 5,
     UncarriedCompetitorBrands = 6,
     BigCompetitorCampaign = 7,
-    ProlongedPriceGap = 8
+    ProlongedPriceGap = 8,
+    OurAdMoreExpensiveThanCompetitorAd = 9
 }

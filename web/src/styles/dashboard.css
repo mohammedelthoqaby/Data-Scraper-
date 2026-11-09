@@ -5,6 +5,7 @@
   --muted: #626b76;
   --line: #dfe3e8;
   --action: #164f40;
+  --brand: #164f40;
   --action-hover: #103d31;
   --warn: #79520b;
   --space: 24px;
@@ -38,27 +39,9 @@ td.numeric, .matrix-price, .stat > strong, .tabular-nums {
   min-height: 100vh;
 }
 
-aside.sidebar {
-  position: fixed;
-  inset: 0 auto 0 0;
-  width: 205px;
-  background: var(--surface);
-  border-right: 1px solid var(--line);
-  padding: 20px 12px;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  transition: transform 0.2s ease;
-  overflow-y: auto;
-}
-
-body.sidebar-collapsed aside.sidebar {
-  transform: translateX(-100%);
-}
-
 .workspace {
-  margin-left: 205px;
-  width: calc(100% - 205px);
+  margin-left: 232px;
+  width: calc(100% - 232px);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -112,86 +95,6 @@ body.sidebar-collapsed .workspace {
   font-weight: 600;
 }
 
-/* Navigation */
-nav.main-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex-grow: 1;
-}
-
-nav.main-nav button {
-  text-align: left;
-  border: 0;
-  color: #59616a;
-  font-weight: 500;
-  padding: 8px 10px;
-  background: none;
-  font-size: 13px;
-  cursor: pointer;
-  border-radius: 6px;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  transition: background-color 0.15s, color 0.15s;
-}
-
-nav.main-nav button:hover {
-  background-color: #f0f3f2;
-  color: var(--ink);
-}
-
-nav.main-nav button[aria-current="page"] {
-  background: #eaf1ee;
-  color: var(--action);
-  font-weight: 650;
-}
-
-.nav-badge {
-  background: #eef0f3;
-  color: #505963;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 10px;
-}
-
-.nav-badge.warn {
-  background: #fff3d9;
-  color: #79520b;
-}
-
-.nav-secondary {
-  border-top: 1px solid var(--line);
-  margin-top: 14px;
-  padding-top: 12px;
-}
-
-.nav-secondary summary {
-  padding: 6px 10px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 650;
-  cursor: pointer;
-  user-select: none;
-}
-
-.sidebar-footer {
-  margin-top: auto;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
-}
-
-.side-note {
-  font-size: 11px;
-  color: #4b5751;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
 .dot {
   width: 7px;
   height: 7px;
@@ -199,25 +102,6 @@ nav.main-nav button[aria-current="page"] {
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
-}
-
-.lock-btn {
-  width: 100%;
-  padding: 6px 10px;
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  font-size: 12px;
-  color: #505963;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.lock-btn:hover {
-  background: #f0f3f2;
 }
 
 /* Header */
@@ -557,6 +441,155 @@ h2.panel-title {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Top Urgent Alerts (Overview): card spacing, header wrap, and the narrow-screen button move. */
+.urgent-alerts-panel {
+  padding: 24px;
+}
+
+.urgent-alerts-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.urgent-alerts-title,
+.urgent-alerts-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.urgent-alerts-title {
+  gap: 12px;
+}
+
+.urgent-alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.urgent-alert-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head action"
+    "explain explain"
+    "bottom bottom";
+  column-gap: 16px;
+  row-gap: 6px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  text-align: start;
+  min-width: 0;
+}
+
+.urgent-alert-card--no-explain {
+  grid-template-areas:
+    "head action"
+    "bottom bottom";
+}
+
+@media (min-width: 1024px) {
+  .urgent-alert-card {
+    padding: 20px;
+  }
+}
+
+.urgent-alert-title {
+  grid-area: head;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.urgent-alert-action-btn {
+  grid-area: action;
+  justify-self: end;
+  align-self: center;
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.urgent-alert-explanation {
+  grid-area: explain;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.urgent-alert-bottom {
+  grid-area: bottom;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.urgent-alert-severity {
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.urgent-alert-bestseller {
+  font-size: 10px;
+}
+
+.urgent-alert-headline {
+  font-size: 14px;
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.urgent-alert-next {
+  color: var(--action);
+  font-weight: 500;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 639px) {
+  .urgent-alert-card,
+  .urgent-alert-card--no-explain {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "head"
+      "explain"
+      "action"
+      "bottom";
+  }
+
+  .urgent-alert-card--no-explain {
+    grid-template-areas:
+      "head"
+      "action"
+      "bottom";
+  }
+
+  .urgent-alert-action-btn {
+    justify-self: stretch;
+    width: 100%;
+  }
 }
 
 /* Price Comparison Matrix */
@@ -1580,12 +1613,9 @@ footer.workspace-footer {
 
 /* Responsive Rules */
 @media (max-width: 1050px) {
-  aside.sidebar {
-    width: 180px;
-  }
   .workspace {
-    margin-left: 180px;
-    width: calc(100% - 180px);
+    margin-left: 212px;
+    width: calc(100% - 212px);
   }
   .matrix-filters-bar {
     grid-template-columns: repeat(2, 1fr);
@@ -1598,30 +1628,6 @@ footer.workspace-footer {
 @media (max-width: 720px) {
   .app-shell {
     flex-direction: column;
-  }
-  aside.sidebar {
-    position: relative;
-    width: 100%;
-    inset: auto;
-    border-right: none;
-    border-bottom: 1px solid var(--line);
-    padding: 12px 14px;
-  }
-  .sidebar-footer {
-    display: none;
-  }
-  nav.main-nav {
-    flex-direction: row;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    gap: 6px;
-  }
-  nav.main-nav button {
-    white-space: nowrap;
-    width: auto;
-  }
-  .nav-secondary {
-    display: none;
   }
   .workspace {
     margin-left: 0;

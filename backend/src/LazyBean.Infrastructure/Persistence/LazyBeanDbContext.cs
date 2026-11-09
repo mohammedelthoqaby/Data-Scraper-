@@ -27,9 +27,13 @@ public class LazyBeanDbContext(DbContextOptions<LazyBeanDbContext> options) : Db
     public DbSet<AdvertiserIdentity> AdvertiserIdentities => Set<AdvertiserIdentity>();
     public DbSet<AdCampaign> AdCampaigns => Set<AdCampaign>();
     public DbSet<Ad> Ads => Set<Ad>();
+    public DbSet<AdIngestBatch> AdIngestBatches => Set<AdIngestBatch>();
+    public DbSet<AdThumbnail> AdThumbnails => Set<AdThumbnail>();
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<AlertHistory> AlertHistories => Set<AlertHistory>();
     public DbSet<AlertSetting> AlertSettings => Set<AlertSetting>();
+    public DbSet<CollectorDevice> CollectorDevices => Set<CollectorDevice>();
+    public DbSet<CollectorJob> CollectorJobs => Set<CollectorJob>();
 
     public IQueryable<T> Query<T>() where T : BaseEntity => Set<T>().AsNoTracking();
 

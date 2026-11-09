@@ -10,11 +10,11 @@ namespace LazyBean.IntegrationTests;
 
 public class PgBouncerVerificationTests
 {
-    private const string AdminConnectionString =
-        "Host=localhost;Port=15432;Database=postgres;Username=lazybean;Password=changeme";
+    private static string AdminConnectionString =>
+        $"Host=localhost;Port=15432;Database=postgres;Username=lazybean;Password={TestDb.Password}";
 
-    private const string PgBouncerBaseConnectionString =
-        "Host=localhost;Port=16432;Username=lazybean;Password=changeme;No Reset On Close=true";
+    private static string PgBouncerBaseConnectionString =>
+        $"Host=localhost;Port=16432;Username=lazybean;Password={TestDb.Password};No Reset On Close=true";
 
     [Fact]
     public async Task PgBouncer_DirectConnection_ExecutesQueryInTransactionMode()
@@ -90,6 +90,12 @@ public class PgBouncerVerificationTests
     public async Task PgBouncer_DataProtectionKeyRing_PersistsAndSurvives()
     {
         var pgbouncerConnStr = $"{PgBouncerBaseConnectionString};Database=lazybean";
+
+        // A fresh lazybean database (CI) has no tables yet. The app migrates at startup, so do the same here.
+        await using (var migrate = new LazyBeanDbContext(new DbContextOptionsBuilder<LazyBeanDbContext>().UseNpgsql(pgbouncerConnStr).Options))
+        {
+            await migrate.Database.MigrateAsync();
+        }
 
         var services = new ServiceCollection();
         services.AddDbContext<LazyBeanDbContext>(opts => opts.UseNpgsql(pgbouncerConnStr));

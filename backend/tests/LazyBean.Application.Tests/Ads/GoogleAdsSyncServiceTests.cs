@@ -1,3 +1,6 @@
+using LazyBean.Collectors.Google;
+using LazyBean.Collectors.Http;
+using LazyBean.Collectors.Woo;
 using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Ads.Exceptions;
 using LazyBean.Application.Common.Interfaces;

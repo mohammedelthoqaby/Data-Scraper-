@@ -45,7 +45,7 @@ async function main() {
     await unlockBtn.click();
     await page.waitForSelector('.modal-dialog', { timeout: 5000 });
     await new Promise((r) => setTimeout(r, 400));
-    await page.type('#login-password', 'Dev-Only-P@ssw0rd!');
+    await page.type('#login-password', process.env.LAZYBEAN_ADMIN_PASSWORD);
     const submitBtn = await page.$('button[type="submit"]');
     if (submitBtn) await submitBtn.click();
     await new Promise((r) => setTimeout(r, 2500));

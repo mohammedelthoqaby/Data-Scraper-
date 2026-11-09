@@ -1,28 +1,262 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { api, type AdCampaignDto, type AdDto, type Competitor, type AdvertiserIdentity } from '../../api/client';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { api, type AdvertiserIdentity, type Competitor } from '../../api/client';
+import { fetchAdGallery, fetchAdGalleryDetail, type AdGalleryCard } from '../../api/adGallery';
+import { AdCard } from './AdCard';
+import { AdDetailModal } from './AdDetailModal';
+import { OurAdsSection } from './OurAdsSection';
+import { PageHeader } from '../shell/PageHeader';
+import { useSectionActive } from '../shell/KeepAliveSection';
+import { hashView, readHashParams, savedScrollFor, saveScrollFor, writeHashParams } from '../../lib/pageUrlState';
+import './ads-gallery.css';
 
 interface AdsCampaignsViewProps {
   onOpenProductDetail?: (productId: string, title?: string) => void;
+  // Opens Price comparisons filtered to a product, by its title.
+  onOpenPriceComparisons?: (title: string) => void;
+  // The report date bar, shown in the page header row.
+  toolbar?: React.ReactNode;
 }
 
-const SEED_META_PAGE_IDS: Record<string, string> = {
-  'cafelax': '100456846237420',
-  'coffee-and-cream': '109786085108938',
-  'coffee-zone': '110140451538461',
-  'coffee-zone-misr': '110140451538461',
-  'fengany': '833564813655781',
-  'strong-coffee': '102631558265863',
-};
+type Tab = 'competitor' | 'ours' | 'compare';
 
-export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProductDetail }) => {
-  const [campaigns, setCampaigns] = useState<AdCampaignDto[]>([]);
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'competitor', label: 'Competitor ads' },
+  { key: 'ours', label: 'Our ads' },
+  { key: 'compare', label: 'Compare' },
+];
+
+const parseTab = (value: string | null): Tab => (value === 'ours' || value === 'compare' ? value : 'competitor');
+
+// The ads gallery: competitor ads by default, our own ads on their own tab, and the price comparison on the third.
+// Every matching card is on one page; the browser loads the images as they come into view. Each card opens the ad window.
+export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({
+  onOpenProductDetail,
+  onOpenPriceComparisons,
+  toolbar,
+}) => {
+  // The tab and filters start from the URL hash, so a reload or a return to the page restores them.
+  const [initial] = useState(() => readHashParams());
+  // Whether this section is on screen. When it is not, the ad window closes and the URL does not change.
+  const active = useSectionActive();
+  // An ad named in the URL (?ad=<id>) opens once the cards are on screen, so a reload reopens it.
+  const pendingAdRef = useRef<string | null>(initial.get('ad'));
+  // The element that opened the ad window: focus goes back to it when the window closes.
+  const openerRef = useRef<HTMLElement | null>(null);
+  const [tab, setTab] = useState<Tab>(() => parseTab(initial.get('tab')));
   const [sources, setSources] = useState<Competitor[]>([]);
   const [identities, setIdentities] = useState<AdvertiserIdentity[]>([]);
+  const [sourcesLoaded, setSourcesLoaded] = useState(false);
+  const [activeAds, setActiveAds] = useState<number | null>(null);
+  const [adsWithPrice, setAdsWithPrice] = useState<number | null>(null);
+
+  // Filters. The default is Active, so the page shows what is live now.
+  const [storeId, setStoreId] = useState(() => initial.get('store') ?? 'all');
+  const [platform, setPlatform] = useState(() => initial.get('platform') ?? 'all');
+  const [status, setStatus] = useState(() => initial.get('status') ?? 'Active');
+  const [hasPrice, setHasPrice] = useState(() => initial.get('hasPrice') === '1');
+  const [linkedOnly, setLinkedOnly] = useState(() => initial.get('linked') === '1');
+  const [search, setSearch] = useState(() => initial.get('q') ?? '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => (initial.get('q') ?? '').trim());
+  const [groupByStore, setGroupByStore] = useState(() => initial.get('group') === '1');
+
+  const [cards, setCards] = useState<AdGalleryCard[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalAds, setTotalAds] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<AdGalleryCard | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [syncErrors, setSyncErrors] = useState<string[]>([]);
+
+  const reference = useMemo(() => sources.find((s) => s.isReference) ?? null, [sources]);
+  const competitors = useMemo(
+    () => sources.filter((s) => !s.isReference).sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+    [sources]
+  );
+  const approvedAdvertisers = useMemo(
+    () => identities.filter((i) => (i.status || '').toLowerCase() === 'approved').length,
+    [identities]
+  );
+
+  // Stores, advertisers and the two headline numbers. Reloaded after a sync.
+  useEffect(() => {
+    let alive = true;
+    Promise.all([
+      api.GET('/api/sources'),
+      api.GET('/api/identities'),
+      fetchAdGallery({ status: 'Active', countsOnly: true }),
+      fetchAdGallery({ status: 'Active', hasPrice: true, countsOnly: true }),
+    ])
+      .then(([srcRes, idRes, active, priced]) => {
+        if (!alive) return;
+        setSources(srcRes.data ?? []);
+        setIdentities(idRes.data ?? []);
+        setActiveAds(active.totalAds);
+        setAdsWithPrice(priced.totalAds);
+      })
+      .catch((err: Error) => {
+        if (alive) setError(err.message || 'Could not load the ads.');
+      })
+      .finally(() => {
+        if (alive) setSourcesLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [reloadKey]);
+
+  // Typing in search waits a moment before it reaches the server.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  // Our tab is scoped to the reference store. The competitor tab leaves the scope unset, which the server reads as "every
+  // monitored store, never the reference store".
+  const ownerId = tab === 'ours' ? reference?.id : storeId !== 'all' ? storeId : undefined;
+
+  useEffect(() => {
+    if (tab === 'compare') return;
+    if (tab === 'ours' && !reference) {
+      setCards([]);
+      setTotalCount(0);
+      setIsLoading(false);
+      return;
+    }
+
+    let alive = true;
+    setIsLoading(true);
+    setError(null);
+    fetchAdGallery({
+      competitorId: ownerId,
+      platform: platform === 'all' ? undefined : platform,
+      status: status === 'all' ? undefined : status,
+      hasPrice,
+      linkedToOurs: linkedOnly,
+      search: debouncedSearch,
+      sortByStore: groupByStore,
+    })
+      .then((data) => {
+        if (!alive) return;
+        setCards(data.items);
+        setTotalCount(data.totalCount);
+        setTotalAds(data.totalAds);
+        setTruncated(data.truncated);
+      })
+      .catch((err: Error) => {
+        if (alive) setError(err.message || 'Could not load the ads.');
+      })
+      .finally(() => {
+        if (alive) setIsLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [tab, ownerId, platform, status, hasPrice, linkedOnly, debouncedSearch, groupByStore, reloadKey]);
+
+  // The ad window's card (?ad=<id>) is written to the URL too, so a reload reopens it.
+  const selectedId = selected?.id;
+
+  // The tab, filters and open ad are written to the URL with replaceState, so Back returns to the previous section and not to
+  // the last filter state. The hash is kept in a ref for the scroll memory below. Only the section on screen writes: a hidden
+  // section writing here would overwrite the hash of the section that is shown.
+  const hashRef = useRef('');
+  useEffect(() => {
+    if (!active) return;
+    hashRef.current = writeHashParams('ads-campaigns', {
+      tab: tab === 'competitor' ? undefined : tab,
+      store: storeId === 'all' ? undefined : storeId,
+      platform: platform === 'all' ? undefined : platform,
+      status: status === 'Active' ? undefined : status,
+      hasPrice: hasPrice ? '1' : undefined,
+      linked: linkedOnly ? '1' : undefined,
+      q: debouncedSearch || undefined,
+      group: groupByStore ? '1' : undefined,
+      ad: selectedId,
+    });
+  }, [active, tab, storeId, platform, status, hasPrice, linkedOnly, debouncedSearch, groupByStore, selectedId]);
+
+  // Leaving the section closes its ad window: the section that is shown next starts with none open.
+  useEffect(() => {
+    if (!active) setSelected(null);
+  }, [active]);
+
+  // Opens the ad named in the URL once the cards are on screen. An ad outside the filtered list is loaded on its own.
+  useEffect(() => {
+    const adId = pendingAdRef.current;
+    if (!adId || !active || isLoading || tab === 'compare') return;
+    pendingAdRef.current = null;
+    const found = cards.find((card) => card.id === adId);
+    if (found) {
+      setSelected(found);
+      return;
+    }
+    fetchAdGalleryDetail(adId)
+      .then((detail) => setSelected(detail.card))
+      .catch(() => undefined);
+  }, [active, isLoading, cards, tab]);
+
+  // Closing the ad window gives focus back to the card that opened it. The page does not scroll for that.
+  useEffect(() => {
+    if (selected) return;
+    const opener = openerRef.current;
+    openerRef.current = null;
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
+  }, [selected]);
+
+  // Restores the scroll position of this URL once the cards are on screen. Saved positions are remembered per URL.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (isLoading || restoredRef.current) return;
+    restoredRef.current = true;
+    const saved = savedScrollFor(hashRef.current);
+    if (saved !== null && saved > 0) {
+      window.scrollTo(0, saved);
+    }
+  }, [isLoading]);
+
+  // Remembers where the user is on this page. Only while this page is the active view, so the position is not lost when
+  // the page is left and the browser shortens it.
+  useEffect(() => {
+    let timer: number | undefined;
+    const remember = () => {
+      if (hashView() === 'ads-campaigns') {
+        saveScrollFor(hashRef.current);
+      }
+    };
+    const onScroll = () => {
+      // Scroll events while the page is still loading describe a short page, not the user's place. Ignore them until the
+      // saved position has been restored.
+      if (!restoredRef.current) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(remember, 150);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.clearTimeout(timer);
+    };
+  }, []);
+
+  const changeTab = (next: Tab) => {
+    setTab(next);
+    setSelected(null);
+  };
+
+  const resetFilters = () => {
+    setStoreId('all');
+    setPlatform('all');
+    setStatus('Active');
+    setHasPrice(false);
+    setLinkedOnly(false);
+    setSearch('');
+  };
 
   const handleSyncGoogleAds = async () => {
     setIsSyncing(true);
@@ -39,18 +273,8 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
       setSyncMessage(
         `Google Ads sync complete: ${checked} advertiser identity${checked === 1 ? '' : 'ies'} checked, ${fetched} ads fetched (${newCount} new).`
       );
-      if (errs.length > 0) {
-        setSyncErrors(errs);
-      }
-
-      const campRes = await api.GET('/api/ads/campaigns');
-      if (campRes.data) {
-        setCampaigns(campRes.data);
-      }
-      const idRes = await api.GET('/api/identities');
-      if (idRes.data) {
-        setIdentities(idRes.data);
-      }
+      setSyncErrors(errs);
+      setReloadKey((k) => k + 1);
     } catch (err: any) {
       setSyncMessage(err?.message || 'Failed to sync Google Ads.');
     } finally {
@@ -58,220 +282,119 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
     }
   };
 
-  // Filters
-  const [selectedCompetitor, setSelectedCompetitor] = useState<string>('all');
-  const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [search, setSearch] = useState<string>('');
+  const noAdvertisers = tab === 'competitor' && sourcesLoaded && approvedAdvertisers === 0;
 
-  // Fetch campaigns, sources, and identities on mount
-  useEffect(() => {
-    let isMounted = true;
-    const fetchData = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const [campRes, srcRes, idRes] = await Promise.all([
-          api.GET('/api/ads/campaigns'),
-          api.GET('/api/sources'),
-          api.GET('/api/identities'),
-        ]);
+  const stats = [
+    { label: 'Active ads', value: activeAds === null ? '…' : activeAds.toLocaleString('en-US'), hint: 'Competitor ads live now' },
+    {
+      label: 'Advertisers',
+      value: sourcesLoaded ? approvedAdvertisers.toLocaleString('en-US') : '…',
+      hint: 'Approved accounts we track',
+    },
+    {
+      label: 'Ads with a price',
+      value: adsWithPrice === null ? '…' : adsWithPrice.toLocaleString('en-US'),
+      hint: 'Live ads that show a price',
+    },
+  ];
 
-        if (isMounted) {
-          if (campRes.data) setCampaigns(campRes.data);
-          if (srcRes.data) setSources(srcRes.data);
-          if (idRes.data) setIdentities(idRes.data);
-        }
-      } catch (err: any) {
-        if (isMounted) setError(err?.message || 'Failed to load campaigns');
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    };
-
-    fetchData();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Compute stats
-  const stats = useMemo(() => {
-    let totalAds = 0;
-    let linkedProducts = 0;
-    const competitors = new Set<string>();
-
-    campaigns.forEach((c) => {
-      totalAds += c.adCount ?? 0;
-      if (c.competitorName) competitors.add(c.competitorName);
-      c.ads?.forEach((ad) => {
-        if (ad.productId) linkedProducts++;
-      });
-    });
-
-    return {
-      totalCampaigns: campaigns.length,
-      totalAds,
-      linkedProducts,
-      competitorCount: competitors.size,
-    };
-  }, [campaigns]);
-
-  // Distinct competitors list for filter dropdown - always list all 5 competitors from the competitors table
-  const competitorOptions = useMemo(() => {
-    const nonRef = sources.filter((s) => !s.isReference);
-    if (nonRef.length > 0) {
-      return nonRef.map((s) => s.name || s.key).sort();
-    }
-    // Standard 5 competitors fallback if sources not yet loaded
-    return ['CAFELAX', 'Coffee & Cream', 'Coffee Zone Misr', 'Fengany', 'Strong Coffee'];
-  }, [sources]);
-
-  // Approved identities count
-  const approvedIdentitiesCount = useMemo(() => {
-    return identities.filter((i) => (i.status || '').toLowerCase() === 'approved').length;
-  }, [identities]);
-
-  // Per-competitor/platform status summary table
-  const competitorStatusList = useMemo(() => {
-    const nonRef = sources.filter((s) => !s.isReference);
-    const storeList = nonRef.length > 0
-      ? nonRef
-      : [
-          { id: '1', key: 'cafelax', name: 'CAFELAX' },
-          { id: '2', key: 'coffee-and-cream', name: 'Coffee & Cream' },
-          { id: '3', key: 'coffee-zone', name: 'Coffee Zone Misr' },
-          { id: '4', key: 'fengany', name: 'Fengany' },
-          { id: '5', key: 'strong-coffee', name: 'Strong Coffee' },
-        ];
-
-    return storeList.map((store) => {
-      const storeName = store.name || store.key;
-      const storeIdentities = identities.filter(
-        (i) => i.competitorId === store.id || (i.competitorName && i.competitorName.toLowerCase() === storeName.toLowerCase())
-      );
-
-      // Meta status & ads
-      const metaId = storeIdentities.find((i) => (i.platform || '').toLowerCase() === 'meta');
-      const metaStatus = metaId ? metaId.status : 'No identity';
-      const metaPageId =
-        metaId?.externalId ||
-        SEED_META_PAGE_IDS[store.key?.toLowerCase() || ''] ||
-        SEED_META_PAGE_IDS[storeName.toLowerCase().replace(/[^a-z0-9]/g, '-')];
-      const metaCampaigns = campaigns.filter(
-        (c) => (c.competitorName || '').toLowerCase() === storeName.toLowerCase() && (c.platform || '').toLowerCase() === 'meta'
-      );
-      const metaAdCount = metaCampaigns.reduce((acc, c) => acc + (c.adCount ?? 0), 0);
-      let latestMetaSync: string | null = null;
-      metaCampaigns.forEach((c) => {
-        if (c.lastSeenAt && (!latestMetaSync || c.lastSeenAt > latestMetaSync)) {
-          latestMetaSync = c.lastSeenAt;
-        }
-      });
-
-      // Google status & ads
-      const googleId = storeIdentities.find((i) => (i.platform || '').toLowerCase() === 'google');
-      const googleStatus = googleId ? googleId.status : 'No identity';
-      const googleCampaigns = campaigns.filter(
-        (c) => (c.competitorName || '').toLowerCase() === storeName.toLowerCase() && (c.platform || '').toLowerCase() === 'google'
-      );
-      const googleAdCount = googleCampaigns.reduce((acc, c) => acc + (c.adCount ?? 0), 0);
-
-      // Latest sync time
-      const allStoreCampaigns = campaigns.filter((c) => (c.competitorName || '').toLowerCase() === storeName.toLowerCase());
-      let latestSync: string | null = null;
-      allStoreCampaigns.forEach((c) => {
-        if (c.lastSeenAt && (!latestSync || c.lastSeenAt > latestSync)) {
-          latestSync = c.lastSeenAt;
-        }
-      });
-
-      // Meta display label: "Synced <date>, N ads" or "Runner offline - last sync <date>" (never error/red)
-      const metaFormattedDate = latestMetaSync
-        ? new Date(latestMetaSync).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-        : null;
-
-      let metaLabel = 'Runner offline - not synced yet';
-      let metaBadgeClass = 'badge neutral';
-      if (metaAdCount > 0 && metaFormattedDate) {
-        metaLabel = `Synced ${metaFormattedDate}, ${metaAdCount} ads`;
-        metaBadgeClass = 'badge good';
-      } else if (metaFormattedDate) {
-        metaLabel = `Runner offline - last sync ${metaFormattedDate}`;
-        metaBadgeClass = 'badge neutral';
-      }
-
-      return {
-        id: store.id,
-        name: storeName,
-        metaStatus,
-        metaPageId,
-        metaLabel,
-        metaBadgeClass,
-        metaAdCount,
-        googleStatus,
-        googleAdCount,
-        totalAds: metaAdCount + googleAdCount,
-        latestSync,
-      };
-    });
-  }, [sources, identities, campaigns]);
-
-  // Filtered campaigns
-  const filteredCampaigns = useMemo(() => {
-    return campaigns.filter((c) => {
-      if (selectedCompetitor !== 'all' && c.competitorName !== selectedCompetitor) return false;
-      if (selectedPlatform !== 'all' && (c.platform || '').toLowerCase() !== selectedPlatform.toLowerCase()) return false;
-      if (selectedStatus !== 'all' && (c.status || '').toLowerCase() !== selectedStatus.toLowerCase()) return false;
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        const body = (c.body || '').toLowerCase();
-        const comp = (c.competitorName || '').toLowerCase();
-        const adMatch = c.ads?.some((a) =>
-          (a.title || '').toLowerCase().includes(q) ||
-          (a.productTitle || '').toLowerCase().includes(q) ||
-          (a.lazyBeanProductTitle || '').toLowerCase().includes(q)
-        );
-        if (!body.includes(q) && !comp.includes(q) && !adMatch) return false;
-      }
-      return true;
-    });
-  }, [campaigns, selectedCompetitor, selectedPlatform, selectedStatus, search]);
-
-  const renderStatusBadge = (status?: string | null) => {
-    const s = (status || 'No identity').toLowerCase();
-    if (s === 'approved') return <span className="badge good">Approved</span>;
-    if (s === 'pending' || s === 'pendingapproval') return <span className="badge warn">Pending</span>;
-    if (s === 'rejected') return <span className="badge bad">Rejected</span>;
-    return <span className="badge neutral">No identity</span>;
+  // The open ad's place in the filtered list, which Previous and Next follow.
+  const selectedIndex = selected ? cards.findIndex((card) => card.id === selected.id) : -1;
+  const stepSelected = (delta: number) => {
+    const next = selectedIndex >= 0 ? cards[selectedIndex + delta] : undefined;
+    if (next) setSelected(next);
   };
 
-  return (
-    <div className="ads-campaigns-view">
-      {/* Page Heading */}
-      <div className="page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <div className="eyebrow">MARKET INTELLIGENCE</div>
-          <h1 className="view-title">Ads & Campaigns</h1>
-          <p className="subtitle">
-            Competitor catalog ad campaigns, creative variants, and linked product price comparisons observed across Meta & Google Ad Libraries.
-          </p>
-        </div>
-        <button
-          className="btn btn-secondary"
-          disabled={isSyncing}
-          onClick={handleSyncGoogleAds}
-          style={{ whiteSpace: 'nowrap', marginTop: '4px' }}
-        >
-          {isSyncing ? 'Syncing Google Ads...' : 'Sync Google Ads'}
+  let content: React.ReactNode;
+  if (tab === 'ours' && !reference) {
+    content = <div className="ads-empty">No reference store is set up, so there are no ads of ours to show.</div>;
+  } else if (error) {
+    content = <div className="warning-banner">{error}</div>;
+  } else if (isLoading) {
+    content = (
+      <div className="ads-grid" aria-busy="true">
+        {Array.from({ length: 8 }, (_, i) => (
+          <div key={i} className="skeleton" style={{ height: 320, borderRadius: 10 }} />
+        ))}
+      </div>
+    );
+  } else if (cards.length === 0) {
+    content = (
+      <div className="ads-empty">
+        <p style={{ margin: 0 }}>No ads match these filters.</p>
+        <button type="button" className="btn btn-secondary" style={{ marginTop: 12 }} onClick={resetFilters}>
+          Reset filters
         </button>
+      </div>
+    );
+  } else {
+    content = (
+      <>
+        <div className="ads-grid">
+          {cards.map((card) => (
+            <AdCard
+              key={card.id}
+              card={card}
+              onOpen={(c, opener) => {
+                openerRef.current = opener;
+                setSelected(c);
+              }}
+              onOpenProduct={onOpenProductDetail}
+            />
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <div className="ads-gallery ads-campaigns-view">
+      <PageHeader
+        title="Ads & campaigns"
+        info="Competitor ads from Meta and Google, with the price each one advertises and the product of ours it matches."
+        actions={
+          <>
+            {toolbar}
+            <button className="btn btn-secondary" disabled={isSyncing} onClick={handleSyncGoogleAds}>
+              {isSyncing ? 'Syncing Google Ads...' : 'Sync Google Ads'}
+            </button>
+          </>
+        }
+      />
+
+      <div className="ads-tabs" role="tablist" aria-label="Ads views">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            id={`ads-tab-${t.key}`}
+            aria-selected={tab === t.key}
+            aria-controls="ads-tabpanel"
+            className="ads-tab"
+            onClick={() => changeTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {syncMessage && (
-        <div style={{ padding: '12px 16px', borderRadius: '6px', background: syncErrors.length > 0 ? '#fffbeb' : '#eef2ff', color: syncErrors.length > 0 ? '#92400e' : '#3730a3', border: `1px solid ${syncErrors.length > 0 ? '#fde68a' : '#c7d2fe'}`, marginBottom: '20px', fontSize: '13px' }}>
+        <div
+          role="status"
+          style={{
+            padding: '12px 16px',
+            borderRadius: 6,
+            background: syncErrors.length > 0 ? '#fffbeb' : '#eef2ff',
+            color: syncErrors.length > 0 ? '#92400e' : '#3730a3',
+            border: `1px solid ${syncErrors.length > 0 ? '#fde68a' : '#c7d2fe'}`,
+            marginBottom: 16,
+            fontSize: 13,
+          }}
+        >
           <div style={{ fontWeight: 600 }}>{syncMessage}</div>
           {syncErrors.length > 0 && (
-            <div style={{ marginTop: '6px', fontSize: '12px' }}>
+            <div style={{ marginTop: 6, fontSize: 12 }}>
               <strong>Errors per identity:</strong>
               <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
                 {syncErrors.map((err, idx) => (
@@ -283,402 +406,141 @@ export const AdsCampaignsView: React.FC<AdsCampaignsViewProps> = ({ onOpenProduc
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="stats-grid-4">
-        <div className="stat-card">
-          <div className="stat-number">
-            {isLoading ? <span className="skeleton skeleton-number" /> : stats.totalCampaigns}
-          </div>
-          <div className="stat-label">Active campaigns</div>
-          <div className="stat-sub">Grouped promotional creative sets</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-number">
-            {isLoading ? <span className="skeleton skeleton-number" /> : stats.totalAds}
-          </div>
-          <div className="stat-label">Observed ad creatives</div>
-          <div className="stat-sub">Individual product ad variations</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-number">
-            {isLoading ? <span className="skeleton skeleton-number" /> : stats.linkedProducts}
-          </div>
-          <div className="stat-label">Linked to catalog products</div>
-          <div className="stat-sub">Mapped ad links to verified SKUs</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-number">
-            {isLoading ? <span className="skeleton skeleton-number" /> : stats.competitorCount}
-          </div>
-          <div className="stat-label">Monitored advertisers</div>
-          <div className="stat-sub">Active advertising competitor stores</div>
-        </div>
-      </div>
-
-      {/* Competitor / Platform Advertiser Status Grid */}
-      <div className="panel" style={{ marginBottom: '20px', padding: '16px 20px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <h2 style={{ fontSize: '14px', fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--muted)' }}>
-            Advertiser Identities & Platform Coverage
-          </h2>
-          <a href="#/sources" style={{ fontSize: '12px', color: 'var(--action)', fontWeight: 600, textDecoration: 'none' }}>
-            Manage sources &gt; Advertiser identities ↗
-          </a>
-        </div>
-
-        {isLoading ? (
-          <div>
-            <div className="skeleton skeleton-row" style={{ height: '24px', width: '100%', marginBottom: '8px' }} />
-            <div className="skeleton skeleton-row" style={{ height: '24px', width: '100%', marginBottom: '8px' }} />
-            <div className="skeleton skeleton-row" style={{ height: '24px', width: '100%' }} />
+      <div role="tabpanel" id="ads-tabpanel" aria-labelledby={`ads-tab-${tab}`}>
+        {tab === 'compare' ? (
+          <OurAdsSection />
+        ) : noAdvertisers ? (
+          <div className="ads-empty" style={{ padding: '48px 24px' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 8px' }}>No approved advertisers yet</h2>
+            <p style={{ maxWidth: 520, margin: '0 auto 20px', lineHeight: 1.5 }}>
+              Approve a Meta page or add a Google advertiser in Manage sources to start tracking ads.
+            </p>
+            <a href="#/sources" className="btn btn-primary" style={{ display: 'inline-block', textDecoration: 'none', padding: '9px 18px', fontWeight: 600 }}>
+              Go to Manage sources &gt; Advertiser identities →
+            </a>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--line)', textAlign: 'left', color: 'var(--muted)', fontSize: '11px', textTransform: 'uppercase' }}>
-                  <th style={{ padding: '8px 12px' }}>Competitor Store</th>
-                  <th style={{ padding: '8px 12px' }}>Meta Ad Library</th>
-                  <th style={{ padding: '8px 12px' }}>Google Ads Transparency</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>Total Ads</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Official Library</th>
-                </tr>
-              </thead>
-              <tbody>
-                {competitorStatusList.map((item) => (
-                  <tr key={item.name} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '10px 12px', fontWeight: 600 }}>{item.name}</td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <span className={item.metaBadgeClass} style={{ fontSize: '11px' }}>
-                        {item.metaLabel}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        {item.googleStatus === 'No identity' ? (
-                          <span className="badge neutral">No Google advertiser found</span>
-                        ) : (
-                          renderStatusBadge(item.googleStatus)
-                        )}
-                        {item.googleAdCount > 0 && (
-                          <span style={{ fontSize: '11px', color: 'var(--muted)' }}>({item.googleAdCount} ads)</span>
-                        )}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>
-                      {item.totalAds > 0 ? item.totalAds : '—'}
-                    </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                      {item.metaPageId ? (
-                        <a
-                          href={`https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=EG&view_all_page_id=${encodeURIComponent(item.metaPageId)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn-xs ghost"
-                          style={{
-                            textDecoration: 'none',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            fontWeight: 600,
-                            padding: '4px 8px',
-                            borderRadius: '4px',
-                            border: '1px solid var(--line)',
-                            background: '#f8fafc',
-                            color: 'var(--action)',
-                            fontSize: '11px',
-                          }}
-                          title={`View ${item.name} active ads on Meta Ad Library`}
-                        >
-                          View on Meta Ad Library ↗
-                        </a>
-                      ) : (
-                        <span style={{ color: 'var(--muted)', fontSize: '11px' }}>—</span>
-                      )}
-                    </td>
-                  </tr>
+          <>
+            {tab === 'competitor' && (
+              <div className="ads-stats">
+                {stats.map((s) => (
+                  <div className="ads-stat" key={s.label}>
+                    <div className="ads-stat__value">{s.value}</div>
+                    <div className="ads-stat__label">{s.label}</div>
+                    <div className="ads-stat__label" style={{ marginTop: 2 }}>{s.hint}</div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            )}
+
+            <div className="ads-filters">
+              <input
+                type="search"
+                aria-label="Search ads"
+                placeholder="Search copy, product or store"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              {tab === 'competitor' && (
+                <select
+                  aria-label="Store"
+                  value={storeId}
+                  onChange={(e) => setStoreId(e.target.value)}
+                >
+                  <option value="all">All stores</option>
+                  {competitors.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <select
+                aria-label="Platform"
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value)}
+              >
+                <option value="all">All platforms</option>
+                <option value="Meta">Meta</option>
+                <option value="Google">Google</option>
+              </select>
+              <select
+                aria-label="Status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+                <option value="all">All statuses</option>
+              </select>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={hasPrice}
+                  onChange={(e) => setHasPrice(e.target.checked)}
+                />
+                Has price
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={linkedOnly}
+                  onChange={(e) => setLinkedOnly(e.target.checked)}
+                />
+                Linked to our products
+              </label>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 8,
+                marginBottom: 12,
+                fontSize: 13,
+                color: 'var(--gallery-muted)',
+              }}
+            >
+              <span>
+                {isLoading
+                  ? 'Loading…'
+                  : totalCount > 0
+                    ? `All ${totalCount.toLocaleString('en-US')} ${totalCount === 1 ? 'card' : 'cards'} · ${totalAds.toLocaleString('en-US')} ads`
+                    : 'No ads'}
+              </span>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={groupByStore}
+                  onChange={(e) => setGroupByStore(e.target.checked)}
+                />
+                Group by store
+              </label>
+            </div>
+
+            {truncated && !isLoading && (
+              <div className="warning-banner" style={{ marginBottom: 12 }}>
+                The filters match more ads than the page reads at once, so only the newest are shown. Narrow the filters to see the rest.
+              </div>
+            )}
+            {content}
+          </>
         )}
       </div>
 
-      {/* Filters Bar */}
-      <div className="matrix-filters-bar" style={{ marginBottom: '20px', borderRadius: '8px', border: '1px solid var(--line)' }}>
-        <input
-          type="search"
-          placeholder="Search ad copy, product titles, or brands..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: '8px 12px', border: '1px solid var(--line)', borderRadius: '6px' }}
+      {selected && (
+        <AdDetailModal
+          card={selected}
+          position={selectedIndex >= 0 ? { index: selectedIndex, total: cards.length } : null}
+          canPrevious={selectedIndex > 0}
+          canNext={selectedIndex >= 0 && selectedIndex < cards.length - 1}
+          onPrevious={() => stepSelected(-1)}
+          onNext={() => stepSelected(1)}
+          onClose={() => setSelected(null)}
+          onOpenPriceComparisons={onOpenPriceComparisons}
         />
-
-        <select
-          value={selectedCompetitor}
-          onChange={(e) => setSelectedCompetitor(e.target.value)}
-          style={{ padding: '8px 12px', border: '1px solid var(--line)', borderRadius: '6px' }}
-        >
-          <option value="all">All Competitors ({competitorOptions.length})</option>
-          {competitorOptions.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={selectedPlatform}
-          onChange={(e) => setSelectedPlatform(e.target.value)}
-          style={{ padding: '8px 12px', border: '1px solid var(--line)', borderRadius: '6px' }}
-        >
-          <option value="all">All Platforms</option>
-          <option value="meta">Meta Ads Library</option>
-          <option value="google">Google Ads Transparency</option>
-        </select>
-
-        <select
-          value={selectedStatus}
-          onChange={(e) => setSelectedStatus(e.target.value)}
-          style={{ padding: '8px 12px', border: '1px solid var(--line)', borderRadius: '6px' }}
-        >
-          <option value="all">All Statuses</option>
-          <option value="active">Active Only</option>
-          <option value="inactive">Inactive Only</option>
-        </select>
-
-        <div style={{ fontSize: '13px', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-          Showing <strong>{filteredCampaigns.length}</strong> campaigns
-        </div>
-      </div>
-
-      {/* Content */}
-      {isLoading ? (
-        <div className="campaigns-list">
-          <div className="skeleton-card" style={{ marginBottom: '12px' }}>
-            <div className="skeleton skeleton-row" style={{ width: '35%', height: '22px' }} />
-            <div className="skeleton skeleton-row" style={{ width: '70%', height: '16px' }} />
-            <div className="skeleton skeleton-row" style={{ width: '90%', height: '14px' }} />
-          </div>
-          <div className="skeleton-card" style={{ marginBottom: '12px' }}>
-            <div className="skeleton skeleton-row" style={{ width: '35%', height: '22px' }} />
-            <div className="skeleton skeleton-row" style={{ width: '70%', height: '16px' }} />
-            <div className="skeleton skeleton-row" style={{ width: '90%', height: '14px' }} />
-          </div>
-        </div>
-      ) : error ? (
-        <div className="callout" style={{ borderLeftColor: '#962f32', color: '#962f32' }}>
-          {error}
-        </div>
-      ) : approvedIdentitiesCount === 0 ? (
-        <div className="panel" style={{ padding: '48px 24px', textAlign: 'center', background: '#fff', border: '1px solid var(--line)', borderRadius: '8px' }}>
-          <div style={{ fontSize: '32px', marginBottom: '12px' }}>📢</div>
-          <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 8px 0' }}>No approved advertisers yet</h2>
-          <p style={{ color: 'var(--muted)', fontSize: '14px', maxWidth: '520px', margin: '0 auto 20px auto', lineHeight: 1.5 }}>
-            No approved advertiser identities found. Approve seeded Meta page IDs or discover Google advertisers in Manage sources to begin tracking campaigns.
-          </p>
-          <a
-            href="#/sources"
-            className="btn btn-primary"
-            style={{ display: 'inline-block', textDecoration: 'none', padding: '9px 18px', fontWeight: 600 }}
-          >
-            Go to Manage sources &gt; Advertiser identities →
-          </a>
-        </div>
-      ) : filteredCampaigns.length === 0 ? (
-        <div className="panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--muted)' }}>
-          No campaigns found matching the specified filters.
-        </div>
-      ) : (
-        <div className="campaigns-list">
-          {filteredCampaigns.map((campaign) => {
-            const isActive = (campaign.status || '').toLowerCase() === 'active';
-            const ads = campaign.ads ?? [];
-
-            return (
-              <div key={campaign.id} className="campaign-card">
-                {/* Campaign Header */}
-                <div className="campaign-header">
-                  <div className="campaign-tags">
-                    <span className="badge neutral" style={{ fontWeight: 700 }}>
-                      {campaign.competitorName}
-                    </span>
-                    <span className="badge" style={{ background: '#eaf1ee', color: '#164f40', fontWeight: 600 }}>
-                      {campaign.platform} Ads
-                    </span>
-                    <span className={`badge ${isActive ? 'good' : 'warn'}`}>
-                      {campaign.status}
-                    </span>
-                    <span className="badge" style={{ background: '#f0f3f2' }}>
-                      {campaign.adCount} creative {campaign.adCount === 1 ? 'variant' : 'variants'}
-                    </span>
-                  </div>
-
-                  <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>
-                      Last seen:{' '}
-                      {campaign.lastSeenAt
-                        ? new Date(campaign.lastSeenAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-                        : 'Recently'}
-                    </span>
-                    {campaign.platform === 'Meta' && SEED_META_PAGE_IDS[(campaign.competitorName || '').toLowerCase().replace(/[^a-z0-9]/g, '-')] && (
-                      <a
-                        href={`https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=EG&view_all_page_id=${encodeURIComponent(SEED_META_PAGE_IDS[(campaign.competitorName || '').toLowerCase().replace(/[^a-z0-9]/g, '-')])}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: 'var(--action)', fontWeight: 600, textDecoration: 'none' }}
-                      >
-                        View on Meta Ad Library ↗
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Campaign Body */}
-                {campaign.body ? (
-                  <div className="campaign-body">"{campaign.body}"</div>
-                ) : (
-                  <div className="campaign-body" style={{ color: 'var(--muted)' }}>
-                    (Visual creative campaign without headline text)
-                  </div>
-                )}
-
-                {/* Ads in this Campaign */}
-                <div className="campaign-ads-container">
-                  <div className="campaign-ads-title">
-                    Catalog Ad Variations ({ads.length})
-                  </div>
-
-                  <div className="ad-variants-grid">
-                    {ads.map((ad: AdDto) => {
-                      const adActive = (ad.status || '').toLowerCase() === 'active';
-
-                      return (
-                        <div key={ad.id} className="ad-variant-card">
-                          <div>
-                            <div className="ad-variant-header">
-                              <span className="ad-variant-title">{ad.title || 'Untitled Ad'}</span>
-                              <span className={`badge ${adActive ? 'good' : 'neutral'}`} style={{ fontSize: '10px' }}>
-                                {ad.status}
-                              </span>
-                            </div>
-
-                            <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
-                              <span>Ad ID: {ad.externalAdId}</span>
-                              {ad.snapshotUrl && (
-                                <a
-                                  href={ad.snapshotUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{ marginLeft: '8px', color: 'var(--action)', fontWeight: 600 }}
-                                >
-                                  View in Ad Library ↗
-                                </a>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Linked Product & Price Comparison Box */}
-                          {ad.productId ? (
-                            <div className="ad-product-link-box">
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontWeight: 600, color: 'var(--ink)' }}>
-                                  Linked Product:
-                                </span>
-                                {ad.productUrl && (
-                                  <a
-                                    href={ad.productUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{ color: 'var(--action)', textDecoration: 'none' }}
-                                  >
-                                    View Store Page ↗
-                                  </a>
-                                )}
-                              </div>
-                              <div style={{ color: '#333' }}>{ad.productTitle}</div>
-
-                              {/* Price Comparison Row */}
-                              <div className="ad-price-comparison-row">
-                                <div>
-                                  <span style={{ color: 'var(--muted)' }}>Advertised: </span>
-                                  <strong>{ad.advertisedPrice != null ? `${ad.advertisedPrice.toFixed(2)} EGP` : '—'}</strong>
-                                </div>
-
-                                <div>
-                                  <span style={{ color: 'var(--muted)' }}>Store: </span>
-                                  <strong>{ad.competitorPrice != null ? `${ad.competitorPrice.toFixed(2)} EGP` : '—'}</strong>
-                                </div>
-
-                                {ad.lazyBeanProductId ? (
-                                  <div>
-                                    <span style={{ color: 'var(--muted)' }}>Lazy Bean: </span>
-                                    <strong>{ad.lazyBeanPrice != null ? `${ad.lazyBeanPrice.toFixed(2)} EGP` : '—'}</strong>
-                                  </div>
-                                ) : (
-                                  <span className="badge neutral" style={{ fontSize: '10px' }}>
-                                    Unmatched
-                                  </span>
-                                )}
-
-                                {ad.hasPriceDiscrepancy && (
-                                  <span className="badge warn" style={{ fontSize: '10px' }}>
-                                    Ad price ≠ store price
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Price Position Badge */}
-                              {ad.lazyBeanProductId && (
-                                <div style={{ marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  {ad.pricePosition === 'cheapest' ? (
-                                    <span className="badge good">
-                                      Lazy Bean is {Math.abs(ad.priceDiffPercent ?? 0).toFixed(1)}% cheaper
-                                    </span>
-                                  ) : ad.pricePosition === 'more expensive' ? (
-                                    <span className="badge bad">
-                                      Competitor is {Math.abs(ad.priceDiffPercent ?? 0).toFixed(1)}% cheaper
-                                    </span>
-                                  ) : ad.pricePosition === 'same price' ? (
-                                    <span className="badge neutral">Same price as Lazy Bean</span>
-                                  ) : ad.pricePosition === 'within 5%' ? (
-                                    <span className="badge neutral">
-                                      Prices within 5% ({ad.priceDiffPercent?.toFixed(1)}%)
-                                    </span>
-                                  ) : ad.pricePosition === 'lazyBeanOutOfStock' ? (
-                                    <span className="badge warn">
-                                      Lazy Bean Out of Stock
-                                    </span>
-                                  ) : (
-                                    <span className="badge neutral">{ad.pricePosition}</span>
-                                  )}
-
-                                  {onOpenProductDetail && (
-                                    <button
-                                      type="button"
-                                      className="btn-xs ghost"
-                                      onClick={() => onOpenProductDetail(ad.lazyBeanProductId!, ad.lazyBeanProductTitle ?? undefined)}
-                                    >
-                                      Price History
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div style={{ fontSize: '11px', color: 'var(--muted)', fontStyle: 'italic', padding: '6px' }}>
-                              Ad links to store homepage or collection page
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       )}
     </div>
   );

@@ -43,7 +43,9 @@ public class AiSettingsController(ISender sender) : ControllerBase
             body.IsEnabled,
             body.ApiKey,
             body.ModelName,
-            body.DailyRequestCap), ct);
+            body.DailyRequestCap,
+            body.CreativeVisionEnabled,
+            body.CreativeVisionDailyCap), ct);
 
         return Ok(result);
     }

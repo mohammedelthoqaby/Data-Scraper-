@@ -12,7 +12,9 @@ public record UpdateAiSettingsCommand(
     bool? IsEnabled,
     string? ApiKey,
     string? ModelName,
-    int? DailyRequestCap) : IRequest<AiSettingsDto>;
+    int? DailyRequestCap,
+    bool? CreativeVisionEnabled = null,
+    int? CreativeVisionDailyCap = null) : IRequest<AiSettingsDto>;
 
 public record DeleteAiSettingsCommand : IRequest<bool>;
 
@@ -62,7 +64,9 @@ public class AiSettingsCommandHandler :
             {
                 IsEnabled = request.IsEnabled ?? false,
                 ModelName = !string.IsNullOrWhiteSpace(request.ModelName) ? request.ModelName.Trim() : "gemini-3.5-flash",
-                DailyRequestCap = request.DailyRequestCap ?? 1000
+                DailyRequestCap = request.DailyRequestCap ?? 1000,
+                CreativeVisionEnabled = request.CreativeVisionEnabled ?? false,
+                CreativeVisionDailyCap = request.CreativeVisionDailyCap is > 0 ? request.CreativeVisionDailyCap.Value : 20
             };
 
             if (!string.IsNullOrWhiteSpace(request.ApiKey))
@@ -84,6 +88,12 @@ public class AiSettingsCommandHandler :
 
             if (request.DailyRequestCap.HasValue && request.DailyRequestCap > 0)
                 setting.DailyRequestCap = request.DailyRequestCap.Value;
+
+            if (request.CreativeVisionEnabled.HasValue)
+                setting.CreativeVisionEnabled = request.CreativeVisionEnabled.Value;
+
+            if (request.CreativeVisionDailyCap is > 0)
+                setting.CreativeVisionDailyCap = request.CreativeVisionDailyCap.Value;
 
             if (!string.IsNullOrWhiteSpace(request.ApiKey))
             {
@@ -112,7 +122,10 @@ public class AiSettingsCommandHandler :
             setting.LastTestSuccess,
             setting.LastTestMessage,
             setting.LastCallAt,
-            setting.LastCallStatus);
+            setting.LastCallStatus,
+            setting.CreativeVisionEnabled,
+            setting.CreativeVisionDailyCap,
+            setting.CreativeVisionUsedToday);
     }
 
     public async Task<bool> Handle(DeleteAiSettingsCommand request, CancellationToken ct)

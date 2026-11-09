@@ -10,6 +10,7 @@ public interface IUnitOfWork : IDisposable
     IRepository<Entities.AdvertiserIdentity> AdvertiserIdentities { get; }
     IRepository<Entities.AdCampaign> AdCampaigns { get; }
     IRepository<Entities.Ad> Ads { get; }
+    IRepository<Entities.AdIngestBatch> AdIngestBatches { get; }
     IRepository<Entities.ChangeEvent> ChangeEvents { get; }
     IRepository<Entities.Product> Products { get; }
     IRepository<Entities.AiSetting> AiSettings { get; }
@@ -17,6 +18,8 @@ public interface IUnitOfWork : IDisposable
     IRepository<Entities.Alert> Alerts { get; }
     IRepository<Entities.AlertHistory> AlertHistories { get; }
     IRepository<Entities.AlertSetting> AlertSettings { get; }
+    IRepository<Entities.CollectorDevice> CollectorDevices { get; }
+    IRepository<Entities.CollectorJob> CollectorJobs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
     void ClearTracker();

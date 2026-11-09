@@ -55,12 +55,13 @@ public class DbInitializerSeedIdempotencyTests
                 .Where(i => i.Platform == AdPlatform.Meta)
                 .ToListAsync();
 
-            // We have 5 competitors with Meta IDs in seed/competitors.json
-            Assert.Equal(5, metaIdentities.Count);
-            Assert.All(metaIdentities, i => Assert.Equal(AdvertiserIdentityStatus.Approved, i.Status));
+            // 5 competitors have approved Meta IDs in seed/competitors.json; our own page is seeded as Pending.
+            Assert.Equal(6, metaIdentities.Count);
+            Assert.Equal(5, metaIdentities.Count(i => i.Status == AdvertiserIdentityStatus.Approved));
+            Assert.Equal(1, metaIdentities.Count(i => i.Status == AdvertiserIdentityStatus.Pending));
 
             // Simulate admin rejecting one identity
-            var rejected = metaIdentities.First();
+            var rejected = metaIdentities.First(i => i.Status == AdvertiserIdentityStatus.Approved);
             rejected.Status = AdvertiserIdentityStatus.Rejected;
             rejected.ReviewedAt = DateTimeOffset.UtcNow;
             rejectedId = rejected.Id;
@@ -77,8 +78,8 @@ public class DbInitializerSeedIdempotencyTests
                 .Where(i => i.Platform == AdPlatform.Meta)
                 .ToListAsync();
 
-            // Still exactly 5 identities (no duplicates)
-            Assert.Equal(5, metaIdentities.Count);
+            // Still exactly 6 identities (no duplicates)
+            Assert.Equal(6, metaIdentities.Count);
 
             var rejected = metaIdentities.Single(i => i.Id == rejectedId);
             Assert.Equal(AdvertiserIdentityStatus.Rejected, rejected.Status);

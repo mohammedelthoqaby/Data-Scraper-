@@ -1,4 +1,5 @@
 using FluentValidation.Results;
+using LazyBean.Application.Ads.Common;
 using LazyBean.Application.Ads.Dtos;
 using LazyBean.Application.Common.Exceptions;
 using LazyBean.Application.Common.Interfaces;
@@ -24,8 +25,12 @@ public class CreateIdentityCommandHandler(IUnitOfWork unitOfWork, IReadDbContext
             throw new ValidationException([new ValidationFailure("Platform", $"Invalid AdPlatform '{request.Platform}'. Must be 'Meta' or 'Google'.")]);
         }
 
+        var cleanExtId = platform == AdPlatform.Google
+            ? ParseGoogleAdvertiserId(request.ExternalId)
+            : request.ExternalId.Trim();
+
         var existing = await readContext.Query<AdvertiserIdentity>()
-            .FirstOrDefaultAsync(i => i.Platform == platform && i.ExternalId == request.ExternalId, ct);
+            .FirstOrDefaultAsync(i => i.Platform == platform && i.ExternalId == cleanExtId, ct);
 
         if (existing != null)
         {
@@ -45,7 +50,6 @@ public class CreateIdentityCommandHandler(IUnitOfWork unitOfWork, IReadDbContext
                 existing.CreatedAt);
         }
 
-        var cleanExtId = request.ExternalId.Trim();
         var displayName = string.IsNullOrWhiteSpace(request.Name) ? competitor.Name : request.Name.Trim();
         var libraryUrl = request.LibraryUrl;
         if (string.IsNullOrWhiteSpace(libraryUrl))
@@ -84,5 +88,15 @@ public class CreateIdentityCommandHandler(IUnitOfWork unitOfWork, IReadDbContext
             identity.Notes,
             identity.ReviewedAt,
             identity.CreatedAt);
+    }
+
+    private static string ParseGoogleAdvertiserId(string? input)
+    {
+        if (!GoogleAdvertiserReference.TryParse(input, out var advertiserId))
+        {
+            throw new ValidationException([new ValidationFailure("ExternalId", GoogleAdvertiserReference.InvalidMessage)]);
+        }
+
+        return advertiserId;
     }
 }

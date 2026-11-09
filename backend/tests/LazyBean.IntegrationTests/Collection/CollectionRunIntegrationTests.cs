@@ -1,10 +1,12 @@
+using LazyBean.Collectors.Google;
+using LazyBean.Collectors.Http;
+using LazyBean.Collectors.Woo;
 using LazyBean.Application.Collection.Contracts;
 using LazyBean.Application.Collection.Orchestration;
 using LazyBean.Domain.Entities;
 using LazyBean.Domain.Enums;
 using LazyBean.Infrastructure.Collection.Adapters;
 using LazyBean.Infrastructure.Collection.Evidence;
-using LazyBean.Infrastructure.Collection.Http;
 using LazyBean.Infrastructure.Collection.Orchestration;
 using LazyBean.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
