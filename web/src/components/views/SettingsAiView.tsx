@@ -1,125 +1,391 @@
-import React, { useState, useEffect } from 'react';
-import { aiApi, type AiSettingsDto, type AiTriageStatsDto } from '../../api/ai';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  aiApi,
+  type AiKeyTestResultDto,
+  type AiProviderId,
+  type AiProviderStatusDto,
+  type AiSettingsDto,
+  type AiTriageStatsDto,
+} from '../../api/ai';
+
+const PROVIDER_ORDER: AiProviderId[] = ['groq', 'gemini'];
+
+const KEY_LINKS: Record<AiProviderId, string> = {
+  groq: 'https://console.groq.com/keys',
+  gemini: 'https://aistudio.google.com/apikey',
+};
+
+const ENV_NAMES: Record<AiProviderId, string> = {
+  groq: 'Ai__Groq__ApiKey',
+  gemini: 'Ai__Gemini__ApiKey',
+};
+
+const TEST_LABELS: Record<AiKeyTestResultDto['status'], string> = {
+  ok: 'OK',
+  invalid_key: 'Invalid key',
+  rate_limited: 'Rate-limited',
+  error: 'Error',
+  not_configured: 'No key',
+};
+
+const TEST_STYLES: Record<AiKeyTestResultDto['status'], { bg: string; border: string; color: string }> = {
+  ok: { bg: '#e7f3ec', border: '#9bc9b1', color: '#1b5238' },
+  invalid_key: { bg: '#fbeae8', border: '#f2a69b', color: '#8a1f11' },
+  rate_limited: { bg: '#fff6e0', border: '#e8c977', color: '#855c0c' },
+  error: { bg: '#fbeae8', border: '#f2a69b', color: '#8a1f11' },
+  not_configured: { bg: '#f0f3f6', border: '#d0d7de', color: '#4b5563' },
+};
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '10px 12px',
+  border: '1px solid var(--line)',
+  borderRadius: '6px',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontWeight: 600,
+  fontSize: '14px',
+  marginBottom: '6px',
+};
+
+const hintStyle: React.CSSProperties = {
+  fontSize: '12px',
+  color: 'var(--muted)',
+  marginTop: '4px',
+};
+
+function formatTime(value: string | null): string {
+  return value ? new Date(value).toLocaleString() : '—';
+}
+
+interface Notice {
+  type: 'success' | 'error';
+  text: string;
+}
+
+interface ProviderCardProps {
+  status: AiProviderStatusDto;
+  keyInput: string;
+  modelInput: string;
+  busy: boolean;
+  testResult: AiKeyTestResultDto | undefined;
+  onKeyChange: (value: string) => void;
+  onModelChange: (value: string) => void;
+  onSave: () => void;
+  onTest: () => void;
+  onRemove: () => void;
+}
+
+const ProviderCard: React.FC<ProviderCardProps> = ({
+  status,
+  keyInput,
+  modelInput,
+  busy,
+  testResult,
+  onKeyChange,
+  onModelChange,
+  onSave,
+  onTest,
+  onRemove,
+}) => {
+  const fromEnvironment = status.keySource === 'environment';
+  const listId = `ai-models-${status.provider}`;
+  const usage = status.usage;
+
+  return (
+    <section className="panel" style={{ padding: '24px', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>
+          {status.label} {status.provider === 'groq' ? '(primary)' : '(fallback)'}
+        </h2>
+        <span className={`badge ${status.isConfigured ? 'good' : ''}`} style={{ fontSize: '12px' }}>
+          {status.isConfigured ? (fromEnvironment ? 'Set by environment' : 'Key saved') : 'Not configured'}
+        </span>
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label htmlFor={`ai-key-${status.provider}`} style={labelStyle}>
+          {status.label} API key
+        </label>
+        <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '8px' }}>
+          Get a free key:{' '}
+          <a href={KEY_LINKS[status.provider]} target="_blank" rel="noopener noreferrer">
+            {KEY_LINKS[status.provider]}
+          </a>
+        </div>
+
+        {status.maskedApiKey && (
+          <div style={{ marginBottom: '8px', fontSize: '13px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span>Saved key:</span>
+            <code style={{ background: '#f0f3f6', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+              {status.maskedApiKey}
+            </code>
+            <span className="badge" style={{ fontSize: '11px' }}>
+              {fromEnvironment ? 'Environment' : 'Encrypted'}
+            </span>
+          </div>
+        )}
+
+        {fromEnvironment && (
+          <div style={{ ...hintStyle, marginBottom: '8px' }}>
+            The environment variable <code>{ENV_NAMES[status.provider]}</code> is set and overrides any saved key.
+          </div>
+        )}
+
+        <input
+          id={`ai-key-${status.provider}`}
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          value={keyInput}
+          onChange={(e) => onKeyChange(e.target.value)}
+          placeholder={status.maskedApiKey ? 'Enter a new key to replace the saved one' : 'Paste your API key'}
+          style={{ ...inputStyle, fontFamily: 'monospace' }}
+        />
+        <div style={hintStyle}>Keys are encrypted at rest and are never shown again in full.</div>
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label htmlFor={`ai-model-${status.provider}`} style={labelStyle}>
+          Model
+        </label>
+        <input
+          id={`ai-model-${status.provider}`}
+          type="text"
+          list={listId}
+          value={modelInput}
+          onChange={(e) => onModelChange(e.target.value)}
+          placeholder={status.defaultModel}
+          style={inputStyle}
+        />
+        <datalist id={listId}>
+          {status.suggestedModels.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+        <div style={hintStyle}>
+          Default: <code>{status.defaultModel}</code>. Any model id can be typed here.
+        </div>
+      </div>
+
+      {testResult && (
+        <div
+          role="status"
+          style={{
+            padding: '10px 14px',
+            borderRadius: '6px',
+            marginBottom: '16px',
+            fontSize: '13px',
+            background: TEST_STYLES[testResult.status].bg,
+            border: `1px solid ${TEST_STYLES[testResult.status].border}`,
+            color: TEST_STYLES[testResult.status].color,
+          }}
+        >
+          <strong>Key test: {TEST_LABELS[testResult.status]}.</strong> {testResult.message}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--line)', paddingTop: '16px', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button type="button" className="btn-primary" disabled={busy} onClick={onSave} style={{ padding: '8px 18px', fontSize: '14px' }}>
+            Save
+          </button>
+          <button type="button" className="btn-secondary" disabled={busy} onClick={onTest} style={{ padding: '8px 16px', fontSize: '14px' }}>
+            Test key
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={busy || !status.maskedApiKey || fromEnvironment}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#8a1f11',
+            fontSize: '13px',
+            cursor: 'pointer',
+            textDecoration: 'underline',
+            opacity: !status.maskedApiKey || fromEnvironment ? 0.4 : 1,
+          }}
+        >
+          Remove
+        </button>
+      </div>
+
+      <div style={{ background: '#f8fafc', border: '1px solid var(--line)', borderRadius: '6px', padding: '14px 16px' }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '10px' }}>
+          Usage today (UTC {usage.usageDate})
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', fontSize: '13px' }}>
+          <div>
+            <div style={{ color: 'var(--muted)', fontSize: '11px' }}>Requests</div>
+            <strong>
+              {usage.requestsToday} / {usage.dailyRequestLimit}
+            </strong>
+          </div>
+          <div>
+            <div style={{ color: 'var(--muted)', fontSize: '11px' }}>Tokens</div>
+            <strong>{usage.tokensToday.toLocaleString()}</strong>
+          </div>
+          <div>
+            <div style={{ color: 'var(--muted)', fontSize: '11px' }}>Last 429</div>
+            <strong>{formatTime(usage.last429At)}</strong>
+          </div>
+          <div>
+            <div style={{ color: 'var(--muted)', fontSize: '11px' }}>Last error</div>
+            <strong>{usage.lastError ? `${usage.lastError} (${formatTime(usage.lastErrorAt)})` : '—'}</strong>
+          </div>
+        </div>
+        {status.lastTestedAt && (
+          <div style={{ ...hintStyle, marginTop: '10px' }}>
+            Last test: {formatTime(status.lastTestedAt)} {status.lastTestStatus ? `(${TEST_LABELS[status.lastTestStatus]})` : ''}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
 
 export const SettingsAiView: React.FC = () => {
   const [settings, setSettings] = useState<AiSettingsDto | null>(null);
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [modelName, setModelName] = useState('gemini-3.5-flash');
+  const [isLoading, setIsLoading] = useState(true);
+  const [notice, setNotice] = useState<Notice | null>(null);
+
   const [isEnabled, setIsEnabled] = useState(false);
-  const [dailyCap, setDailyCap] = useState(500);
+  const [primaryProvider, setPrimaryProvider] = useState<AiProviderId>('groq');
+  const [dailyCap, setDailyCap] = useState(1000);
+  const [triageCap, setTriageCap] = useState(200);
   const [visionEnabled, setVisionEnabled] = useState(false);
   const [visionCap, setVisionCap] = useState(20);
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [isTriaging, setIsTriaging] = useState(false);
+  const [keyInputs, setKeyInputs] = useState<Record<AiProviderId, string>>({ groq: '', gemini: '' });
+  const [modelInputs, setModelInputs] = useState<Record<AiProviderId, string>>({ groq: '', gemini: '' });
+  const [testResults, setTestResults] = useState<Partial<Record<AiProviderId, AiKeyTestResultDto>>>({});
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isTriaging, setIsTriaging] = useState(false);
   const [triageStats, setTriageStats] = useState<AiTriageStatsDto | null>(null);
 
-  const fetchSettings = async () => {
+  const applySettings = useCallback((data: AiSettingsDto, resetModelInputs: boolean) => {
+    setSettings(data);
+    setIsEnabled(data.isEnabled);
+    setPrimaryProvider(data.primaryProvider);
+    setDailyCap(data.dailyRequestCap);
+    setTriageCap(data.triageRunCap);
+    setVisionEnabled(data.creativeVisionEnabled ?? false);
+    setVisionCap(data.creativeVisionDailyCap || 20);
+    if (resetModelInputs) {
+      setModelInputs({
+        groq: data.providers.find((p) => p.provider === 'groq')?.modelName ?? '',
+        gemini: data.providers.find((p) => p.provider === 'gemini')?.modelName ?? '',
+      });
+    }
+  }, []);
+
+  const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await aiApi.getSettings();
-      setSettings(data);
-      setIsEnabled(data.isEnabled);
-      setModelName(data.modelName || 'gemini-3.8-flash');
-      setDailyCap(data.dailyRequestCap || 500);
-      setVisionEnabled(data.creativeVisionEnabled ?? false);
-      setVisionCap(data.creativeVisionDailyCap || 20);
-      if (data.lastTestSuccess !== null && data.lastTestMessage) {
-        setTestResult({ success: data.lastTestSuccess, message: data.lastTestMessage });
-      }
-    } catch (err: any) {
-      console.error('Failed to load AI settings:', err);
-      setStatusMessage({ type: 'error', text: err?.message || 'Failed to load AI settings' });
+      applySettings(await aiApi.getSettings(), true);
+    } catch (err: unknown) {
+      setNotice({ type: 'error', text: err instanceof Error ? err.message : 'Failed to load AI settings' });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [applySettings]);
 
   useEffect(() => {
-    fetchSettings();
-  }, []);
+    load();
+  }, [load]);
 
-  const handleTestConnection = async () => {
-    setIsTesting(true);
-    setTestResult(null);
+  const runAction = async (key: string, action: () => Promise<void>) => {
+    setBusy(key);
+    setNotice(null);
     try {
-      const keyToTest = apiKeyInput.trim() ? apiKeyInput.trim() : undefined;
-      const res = await aiApi.testConnection(keyToTest, modelName);
-      setTestResult(res);
-    } catch (err: any) {
-      setTestResult({ success: false, message: err?.message || 'Test request failed' });
+      await action();
+    } catch (err: unknown) {
+      setNotice({ type: 'error', text: err instanceof Error ? err.message : 'Request failed' });
     } finally {
-      setIsTesting(false);
+      setBusy(null);
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    setStatusMessage(null);
-    try {
+  const handleSaveGlobal = () =>
+    runAction('global', async () => {
       const updated = await aiApi.updateSettings({
         isEnabled,
-        modelName: modelName.trim(),
+        primaryProvider,
         dailyRequestCap: dailyCap,
+        triageRunCap: triageCap,
         creativeVisionEnabled: visionEnabled,
         creativeVisionDailyCap: visionCap,
-        apiKey: apiKeyInput.trim() ? apiKeyInput.trim() : undefined,
       });
+      applySettings(updated, false);
+      setNotice({ type: 'success', text: 'AI settings saved.' });
+    });
 
-      setSettings(updated);
-      setApiKeyInput(''); // Clear plain text input once saved
-      setStatusMessage({ type: 'success', text: 'AI configuration successfully saved and encrypted.' });
-    } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err?.message || 'Failed to save AI configuration' });
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const handleSaveProvider = (provider: AiProviderId) =>
+    runAction(`save:${provider}`, async () => {
+      const apiKey = keyInputs[provider].trim();
+      const modelName = modelInputs[provider].trim();
+      const updated = await aiApi.saveProvider(provider, {
+        apiKey: apiKey || undefined,
+        modelName: modelName || undefined,
+      });
+      setKeyInputs((prev) => ({ ...prev, [provider]: '' }));
+      setTestResults((prev) => ({ ...prev, [provider]: undefined }));
+      applySettings(updated, true);
+      setNotice({ type: 'success', text: `${provider === 'groq' ? 'Groq' : 'Gemini'} settings saved. The key is stored encrypted.` });
+    });
 
-  const handleDeleteKey = async () => {
-    if (!window.confirm('Are you sure you want to remove the stored Gemini API key and disable AI features?')) {
+  const handleTestProvider = (provider: AiProviderId) =>
+    runAction(`test:${provider}`, async () => {
+      const apiKey = keyInputs[provider].trim();
+      const modelName = modelInputs[provider].trim();
+      const result = await aiApi.testProviderKey(provider, {
+        apiKey: apiKey || undefined,
+        modelName: modelName || undefined,
+      });
+      setTestResults((prev) => ({ ...prev, [provider]: result }));
+    });
+
+  const handleRemoveKey = (provider: AiProviderId) => {
+    if (!window.confirm(`Remove the saved ${provider === 'groq' ? 'Groq' : 'Gemini'} key?`)) {
       return;
     }
-    setIsSaving(true);
-    setStatusMessage(null);
-    try {
-      await aiApi.deleteKey();
-      await fetchSettings();
-      setApiKeyInput('');
-      setStatusMessage({ type: 'success', text: 'API key successfully removed and AI features disabled.' });
-    } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err?.message || 'Failed to remove API key' });
-    } finally {
-      setIsSaving(false);
-    }
+    runAction(`remove:${provider}`, async () => {
+      const updated = await aiApi.removeProviderKey(provider);
+      setKeyInputs((prev) => ({ ...prev, [provider]: '' }));
+      setTestResults((prev) => ({ ...prev, [provider]: undefined }));
+      applySettings(updated, false);
+      setNotice({ type: 'success', text: 'Saved key removed.' });
+    });
   };
 
-  const handleRunTriage = async () => {
-    setIsTriaging(true);
-    setStatusMessage(null);
-    setTriageStats(null);
-    try {
-      const stats = await aiApi.runTriage(100);
-      setTriageStats(stats);
-      setStatusMessage({
-        type: 'success',
-        text: `AI Triage completed: ${stats.totalEvaluated} items evaluated (${stats.sameCount} same, ${stats.differentCount} different, ${stats.unsureCount} unsure).`,
-      });
-      // Refresh settings to update requestsUsedToday
-      const updated = await aiApi.getSettings();
-      setSettings(updated);
-    } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err?.message || 'Failed to run AI triage' });
-    } finally {
-      setIsTriaging(false);
-    }
-  };
+  const handleRunTriage = () =>
+    runAction('triage', async () => {
+      setIsTriaging(true);
+      setTriageStats(null);
+      try {
+        const stats = await aiApi.runTriage(triageCap);
+        setTriageStats(stats);
+        if (stats.deferred > 0) {
+          setNotice({
+            type: 'success',
+            text: `${stats.stopReason ?? 'AI stopped'}, ${stats.deferred} items left for next run.`,
+          });
+        } else {
+          setNotice({
+            type: 'success',
+            text: `AI triage completed: ${stats.totalEvaluated} evaluated (${stats.sameCount} same, ${stats.differentCount} different, ${stats.unsureCount} unsure).`,
+          });
+        }
+        applySettings(await aiApi.getSettings(), false);
+      } finally {
+        setIsTriaging(false);
+      }
+    });
 
   if (isLoading) {
     return (
@@ -129,39 +395,43 @@ export const SettingsAiView: React.FC = () => {
     );
   }
 
+  const providers = PROVIDER_ORDER.map((id) => settings?.providers.find((p) => p.provider === id)).filter(
+    (p): p is AiProviderStatusDto => Boolean(p),
+  );
+  const anyConfigured = providers.some((p) => p.isConfigured);
+
   return (
     <div className="settings-ai-view" style={{ maxWidth: '800px', margin: '0 auto' }}>
       <div className="page-heading">
         <div>
           <div className="eyebrow">SETTINGS &amp; INTELLIGENCE</div>
-          <h1 className="view-title">Google AI Studio (Gemini)</h1>
+          <h1 className="view-title">AI providers</h1>
           <p className="subtitle">
-            Configure Gemini AI assistance for candidate review triage and automated attention ranking.
-            API keys are encrypted with ASP.NET Data Protection and stored securely in the database.
+            Groq is the primary provider and Google Gemini is the fallback. Keys are encrypted on the server and only their
+            masked form is shown. If both providers are unavailable, AI work pauses for the run and resumes on the next one.
           </p>
         </div>
       </div>
 
-      {statusMessage && (
+      {notice && (
         <div
-          className={`warning-banner ${statusMessage.type === 'success' ? 'good' : 'bad'}`}
+          role="status"
+          className={`warning-banner ${notice.type === 'success' ? 'good' : 'bad'}`}
           style={{
             marginBottom: '16px',
-            background: statusMessage.type === 'success' ? '#e7f3ec' : '#fbeae8',
-            borderColor: statusMessage.type === 'success' ? '#9bc9b1' : '#f2a69b',
-            color: statusMessage.type === 'success' ? '#1b5238' : '#8a1f11',
+            background: notice.type === 'success' ? '#e7f3ec' : '#fbeae8',
+            borderColor: notice.type === 'success' ? '#9bc9b1' : '#f2a69b',
+            color: notice.type === 'success' ? '#1b5238' : '#8a1f11',
           }}
         >
-          {statusMessage.type === 'success' ? '✓ ' : '✕ '} {statusMessage.text}
+          {notice.type === 'success' ? '✓ ' : '✕ '} {notice.text}
         </div>
       )}
 
-      {/* Main Settings Form */}
-      <form onSubmit={handleSave} className="panel" style={{ padding: '24px', marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>API &amp; Model Credentials</h2>
+      <section className="panel" style={{ padding: '24px', marginBottom: '24px' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>Routing and limits</h2>
 
-        {/* Enable / Disable Switch */}
-        <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600 }}>
             <input
               type="checkbox"
@@ -169,94 +439,62 @@ export const SettingsAiView: React.FC = () => {
               onChange={(e) => setIsEnabled(e.target.checked)}
               style={{ width: '18px', height: '18px' }}
             />
-            Enable AI Assistance
+            Enable AI assistance
           </label>
           <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
-            (When disabled, the platform operates purely on deterministic rules)
+            When disabled, the platform runs on deterministic rules only.
           </span>
         </div>
 
-        {/* API Key */}
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ display: 'block', fontWeight: 600, fontSize: '14px', marginBottom: '6px' }}>
-            Google AI Studio API Key
-          </label>
-          {settings?.maskedApiKey && (
-            <div style={{ marginBottom: '8px', fontSize: '13px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>Currently saved:</span>
-              <code style={{ background: '#f0f3f6', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                {settings.maskedApiKey}
-              </code>
-              <span className="badge good" style={{ fontSize: '11px' }}>Encrypted</span>
-            </div>
-          )}
-          <input
-            type="password"
-            placeholder={settings?.maskedApiKey ? 'Enter new key to replace existing...' : 'Enter Gemini API key (AIzaSy...)'}
-            value={apiKeyInput}
-            onChange={(e) => setApiKeyInput(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              border: '1px solid var(--line)',
-              borderRadius: '6px',
-              fontFamily: 'monospace',
-            }}
-          />
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>
-            Keys are never logged or returned unmasked to the frontend.
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+          <div>
+            <label htmlFor="ai-primary" style={labelStyle}>
+              Primary provider
+            </label>
+            <select
+              id="ai-primary"
+              value={primaryProvider}
+              onChange={(e) => setPrimaryProvider(e.target.value as AiProviderId)}
+              style={inputStyle}
+            >
+              <option value="groq">Groq (default)</option>
+              <option value="gemini">Google Gemini</option>
+            </select>
+            <div style={hintStyle}>The other provider is used when the primary hits a quota, rate limit, timeout or server error.</div>
           </div>
-        </div>
-
-        {/* Model Name */}
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ display: 'block', fontWeight: 600, fontSize: '14px', marginBottom: '6px' }}>
-            Gemini Model Name
-          </label>
-          <input
-            type="text"
-            value={modelName}
-            onChange={(e) => setModelName(e.target.value)}
-            placeholder="gemini-3.5-flash"
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              border: '1px solid var(--line)',
-              borderRadius: '6px',
-            }}
-          />
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>
-            Default: <code>gemini-3.5-flash</code> (Fast, low-latency Flash model).
-          </div>
-        </div>
-
-        {/* Daily Request Cap */}
-        <div style={{ marginBottom: '24px' }}>
-          <label style={{ display: 'block', fontWeight: 600, fontSize: '14px', marginBottom: '6px' }}>
-            Daily Request Cap (Free-tier safety)
-          </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div>
+            <label htmlFor="ai-daily-cap" style={labelStyle}>
+              Daily request cap (all providers)
+            </label>
             <input
+              id="ai-daily-cap"
               type="number"
-              min="10"
-              max="10000"
+              min={1}
+              max={100000}
               value={dailyCap}
-              onChange={(e) => setDailyCap(parseInt(e.target.value, 10) || 500)}
-              style={{
-                width: '140px',
-                padding: '10px 12px',
-                border: '1px solid var(--line)',
-                borderRadius: '6px',
-              }}
+              onChange={(e) => setDailyCap(Number.parseInt(e.target.value, 10) || 1)}
+              style={inputStyle}
             />
-            <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
-              Usage today: <strong>{settings?.requestsUsedToday ?? 0}</strong> / {dailyCap} requests
-            </span>
+          </div>
+          <div>
+            <label htmlFor="ai-triage-cap" style={labelStyle}>
+              Triage cap per run
+            </label>
+            <input
+              id="ai-triage-cap"
+              type="number"
+              min={1}
+              max={1000}
+              value={triageCap}
+              onChange={(e) => setTriageCap(Number.parseInt(e.target.value, 10) || 1)}
+              style={inputStyle}
+            />
+            <div style={hintStyle}>Review pairs evaluated per run (default 200).</div>
           </div>
         </div>
 
         {/* Creative image reading (AI-read): off by default */}
-        <div style={{ marginBottom: '24px', padding: '12px 16px', border: '1px solid var(--line)', borderRadius: '6px' }}>
+        <div style={{ marginBottom: '20px', padding: '12px 16px', border: '1px solid var(--line)', borderRadius: '6px' }}>
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontWeight: 600 }}>
             <input
               type="checkbox"
@@ -272,15 +510,15 @@ export const SettingsAiView: React.FC = () => {
               </span>
             </span>
           </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '13px' }}>Image reads per day</span>
             <input
               type="number"
-              min="0"
-              max="500"
+              min={0}
+              max={500}
               value={visionCap}
               disabled={!visionEnabled}
-              onChange={(e) => setVisionCap(Math.max(0, Math.min(500, parseInt(e.target.value, 10) || 0)))}
+              onChange={(e) => setVisionCap(Math.max(0, Math.min(500, Number.parseInt(e.target.value, 10) || 0)))}
               style={{ width: '100px', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: '6px' }}
             />
             <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
@@ -289,144 +527,77 @@ export const SettingsAiView: React.FC = () => {
           </div>
         </div>
 
-        {/* Last Call Telemetry & Status */}
-        {(settings?.lastCallStatus || settings?.lastCallAt) && (
-          <div style={{ marginBottom: '20px', padding: '12px 16px', background: '#f8fafc', border: '1px solid var(--line)', borderRadius: '6px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '6px' }}>
-              Last Gemini API Call
-            </div>
-            <div style={{ display: 'flex', gap: '16px', alignItems: 'center', fontSize: '13px' }}>
-              <div>
-                Status:{' '}
-                <span className={`badge ${settings.lastCallStatus === '200 OK' ? 'good' : 'bad'}`} style={{ fontWeight: 600 }}>
-                  {settings.lastCallStatus || 'Unknown'}
-                </span>
-              </div>
-              {settings.lastCallAt && (
-                <div style={{ color: 'var(--muted)' }}>
-                  Time: {new Date(settings.lastCallAt).toLocaleString()}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Test Connection Result Alert */}
-        {testResult && (
-          <div
-            style={{
-              padding: '12px 16px',
-              borderRadius: '6px',
-              marginBottom: '20px',
-              fontSize: '13px',
-              background: testResult.success ? '#e7f3ec' : '#fbeae8',
-              border: `1px solid ${testResult.success ? '#9bc9b1' : '#f2a69b'}`,
-              color: testResult.success ? '#1b5238' : '#8a1f11',
-            }}
-          >
-            <strong>{testResult.success ? '✓ Connection Verified:' : '✕ Connection Failed:'}</strong> {testResult.message}
-          </div>
-        )}
-
-        {/* Form Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--line)', paddingTop: '16px' }}>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={isSaving}
-              style={{ padding: '8px 18px', fontSize: '14px' }}
-            >
-              {isSaving ? 'Saving...' : 'Save Configuration'}
-            </button>
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={isTesting}
-              onClick={handleTestConnection}
-              style={{ padding: '8px 16px', fontSize: '14px' }}
-            >
-              {isTesting ? 'Testing...' : 'Test Key'}
-            </button>
-          </div>
-
-          {settings?.maskedApiKey && (
-            <button
-              type="button"
-              onClick={handleDeleteKey}
-              disabled={isSaving}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#8a1f11',
-                fontSize: '13px',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-              }}
-            >
-              Remove Stored Key
-            </button>
-          )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--line)', paddingTop: '16px' }}>
+          <button type="button" className="btn-primary" disabled={busy !== null} onClick={handleSaveGlobal} style={{ padding: '8px 18px', fontSize: '14px' }}>
+            Save routing and limits
+          </button>
         </div>
-      </form>
+      </section>
 
-      {/* Manual AI Triage Orchestration Panel */}
-      <div className="panel" style={{ padding: '24px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Review Queue AI Triage</h2>
+      {providers.map((status) => (
+        <ProviderCard
+          key={status.provider}
+          status={status}
+          keyInput={keyInputs[status.provider]}
+          modelInput={modelInputs[status.provider]}
+          busy={busy !== null}
+          testResult={testResults[status.provider]}
+          onKeyChange={(value) => setKeyInputs((prev) => ({ ...prev, [status.provider]: value }))}
+          onModelChange={(value) => setModelInputs((prev) => ({ ...prev, [status.provider]: value }))}
+          onSave={() => handleSaveProvider(status.provider)}
+          onTest={() => handleTestProvider(status.provider)}
+          onRemove={() => handleRemoveKey(status.provider)}
+        />
+      ))}
+
+      <section className="panel" style={{ padding: '24px' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Review queue AI triage</h2>
         <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '16px' }}>
-          Evaluate pending product match candidates in batches of 20 with Gemini. Results are cached by pair hash
-          so identical pairs are never resent.
+          Evaluates pending product-match candidates in batches. Results are cached by pair hash, so identical pairs are never
+          sent twice. The run is capped at {triageCap} pairs.
         </p>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
           <button
             type="button"
             className="btn-secondary"
             onClick={handleRunTriage}
-            disabled={isTriaging || !isEnabled || (!apiKeyInput && !settings?.maskedApiKey)}
+            disabled={busy !== null || isTriaging || !isEnabled || !anyConfigured}
             style={{ padding: '8px 16px', fontSize: '14px', fontWeight: 600 }}
           >
-            {isTriaging ? 'Triaging 100 Pending Pairs...' : '⚡ Run AI Triage on Pending Pairs (Up to 100)'}
+            {isTriaging ? 'Triaging pending pairs...' : `Run AI triage on pending pairs (up to ${triageCap})`}
           </button>
-          {!isEnabled && (
-            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-              (Enable AI and save configuration first)
-            </span>
+          {!isEnabled && <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Enable AI and save first.</span>}
+          {isEnabled && !anyConfigured && (
+            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Add a provider key first.</span>
           )}
         </div>
 
         {triageStats && (
           <div style={{ background: '#f8fafc', border: '1px solid var(--line)', borderRadius: '6px', padding: '16px' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>Last Triage Results</h3>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>Last triage run</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
-              <div style={{ background: '#fff', padding: '10px', borderRadius: '4px', border: '1px solid var(--line)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Evaluated</div>
-                <div style={{ fontSize: '18px', fontWeight: 700 }}>{triageStats.totalEvaluated}</div>
-              </div>
-              <div style={{ background: '#fff', padding: '10px', borderRadius: '4px', border: '1px solid var(--line)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Cache Hits</div>
-                <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--action)' }}>{triageStats.cacheHits}</div>
-              </div>
-              <div style={{ background: '#fff', padding: '10px', borderRadius: '4px', border: '1px solid var(--line)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--muted)' }}>API Calls</div>
-                <div style={{ fontSize: '18px', fontWeight: 700 }}>{triageStats.apiCallsMade}</div>
-              </div>
-              <div style={{ background: '#fff', padding: '10px', borderRadius: '4px', border: '1px solid var(--line)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--muted)' }}>AI: Same</div>
-                <div style={{ fontSize: '18px', fontWeight: 700, color: '#1b5238' }}>{triageStats.sameCount}</div>
-              </div>
-              <div style={{ background: '#fff', padding: '10px', borderRadius: '4px', border: '1px solid var(--line)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--muted)' }}>AI: Different</div>
-                <div style={{ fontSize: '18px', fontWeight: 700, color: '#8a1f11' }}>{triageStats.differentCount}</div>
-              </div>
-              <div style={{ background: '#fff', padding: '10px', borderRadius: '4px', border: '1px solid var(--line)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--muted)' }}>AI: Unsure</div>
-                <div style={{ fontSize: '18px', fontWeight: 700, color: '#855c0c' }}>{triageStats.unsureCount}</div>
-              </div>
+              {[
+                { label: 'Evaluated', value: triageStats.totalEvaluated, color: undefined },
+                { label: 'Cache hits', value: triageStats.cacheHits, color: 'var(--action)' },
+                { label: 'API calls', value: triageStats.apiCallsMade, color: undefined },
+                { label: 'AI: same', value: triageStats.sameCount, color: '#1b5238' },
+                { label: 'AI: different', value: triageStats.differentCount, color: '#8a1f11' },
+                { label: 'AI: unsure', value: triageStats.unsureCount, color: '#855c0c' },
+                { label: 'Left for next run', value: triageStats.deferred, color: undefined },
+              ].map((tile) => (
+                <div key={tile.label} style={{ background: '#fff', padding: '10px', borderRadius: '4px', border: '1px solid var(--line)' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{tile.label}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: tile.color }}>{tile.value}</div>
+                </div>
+              ))}
             </div>
+            {triageStats.stopReason && (
+              <div style={{ ...hintStyle, marginTop: '10px' }}>Stopped early: {triageStats.stopReason}.</div>
+            )}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 };

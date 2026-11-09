@@ -47,7 +47,10 @@ public class AiSecurityAndValidationTests
         Assert.NotNull(masked);
         Assert.DoesNotContain("test-key", masked);
         Assert.EndsWith("0000", masked);
-        Assert.StartsWith("••••", masked);
+        Assert.Equal("test••••0000", masked); // first four characters, bullets, last four
+
+        // Groq-style keys show their gsk_ prefix, matching the required "gsk_••••1234" display.
+        Assert.Equal("gsk_••••1234", _protector.MaskKey("gsk_abcdefghijk1234"));
 
         // Edge case: empty/null
         Assert.Null(_protector.MaskKey(null));

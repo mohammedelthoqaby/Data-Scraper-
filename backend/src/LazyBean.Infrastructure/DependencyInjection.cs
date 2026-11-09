@@ -17,6 +17,8 @@ using LazyBean.Infrastructure.HealthChecks;
 using LazyBean.Infrastructure.Persistence;
 using LazyBean.Infrastructure.Security;
 using LazyBean.Infrastructure.Ai;
+using LazyBean.Infrastructure.Ai.Providers;
+using LazyBean.Infrastructure.Ai.RateLimiting;
 using LazyBean.Infrastructure.Alerts;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -44,8 +46,12 @@ public static class DependencyInjection
         services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<LazyBeanDbContext>>().CreateDbContext());
         services.AddScoped<IReadDbContext>(sp => sp.GetRequiredService<LazyBeanDbContext>());
 
+        // Data Protection keys live on disk (App_Data/keys by default, outside wwwroot) so encrypted
+        // provider keys still decrypt after an IIS recycle or a redeploy. The path is set in Program.cs.
+        var keyDirectory = configuration["DataProtection:KeyDirectory"]
+            ?? Path.Combine(AppContext.BaseDirectory, "App_Data", "keys");
         services.AddDataProtection()
-            .PersistKeysToDbContext<LazyBeanDbContext>()
+            .PersistKeysToFileSystem(new DirectoryInfo(keyDirectory))
             .SetApplicationName("LazyBean");
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -114,13 +120,16 @@ public static class DependencyInjection
         });
         services.AddScoped<IGoogleAdsSyncService, GoogleAdsSyncService>();
 
-        // Google AI Studio (Gemini) integration
-        services.AddHttpClient("GeminiClient", client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
+        // AI: Groq (primary) and Gemini (fallback), routed by AiClient behind IAiClient.
+        services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
+        services.AddSingleton<AiRateGate>();
+        services.AddHttpClient<GroqClient>();
+        services.AddHttpClient<GeminiClient>();
+        services.AddTransient<IAiProvider>(sp => sp.GetRequiredService<GroqClient>());
+        services.AddTransient<IAiProvider>(sp => sp.GetRequiredService<GeminiClient>());
         services.AddScoped<IAiKeyProtector, AiKeyProtector>();
-        services.AddScoped<IAiClient, GeminiAiClient>();
+        services.AddScoped<IAiClient, AiClient>();
+        services.AddScoped<IAiSettingsStore, AiSettingsStore>();
         services.AddScoped<LazyBean.Application.Common.Interfaces.ICreativeImageReader, LazyBean.Infrastructure.Ai.GeminiCreativeImageReader>();
         services.AddScoped<LazyBean.Application.Ads.Common.CreativeVisionService>();
         services.AddScoped<IAiTriageService, AiReviewTriageService>();

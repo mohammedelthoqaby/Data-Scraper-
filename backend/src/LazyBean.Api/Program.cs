@@ -28,6 +28,10 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .WriteTo.Console());
 
 // Clean-architecture composition: each layer registers its own services.
+// Data Protection keys (which decrypt the saved AI provider keys) persist under the app root,
+// in App_Data/keys: outside wwwroot, so they are never served and never copied into wwwroot.
+builder.Configuration["DataProtection:KeyDirectory"] ??= Path.Combine(builder.Environment.ContentRootPath, "App_Data", "keys");
+
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 

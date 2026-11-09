@@ -139,8 +139,7 @@ public class AlertServiceTests
         db.AiSettings.Add(new AiSetting
         {
             IsEnabled = true,
-            EncryptedApiKey = "key",
-            ModelName = "gemini-3.8-flash",
+            PrimaryProvider = "groq",
             DailyRequestCap = 500
         });
 
@@ -200,8 +199,7 @@ public class AlertServiceTests
         db.AiSettings.Add(new AiSetting
         {
             IsEnabled = true,
-            EncryptedApiKey = "key",
-            ModelName = "gemini-3.8-flash",
+            PrimaryProvider = "groq",
             DailyRequestCap = 500
         });
 

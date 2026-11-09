@@ -2,9 +2,12 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using LazyBean.Application.Ads.Common;
+using LazyBean.Application.Ai;
 using LazyBean.Application.Common.Interfaces;
 using LazyBean.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace LazyBean.Infrastructure.Ai;
 
@@ -13,7 +16,9 @@ namespace LazyBean.Infrastructure.Ai;
 public sealed class GeminiCreativeImageReader(
     IHttpClientFactory httpClientFactory,
     LazyBeanDbContext dbContext,
-    IAiKeyProtector protector) : ICreativeImageReader
+    IAiKeyProtector protector,
+    IOptions<AiOptions> options,
+    ILogger<GeminiCreativeImageReader> logger) : ICreativeImageReader
 {
     private const string BaseApiUrl = "https://generativelanguage.googleapis.com/v1beta/models";
     private const int MaxImageBytes = 3 * 1024 * 1024;
@@ -30,15 +35,19 @@ public sealed class GeminiCreativeImageReader(
 
     public async Task<CreativeImageReading?> ReadAsync(string imageUrl, CancellationToken ct = default)
     {
-        var setting = await dbContext.AiSettings.AsNoTracking().FirstOrDefaultAsync(ct)
+        _ = await dbContext.AiSettings.AsNoTracking().FirstOrDefaultAsync(ct)
             ?? throw new InvalidOperationException("AI is not configured.");
-        if (string.IsNullOrWhiteSpace(setting.EncryptedApiKey))
+
+        // The Gemini key and model come from the provider settings. An environment variable overrides the saved key.
+        var row = await dbContext.AiProviderSettings.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Provider == AiProviders.Gemini, ct);
+        var apiKey = AiProviderConfigResolver.ResolveKey(AiProviders.Gemini, options.Value, row, protector, logger);
+        if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new InvalidOperationException("No Gemini API key is saved.");
         }
 
-        var apiKey = protector.DecryptKey(setting.EncryptedApiKey);
-        var model = string.IsNullOrWhiteSpace(setting.ModelName) ? GeminiAiClient.DefaultModel : setting.ModelName;
+        var model = AiProviderConfigResolver.ModelFor(AiProviders.Gemini, row);
 
         var image = await DownloadImageAsync(imageUrl, ct);
         if (image is null)
@@ -62,11 +71,13 @@ public sealed class GeminiCreativeImageReader(
             generationConfig = new { responseMimeType = "application/json", temperature = 0 },
         };
 
-        var url = $"{BaseApiUrl}/{Uri.EscapeDataString(model)}:generateContent?key={Uri.EscapeDataString(apiKey)}";
+        var url = $"{BaseApiUrl}/{Uri.EscapeDataString(model)}:generateContent";
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
         };
+        // The key goes in a header, never in the URL, so it cannot end up in logs or proxies.
+        request.Headers.TryAddWithoutValidation("x-goog-api-key", apiKey);
         using var response = await _http.SendAsync(request, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
 
