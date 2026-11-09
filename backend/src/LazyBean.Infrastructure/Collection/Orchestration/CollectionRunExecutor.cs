@@ -1,3 +1,4 @@
+using LazyBean.Application.Matching.AiMatching;
 using System.Diagnostics;
 using System.Text.Json;
 using LazyBean.Application.Ads.Common;
@@ -359,6 +360,46 @@ public class CollectionRunExecutor(
             logger.LogError(ex, "Post-collection matching phase failed.");
             phases.Add(new { name = "matching", status = "failed", durationMs = (int)swMatch.ElapsedMilliseconds, message = ex.Message });
             progressTracker?.UpdatePhase(runId, "matching", "failed", ex.Message, (int)swMatch.ElapsedMilliseconds);
+        }
+
+        // Phase 2b: AI product matching (10 min hard cap). Rules first; AI decides uncertain and missed pairs.
+        var swAiMatch = Stopwatch.StartNew();
+        progressTracker?.UpdatePhase(runId, "ai_matching", "Running", "AI matching: uncertain and missed pairs...");
+        try
+        {
+            using var aiMatchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            aiMatchCts.CancelAfter(TimeSpan.FromMinutes(10));
+
+            var aiMatching = sp.GetService<IAiMatchingService>();
+            if (aiMatching != null)
+            {
+                var aiMatchStats = await aiMatching.RunAsync(runId, aiMatchCts.Token);
+                swAiMatch.Stop();
+                var aiMatchMsg = aiMatchStats.Summary;
+                phases.Add(new { name = "ai_matching", status = "completed", durationMs = (int)swAiMatch.ElapsedMilliseconds, message = aiMatchMsg });
+                progressTracker?.UpdatePhase(runId, "ai_matching", "completed", aiMatchMsg, (int)swAiMatch.ElapsedMilliseconds);
+            }
+            else
+            {
+                swAiMatch.Stop();
+                phases.Add(new { name = "ai_matching", status = "skipped", durationMs = 0, message = "AI matching not registered" });
+                progressTracker?.UpdatePhase(runId, "ai_matching", "skipped", "AI matching not registered", 0);
+            }
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            swAiMatch.Stop();
+            var errMsg = "timeout";
+            logger.LogError(ex, "AI matching phase timed out after 10 minutes.");
+            phases.Add(new { name = "ai_matching", status = "failed", durationMs = (int)swAiMatch.ElapsedMilliseconds, message = errMsg });
+            progressTracker?.UpdatePhase(runId, "ai_matching", "failed", errMsg, (int)swAiMatch.ElapsedMilliseconds);
+        }
+        catch (Exception ex)
+        {
+            swAiMatch.Stop();
+            logger.LogError(ex, "AI matching phase failed. Rule matches are unaffected.");
+            phases.Add(new { name = "ai_matching", status = "failed", durationMs = (int)swAiMatch.ElapsedMilliseconds, message = ex.Message });
+            progressTracker?.UpdatePhase(runId, "ai_matching", "failed", ex.Message, (int)swAiMatch.ElapsedMilliseconds);
         }
 
         // Phase 3: AI Review Triage (5 min hard cap)

@@ -13,6 +13,7 @@ public class ProductMatchConfiguration : IEntityTypeConfiguration<ProductMatch>
         builder.Property(m => m.Score).HasPrecision(5, 4);
         builder.Property(m => m.Method).HasConversion<string>().HasMaxLength(20);
         builder.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
+        builder.Property(m => m.Reason).HasMaxLength(500);
 
         builder.HasIndex(m => new { m.CompetitorVariantId, m.ReferenceVariantId }).IsUnique();
     }

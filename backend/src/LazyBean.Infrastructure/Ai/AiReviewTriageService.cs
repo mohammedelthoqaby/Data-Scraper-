@@ -116,6 +116,9 @@ public class AiReviewTriageService : IAiTriageService
                 var node = JsonNode.Parse(item.PayloadJson)?.AsObject();
                 if (node == null) continue;
 
+                // Pairs already decided by AI matching are left alone here so the two AI passes never overwrite each other.
+                if (node["AiSource"] is not null) continue;
+
                 var refTitle = node["ReferenceTitle"]?.GetValue<string>() ?? "";
                 var refBrand = node["ReferenceBrand"]?.GetValue<string>() ?? node["ReferenceVendor"]?.GetValue<string>();
                 var refCat = node["ReferenceCategory"]?.GetValue<string>() ?? node["CanonicalCategory"]?.GetValue<string>();

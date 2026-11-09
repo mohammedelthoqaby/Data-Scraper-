@@ -35,6 +35,10 @@ public class ProductMatcher : IProductMatcher
     private readonly ILogger<ProductMatcher> _logger;
     private readonly HashSet<string> _genericTokens;
 
+    /// <summary>A rule may refresh an existing row only when no human decided it and it is not rejected.</summary>
+    private static bool IsRuleUpdatable(ProductMatch match) =>
+        match.Method != MatchMethod.Manual && match.Status is not (MatchStatus.Approved or MatchStatus.Rejected);
+
     public static readonly string[] BaseKnownBrands =
     [
         "lavazza", "illy", "davidoff", "nespresso", "starbucks", "kimbo", "melitta", "l'or", "lor",
@@ -101,7 +105,7 @@ public class ProductMatcher : IProductMatcher
         ["اوليس"] = "olis"
     };
 
-    private static readonly HashSet<string> StoreNames = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<string> StoreNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "cafelax", "coffee zone", "coffee zone misr", "fengany", "coffee & cream",
         "coffee and cream", "strong coffee", "lazy bean", "lazzy bean", "general", "generic",
@@ -184,7 +188,7 @@ public class ProductMatcher : IProductMatcher
 
         // Existing review items for product matches
         var existingReviews = await _readContext.Query<ReviewItem>()
-            .Where(r => r.Kind == ReviewItemKind.ProductMatch && r.Status == ReviewStatus.Pending)
+            .Where(r => r.Kind == ReviewItemKind.ProductMatch)
             .ToListAsync(ct);
 
         var existingReviewKeys = new HashSet<(Guid CompVariantId, Guid RefVariantId)>();
@@ -433,8 +437,11 @@ public class ProductMatcher : IProductMatcher
                 {
                     if (existingMatches.TryGetValue(matchKey, out var match))
                     {
-                        match.Score = bestEval.Score;
-                        match.Status = MatchStatus.Auto;
+                        if (IsRuleUpdatable(match))
+                        {
+                            match.Score = bestEval.Score;
+                            match.Status = MatchStatus.Auto;
+                        }
                     }
                     else
                     {
@@ -457,8 +464,11 @@ public class ProductMatcher : IProductMatcher
                 {
                     if (existingMatches.TryGetValue(matchKey, out var match))
                     {
-                        match.Score = bestEval.Score;
-                        match.Status = MatchStatus.SizeVariant;
+                        if (IsRuleUpdatable(match))
+                        {
+                            match.Score = bestEval.Score;
+                            match.Status = MatchStatus.SizeVariant;
+                        }
                     }
                     else
                     {
@@ -479,7 +489,7 @@ public class ProductMatcher : IProductMatcher
                 }
                 else if (bestEval.Decision == MatchDecision.Review)
                 {
-                    if (!existingReviewKeys.Contains(matchKey))
+                    if (!existingReviewKeys.Contains(matchKey) && !existingMatches.ContainsKey(matchKey))
                     {
                         var payload = new
                         {
@@ -594,7 +604,7 @@ public class ProductMatcher : IProductMatcher
         return new MatchingResult(autoAcceptedCount, reviewItemCount, matchesPerCompetitor, sizeVariantCount, sizeVariantsPerCompetitor);
     }
 
-    private MatchCandidate MapCandidate(
+    public MatchCandidate MapCandidate(
         Guid productId,
         Guid variantId,
         string externalId,
@@ -1305,5 +1315,6 @@ public class ProductMatcher : IProductMatcher
         public string? CapsuleSystem { get; set; }
         public string BeverageType { get; set; } = "Coffee";
         public HashSet<string> DistinguishingTokens { get; set; } = [];
+        public string? ImageUrl { get; set; }
     }
 }

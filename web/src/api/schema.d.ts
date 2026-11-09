@@ -3885,6 +3885,8 @@ export interface components {
          */
         CompetitorPlatform: 0 | 1 | 2 | 3;
         CompetitorPriceCellDto: {
+            matchReason?: string | null;
+            isBundle?: boolean;
             competitorName?: string | null;
             competitorKey?: string | null;
             /** Format: uuid */
@@ -4412,6 +4414,8 @@ export interface components {
             offers?: components["schemas"]["ReferenceOfferDto"][] | null;
         };
         ReviewMatchItemDto: {
+            aiProvider?: string | null;
+            aiSource?: string | null;
             /** Format: uuid */
             id?: string;
             sourceId?: string | null;
@@ -4429,6 +4433,7 @@ export interface components {
             aiReason?: string | null;
         };
         ReviewProductDetailsDto: {
+            imageUrl?: string | null;
             /** Format: uuid */
             productId?: string;
             /** Format: uuid */

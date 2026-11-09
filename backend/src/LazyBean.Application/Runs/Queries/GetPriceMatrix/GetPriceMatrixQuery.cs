@@ -52,4 +52,6 @@ public sealed record CompetitorPriceCellDto(
     string? Brand = null,
     string? Vendor = null,
     Guid? MatchId = null,
-    string? MatchMethod = null);
+    string? MatchMethod = null,
+    string? MatchReason = null,
+    bool IsBundle = false);

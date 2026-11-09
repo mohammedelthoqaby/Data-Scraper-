@@ -2,6 +2,18 @@ import React, { useState, useMemo } from 'react';
 import type { PriceMatrixResponse, PriceMatrixRow } from '../../api/client';
 import { undoMatch } from '../../api/alerts';
 
+// Source of a match: AI, Manual (human decision) or RULE (deterministic matcher, stored as "Automatic").
+type MatchSource = 'AI' | 'RULE' | 'MANUAL';
+
+const sourceOf = (method?: string | null): MatchSource | null =>
+  method === 'AI' ? 'AI' : method === 'Manual' ? 'MANUAL' : method ? 'RULE' : null;
+
+const SOURCE_BADGE: Record<MatchSource, { label: string; bg: string; color: string }> = {
+  AI: { label: 'AI', bg: '#ecfdf5', color: '#047857' },
+  RULE: { label: 'Rule', bg: '#f1f5f9', color: '#475569' },
+  MANUAL: { label: 'Manual', bg: '#eff6ff', color: '#1d4ed8' },
+};
+
 interface PriceMatrixViewProps {
   matrix: PriceMatrixResponse | null;
   matrixError?: { status?: number; message: string } | null;
@@ -31,6 +43,7 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
   const [selectedPosition, setSelectedPosition] = useState('ALL');
+  const [selectedSource, setSelectedSource] = useState<'ALL' | MatchSource>('ALL');
 
   const rows = matrix?.rows ?? [];
 
@@ -80,9 +93,15 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
         if (r.position !== selectedPosition) return false;
       }
 
+      // Match source: keep the row when at least one competitor cell comes from the chosen source
+      if (selectedSource !== 'ALL') {
+        const hasSource = Object.values(r.competitorPrices ?? {}).some((c) => sourceOf(c.matchMethod) === selectedSource);
+        if (!hasSource) return false;
+      }
+
       return true;
     });
-  }, [rows, search, selectedCategory, selectedBrand, selectedPosition]);
+  }, [rows, search, selectedCategory, selectedBrand, selectedPosition, selectedSource]);
 
   // All filtered rows displayed on a single page
   const pageRows = filteredRows;
@@ -201,7 +220,6 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
-              setPage(1);
             }}
           />
 
@@ -229,6 +247,19 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
                 {b}
               </option>
             ))}
+          </select>
+
+          <select
+            className="filter-select"
+            value={selectedSource}
+            onChange={(e) => {
+              setSelectedSource(e.target.value as 'ALL' | MatchSource);
+            }}
+          >
+            <option value="ALL">All Sources</option>
+            <option value="AI">Source: AI</option>
+            <option value="RULE">Source: Rule</option>
+            <option value="MANUAL">Source: Manual</option>
           </select>
 
           <select
@@ -427,11 +458,32 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
                               </span>
                             )}
                             <div className="obs-date">{formatObsDate(cell.observedAt)}</div>
-                            {cell.matchMethod === 'AI' && cell.matchId && (
-                              <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                <span style={{ fontSize: '9px', background: '#ecfdf5', color: '#047857', padding: '1px 4px', borderRadius: '3px', fontWeight: 600 }}>
-                                  AI
+                            {cell.matchId && sourceOf(cell.matchMethod) && (
+                              <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                <span
+                                  title={
+                                    sourceOf(cell.matchMethod) === 'AI'
+                                      ? `AI reason: ${cell.matchReason ?? 'no reason recorded'}`
+                                      : `Match source: ${SOURCE_BADGE[sourceOf(cell.matchMethod)!].label}`
+                                  }
+                                  style={{
+                                    fontSize: '9px',
+                                    background: SOURCE_BADGE[sourceOf(cell.matchMethod)!].bg,
+                                    color: SOURCE_BADGE[sourceOf(cell.matchMethod)!].color,
+                                    padding: '1px 4px',
+                                    borderRadius: '3px',
+                                    fontWeight: 600,
+                                    cursor: 'help',
+                                  }}
+                                >
+                                  {SOURCE_BADGE[sourceOf(cell.matchMethod)!].label}
                                 </span>
+                                {cell.isBundle && (
+                                  <span title="Bundle or multipack, matched on normalized unit price" style={{ fontSize: '9px', background: '#fef9c3', color: '#854d0e', padding: '1px 4px', borderRadius: '3px', fontWeight: 600 }}>
+                                    Bundle
+                                  </span>
+                                )}
+                                {cell.matchMethod === 'AI' && (
                                 <button
                                   type="button"
                                   style={{
@@ -454,6 +506,7 @@ export const PriceMatrixView: React.FC<PriceMatrixViewProps> = ({
                                 >
                                   Undo match
                                 </button>
+                                )}
                               </div>
                             )}
                           </div>

@@ -49,6 +49,8 @@ public class GetPriceMatrixQueryHandler(IReadDbContext readContext, IConfigurati
                 MatchId = m.Id,
                 MatchStatus = m.Status.ToString(),
                 MatchMethod = m.Method.ToString(),
+                MatchReason = m.Reason,
+                MatchIsBundle = m.IsBundle,
                 Score = m.Score,
                 CompetitorKey = c.Key,
                 CompetitorName = c.Name,
@@ -246,7 +248,9 @@ public class GetPriceMatrixQueryHandler(IReadDbContext readContext, IConfigurati
                     match.CompetitorBrand,
                     match.CompetitorVendor,
                     match.MatchId,
-                    match.MatchMethod);
+                    match.MatchMethod,
+                    match.MatchReason,
+                    match.MatchIsBundle);
 
                 // If multiple variants match for same competitor, pick lowest price
                 if (!compCells.TryGetValue(match.CompetitorKey, out var existingCell) || compPrice < existingCell.Price)
