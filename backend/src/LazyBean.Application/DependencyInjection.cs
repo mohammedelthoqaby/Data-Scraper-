@@ -19,7 +19,9 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
 
         services.AddSingleton<IProductClassifier, ProductClassifier>();
-        services.AddScoped<IProductMatcher, ProductMatcher>();
+        services.AddScoped<ProductMatcher>();
+        services.AddScoped<IProductMatcher>(sp => sp.GetRequiredService<ProductMatcher>());
+        services.AddScoped<LazyBean.Application.Matching.AiMatching.IAiMatchingService, LazyBean.Application.Matching.AiMatching.AiMatchingService>();
 
         return services;
     }

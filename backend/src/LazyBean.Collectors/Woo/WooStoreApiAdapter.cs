@@ -248,6 +248,7 @@ public class WooStoreApiAdapter : ICompetitorAdapter
             ExternalId: product.Id.ToString(CultureInfo.InvariantCulture),
             Title: product.Name,
             CanonicalUrl: product.Permalink,
+            ImageUrl: product.Images?.FirstOrDefault()?.Src,
             Category: product.Categories.Count > 0 ? product.Categories[0].Name : null,
             Variants: variants,
             ProductType: product.Type,

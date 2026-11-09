@@ -14,7 +14,8 @@ public sealed record ShopifyProduct(
     [property: JsonPropertyName("product_type")] string? ProductType,
     [property: JsonPropertyName("vendor")] string? Vendor,
     [property: JsonPropertyName("tags")] System.Text.Json.JsonElement TagsRaw,
-    [property: JsonPropertyName("variants")] List<ShopifyVariant> Variants)
+    [property: JsonPropertyName("variants")] List<ShopifyVariant> Variants,
+    [property: JsonPropertyName("image")] ShopifyImage? Image = null)
 {
     public string? FormattedTags =>
         TagsRaw.ValueKind switch
@@ -32,3 +33,5 @@ public sealed record ShopifyVariant(
     [property: JsonPropertyName("compare_at_price")] string? CompareAtPrice,
     [property: JsonPropertyName("sku")] string? Sku,
     [property: JsonPropertyName("available")] bool? Available);
+
+public sealed record ShopifyImage([property: JsonPropertyName("src")] string? Src);

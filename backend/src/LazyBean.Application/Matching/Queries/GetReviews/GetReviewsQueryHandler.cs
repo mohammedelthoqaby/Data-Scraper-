@@ -67,14 +67,18 @@ public class GetReviewsQueryHandler(IReadDbContext readContext)
                 var aiVerdict = root.TryGetProperty("AiVerdict", out var aiv) && aiv.ValueKind == JsonValueKind.String ? aiv.GetString() : null;
                 var aiConfidence = root.TryGetProperty("AiConfidence", out var aic) && aic.ValueKind == JsonValueKind.Number && aic.TryGetDecimal(out var aicVal) ? (decimal?)aicVal : null;
                 var aiReason = root.TryGetProperty("AiReason", out var air) && air.ValueKind == JsonValueKind.String ? air.GetString() : null;
+                var aiProvider = root.TryGetProperty("AiProvider", out var aip) && aip.ValueKind == JsonValueKind.String ? aip.GetString() : null;
+                var aiSource = root.TryGetProperty("AiSource", out var ais) && ais.ValueKind == JsonValueKind.String ? ais.GetString() : null;
+                var compImageUrl = root.TryGetProperty("CompetitorImageUrl", out var cim) && cim.ValueKind == JsonValueKind.String ? cim.GetString() : null;
+                var refImageUrl = root.TryGetProperty("ReferenceImageUrl", out var rim) && rim.ValueKind == JsonValueKind.String ? rim.GetString() : null;
 
                 var compProduct = new ReviewProductDetailsDto(
                     compProductId, compVariantId, compTitle, compVendor, compCategory,
-                    compPrice, "EGP", canonicalUrl, compWeight, compUnit, compExtId, compCapsule, compBeverage, compBrand);
+                    compPrice, "EGP", canonicalUrl, compWeight, compUnit, compExtId, compCapsule, compBeverage, compBrand, compImageUrl);
 
                 var refProduct = new ReviewProductDetailsDto(
                     refProductId, refVariantId, refTitle, refVendor, refCategory,
-                    refPrice, "EGP", refUrl, refWeight, refUnit, refExtId, refCapsule, refBeverage, refBrand);
+                    refPrice, "EGP", refUrl, refWeight, refUnit, refExtId, refCapsule, refBeverage, refBrand, refImageUrl);
 
                 var dto = new ReviewMatchItemDto(
                     item.Id,
@@ -87,7 +91,9 @@ public class GetReviewsQueryHandler(IReadDbContext readContext)
                     item.CreatedAt,
                     aiVerdict,
                     aiConfidence,
-                    aiReason);
+                    aiReason,
+                    aiProvider,
+                    aiSource);
 
                 parsedList.Add((item, GetCategoryPriority(canonicalCategory), score, dto));
             }

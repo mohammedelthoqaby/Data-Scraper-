@@ -8,6 +8,22 @@ import { hashView, readHashParams, writeHashParams } from '../../lib/pageUrlStat
 const REVIEW_LIMIT = 500;
 const BULK_LIMIT = 50;
 
+// Product image for a review side. Shows a neutral placeholder when the store did not provide one.
+const ProductThumb: React.FC<{ src?: string | null; alt?: string }> = ({ src, alt }) =>
+  src ? (
+    <img
+      src={src}
+      alt={alt ?? 'Product image'}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      style={{ width: '72px', height: '72px', objectFit: 'contain', borderRadius: '6px', background: '#f8fafc', border: '1px solid var(--line)', marginBottom: '6px' }}
+    />
+  ) : (
+    <div style={{ width: '72px', height: '72px', borderRadius: '6px', background: '#f0f3f6', border: '1px solid var(--line)', marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: '10px' }}>
+      No image
+    </div>
+  );
+
 interface ReviewQueueViewProps {
   onRefreshReviewsCount?: () => void;
   onOpenProductDetail?: (productId: string, title?: string) => void;
@@ -428,6 +444,8 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
                       {item.aiConfidence !== null && item.aiConfidence !== undefined
                         ? ` (${Math.round(item.aiConfidence * 100)}%)`
                         : ''}
+                      {item.aiProvider ? ` · via ${item.aiProvider}` : ''}
+                      {item.aiSource ? ` · ${item.aiSource === 'missed' ? 'missed match' : 'uncertain match'}` : ''}
                     </span>
                     {item.aiReason && (
                       <span style={{ lineHeight: '1.4' }}>
@@ -446,6 +464,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
                 <div className="review-comparison-grid">
                   {/* Lazy Bean Reference Product */}
                   <div className="review-side">
+                    <ProductThumb src={item.referenceProduct?.imageUrl} alt={item.referenceProduct?.title ?? undefined} />
                     <span className="review-side-label" style={{ color: 'var(--action)' }}>
                       Lazy Bean Product (Reference)
                     </span>
@@ -480,6 +499,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
 
                   {/* Competitor Product */}
                   <div className="review-side">
+                    <ProductThumb src={item.competitorProduct?.imageUrl} alt={item.competitorProduct?.title ?? undefined} />
                     <span className="review-side-label">
                       Competitor Product (Candidate)
                     </span>

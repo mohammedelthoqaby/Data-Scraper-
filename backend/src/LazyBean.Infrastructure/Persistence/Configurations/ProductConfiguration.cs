@@ -12,6 +12,7 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
 
         builder.Property(p => p.ExternalId).HasMaxLength(200).IsRequired();
         builder.Property(p => p.CanonicalUrl).HasMaxLength(1000).IsRequired();
+        builder.Property(p => p.ImageUrl).HasMaxLength(1000);
         builder.Property(p => p.Title).HasMaxLength(500).IsRequired();
         builder.Property(p => p.NormalizedTitle).HasMaxLength(500).IsRequired();
         builder.Property(p => p.Category).HasMaxLength(100);

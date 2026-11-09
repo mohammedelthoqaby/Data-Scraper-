@@ -14,7 +14,10 @@ public sealed record WooProduct(
     [property: JsonPropertyName("is_in_stock")] bool IsInStock,
     [property: JsonPropertyName("categories")] List<WooCategory> Categories,
     [property: JsonPropertyName("prices")] WooPrices Prices,
-    [property: JsonPropertyName("variations")] List<WooVariationRef> Variations);
+    [property: JsonPropertyName("variations")] List<WooVariationRef> Variations,
+    [property: JsonPropertyName("images")] List<WooImage>? Images = null);
+
+public sealed record WooImage([property: JsonPropertyName("src")] string? Src);
 
 public sealed record WooCategory([property: JsonPropertyName("name")] string Name);
 

@@ -27,4 +27,6 @@ public class Product : BaseEntity, IAggregateRoot
     public DateTimeOffset LastSeenAt { get; set; } = DateTimeOffset.UtcNow;
     public ProductStatus Status { get; set; } = ProductStatus.Active;
     public string? Handle { get; set; }
+    /// <summary>Main product image as reported by the competitor store, when available.</summary>
+    public string? ImageUrl { get; set; }
 }

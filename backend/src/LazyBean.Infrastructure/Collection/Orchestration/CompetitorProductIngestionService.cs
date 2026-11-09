@@ -137,6 +137,10 @@ public class CompetitorProductIngestionService(
             product.Title = decodedTitle;
             product.NormalizedTitle = TitleNormalizer.NormalizeForMatching(raw.Title);
             product.CanonicalUrl = raw.CanonicalUrl;
+            if (!string.IsNullOrWhiteSpace(raw.ImageUrl))
+            {
+                product.ImageUrl = raw.ImageUrl;
+            }
             product.Handle = !string.IsNullOrWhiteSpace(raw.Handle)
                 ? raw.Handle
                 : CreativeHashHelper.ExtractProductHandle(raw.CanonicalUrl);
